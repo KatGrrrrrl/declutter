@@ -1,18 +1,39 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { T } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
+SplashScreen.hideAsync();
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: T.ground,
+    card: T.surface,
+    text: T.ink,
+    primary: T.heading,
+    border: T.line,
+  },
+};
+
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={theme}>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: T.ground } }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="(parent)" />
+          <Stack.Screen name="(child)" />
+          <Stack.Screen
+            name="item/[id]"
+            options={{ presentation: 'card', headerShown: false }}
+          />
+        </Stack>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

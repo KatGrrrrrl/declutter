@@ -1,0 +1,1121 @@
+<title>Declutter — interactive UI mockup</title>
+<style>
+  :root{
+    --ground:#FFFFFF; --backdrop-1:#FFFFFF; --backdrop-2:#FFFFFF;
+    --surface:#FFFFFF; --surface-2:#FFFFFF; --sunken:#F6F5F3;
+    --ink:#1B1815; --ink-soft:#6D675F; --ink-faint:#A09A90;
+    --line:#E9E8E5; --line-soft:#F2F1EE;
+    --brass:#A67C34; --brass-deep:#7E5D22; --brass-tint:#F7F0DF; --heading:#1E3A5F;
+    --keep:#4E7247; --donate:#44708A; --toss:#A65441;
+    --keep-tint:#ECF3E8; --donate-tint:#E9F2F6; --toss-tint:#FAECE7;
+    --shadow: 0 30px 70px -32px rgba(25,18,10,.35);
+    --radius:22px;
+    --serif:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;
+    --sans:'Avenir Next','Segoe UI',system-ui,-apple-system,Roboto,'Helvetica Neue',Arial,sans-serif;
+    --mono:'SF Mono','Cascadia Code','JetBrains Mono',ui-monospace,'Consolas',monospace;
+  }
+  /* Single-theme by design: the mockup is always the clean white look,
+     regardless of the viewer's OS or claude.ai theme. (The shipped app can
+     still offer its own dark mode later.) */
+  :root[data-theme="light"], :root[data-theme="dark"]{
+    --ground:#FFFFFF; --surface:#FFFFFF; --surface-2:#FFFFFF; --sunken:#F6F5F3;
+    --ink:#1B1815; --ink-soft:#6D675F; --ink-faint:#A09A90;
+    --line:#E9E8E5; --line-soft:#F2F1EE;
+    --brass:#A67C34; --brass-deep:#7E5D22; --brass-tint:#F7F0DF; --heading:#1E3A5F;
+    --keep:#4E7247; --donate:#44708A; --toss:#A65441;
+    --keep-tint:#ECF3E8; --donate-tint:#E9F2F6; --toss-tint:#FAECE7;
+    --shadow: 0 30px 70px -32px rgba(25,18,10,.35);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0}
+  .wrap{
+    min-height:100vh;
+    background:var(--ground);
+    color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    padding:clamp(20px,4vw,56px);
+  }
+
+  /* ---------- Masthead ---------- */
+  .masthead{max-width:1120px; margin:0 auto clamp(22px,3.5vw,40px);}
+  .brand-row{display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;}
+  .wordmark{
+    font-family:var(--serif); font-size:clamp(30px,5vw,46px); font-weight:600;
+    letter-spacing:.01em; line-height:1; margin:0; color:var(--ink);
+  }
+  .wordmark .dot{color:var(--brass)}
+  .kicker{
+    font-size:11px; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--brass-deep); font-weight:700;
+  }
+  .lede{
+    font-family:var(--serif); font-style:italic; font-size:clamp(16px,2.3vw,21px);
+    color:var(--ink-soft); margin:12px 0 0; max-width:60ch; line-height:1.5;
+  }
+  .lede b{font-style:normal; color:var(--ink); font-weight:600}
+
+  /* ---------- Stage ---------- */
+  .stage{
+    max-width:1120px; margin:0 auto; display:grid;
+    grid-template-columns:minmax(0,360px) minmax(0,1fr);
+    gap:clamp(28px,5vw,72px); align-items:start;
+  }
+  @media (max-width:820px){ .stage{grid-template-columns:1fr; justify-items:center} }
+
+  .device-col{display:flex; flex-direction:column; align-items:center; gap:20px; position:sticky; top:24px;}
+  @media (max-width:820px){ .device-col{position:static} }
+
+  /* Mode toggle */
+  .mode-toggle{
+    display:inline-flex; padding:5px; gap:4px; background:var(--sunken);
+    border:1px solid var(--line); border-radius:999px;
+  }
+  .mode-toggle button{
+    font-family:var(--sans); font-size:13px; font-weight:600; letter-spacing:.01em;
+    border:0; background:transparent; color:var(--ink-soft);
+    padding:9px 18px; border-radius:999px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; transition:.25s;
+  }
+  .mode-toggle button .who{font-size:11px; color:var(--ink-faint); font-weight:500}
+  .mode-toggle button[aria-pressed="true"]{
+    background:var(--ink); color:var(--surface-2); box-shadow:0 2px 8px -2px rgba(0,0,0,.35);
+  }
+  .mode-toggle button[aria-pressed="true"] .who{color:var(--brass)}
+
+  /* Phone */
+  .phone{
+    width:340px; max-width:88vw; height:718px; border-radius:44px;
+    background:linear-gradient(160deg,#2c2620,#0f0c09);
+    padding:11px; box-shadow:var(--shadow); position:relative; flex:none;
+  }
+  .phone::after{ /* side button */
+    content:""; position:absolute; right:-2px; top:150px; width:3px; height:64px;
+    border-radius:2px; background:#0c0a07;
+  }
+  .screen-frame{
+    position:relative; height:100%; border-radius:34px; overflow:hidden;
+    background:var(--surface); display:flex; flex-direction:column;
+  }
+  .statusbar{
+    height:34px; flex:none; display:flex; align-items:center; justify-content:space-between;
+    padding:0 22px 0 26px; font-size:12.5px; font-weight:600; color:var(--ink);
+    font-variant-numeric:tabular-nums; z-index:5;
+  }
+  .statusbar .glyphs{display:flex; gap:5px; align-items:center; opacity:.85}
+  .statusbar .glyphs span{width:16px; height:9px; border:1.4px solid currentColor; border-radius:2px; position:relative}
+  .statusbar .glyphs span::after{content:""; position:absolute; right:-3px; top:2px; width:2px; height:3px; background:currentColor; border-radius:1px}
+  .notch{position:absolute; top:9px; left:50%; transform:translateX(-50%); width:96px; height:24px; background:#0f0c09; border-radius:0 0 16px 16px; z-index:6}
+
+  .viewport{flex:1; position:relative; overflow:hidden;}
+  .screen{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    opacity:0; visibility:hidden; transform:translateY(6px);
+    transition:opacity .28s ease, transform .28s ease;
+    overflow-y:auto; overscroll-behavior:contain;
+  }
+  .screen.active{opacity:1; visibility:visible; transform:none;}
+  .screen::-webkit-scrollbar{width:0}
+
+  .scr-head{padding:8px 20px 12px; flex:none;}
+  .scr-eyebrow{font-size:10.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--brass-deep); font-weight:700}
+  .scr-title{font-family:var(--serif); font-size:26px; font-weight:600; margin:3px 0 0; letter-spacing:.01em}
+  .scr-title.big{font-size:30px}
+  .scr-sub{font-size:12.5px; color:var(--ink-soft); margin-top:3px}
+
+  .scr-body{padding:0 20px 20px; flex:1;}
+
+  /* Tab bar */
+  .tabbar{
+    flex:none; display:flex; border-top:1px solid var(--line);
+    background:var(--surface-2); padding:8px 6px calc(8px + env(safe-area-inset-bottom,0));
+  }
+  .tabbar button{
+    flex:1; border:0; background:transparent; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    color:var(--ink-faint); font-family:var(--sans); font-size:10px; font-weight:600;
+    letter-spacing:.02em; padding:4px 2px; transition:.2s;
+  }
+  .tabbar button svg{width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7}
+  .tabbar button[aria-selected="true"]{color:var(--brass-deep)}
+  .tabbar button[aria-selected="true"] svg{stroke:var(--brass)}
+
+  /* ---- generic bits ---- */
+  .photo{
+    border-radius:16px; background:var(--sunken);
+    display:flex; align-items:center; justify-content:center; color:var(--ink-soft);
+    border:1px solid var(--line-soft); position:relative; overflow:hidden;
+  }
+  .photo svg{width:44%; height:44%; stroke:var(--ink-soft); fill:none; stroke-width:1.2; opacity:.75}
+  .photo .corner{position:absolute; top:8px; left:8px; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:700}
+
+  .chip{
+    display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+    padding:4px 9px; border-radius:999px; background:var(--sunken); color:var(--ink-soft);
+    border:1px solid var(--line-soft); white-space:nowrap;
+  }
+  .chip.tag{color:var(--brass-deep); background:var(--brass-tint); border-color:transparent}
+  .chip.keep{color:var(--keep); background:var(--keep-tint); border-color:transparent}
+  .chip.donate{color:var(--donate); background:var(--donate-tint); border-color:transparent}
+  .chip.toss{color:var(--toss); background:var(--toss-tint); border-color:transparent}
+  .val{font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:600; letter-spacing:-.02em}
+
+  /* ================= DECIDE ================= */
+  .decide-head{display:flex; align-items:center; justify-content:space-between; padding:6px 20px 10px}
+  .dots{display:flex; gap:6px}
+  .dots i{width:8px; height:8px; border-radius:50%; background:var(--line); transition:.3s}
+  .dots i.on{background:var(--brass)}
+  .togo{font-size:12.5px; color:var(--ink-soft); font-weight:600}
+  .togo b{color:var(--ink)}
+
+  .deck{position:relative; flex:1; margin:2px 20px 0; min-height:400px}
+  .swipe-card{
+    position:absolute; inset:0; background:var(--surface-2); border:1px solid var(--line);
+    border-radius:24px; box-shadow:0 18px 40px -26px rgba(51,38,20,.5);
+    display:flex; flex-direction:column; padding:14px; transition:transform .45s cubic-bezier(.5,0,.2,1), opacity .4s;
+  }
+  .swipe-card .photo{flex:1; min-height:0}
+  .swipe-card .photo svg{width:38%; height:38%}
+  .card-meta{padding:14px 4px 4px; text-align:center}
+  .card-meta h3{font-family:var(--serif); font-size:22px; margin:0; font-weight:600}
+  .card-meta p{margin:5px 0 0; font-size:12.5px; color:var(--ink-soft)}
+  .swipe-card.leave-right{transform:translateX(130%) rotate(9deg); opacity:0}
+  .swipe-card.leave-left{transform:translateX(-130%) rotate(-9deg); opacity:0}
+  .swipe-card.leave-down{transform:translateY(120%) rotate(-3deg); opacity:0}
+  .verdict{
+    position:absolute; top:22px; font-family:var(--serif); font-weight:700; font-size:20px;
+    letter-spacing:.08em; text-transform:uppercase; padding:5px 12px; border-radius:10px;
+    border:2.5px solid; opacity:0; transition:.2s;
+  }
+  .verdict.show{opacity:1}
+  .verdict.keep{right:20px; color:var(--keep); border-color:var(--keep); transform:rotate(11deg)}
+  .verdict.donate{left:20px; color:var(--donate); border-color:var(--donate); transform:rotate(-11deg)}
+  .verdict.toss{left:50%; transform:translateX(-50%); top:auto; bottom:120px; color:var(--toss); border-color:var(--toss)}
+
+  .decide-actions{display:flex; align-items:center; justify-content:center; gap:16px; padding:16px 20px 6px}
+  .act{
+    width:60px; height:60px; border-radius:50%; border:1px solid var(--line);
+    background:var(--surface-2); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    color:var(--ink-soft); box-shadow:0 6px 16px -8px rgba(51,38,20,.5); transition:.18s;
+  }
+  .act:hover{transform:translateY(-2px)}
+  .act:active{transform:scale(.94)}
+  .act svg{width:26px; height:26px; stroke:currentColor; fill:none; stroke-width:1.8}
+  .act.keep{width:72px; height:72px; color:#fff; background:var(--keep); border-color:transparent}
+  .act.donate{color:var(--donate)}
+  .act.toss{color:var(--toss)}
+  .act-lbl{text-align:center; font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); margin-top:2px}
+  .actcol{display:flex; flex-direction:column; align-items:center}
+
+  .tellbar{
+    margin:2px 20px 16px; border:1px dashed var(--line); border-radius:14px;
+    padding:12px; display:flex; align-items:center; justify-content:center; gap:9px;
+    color:var(--brass-deep); font-weight:600; font-size:13px; cursor:pointer; background:transparent;
+    width:calc(100% - 40px); transition:.2s;
+  }
+  .tellbar:hover{background:var(--brass-tint)}
+  .tellbar svg{width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.7}
+
+  .allcaught{display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; padding:40px 30px; flex:1}
+  .allcaught svg{width:56px; height:56px; stroke:var(--keep); fill:none; stroke-width:1.4}
+  .allcaught h3{font-family:var(--serif); font-size:22px; margin:0}
+  .allcaught p{font-size:13px; color:var(--ink-soft); margin:0; line-height:1.5}
+
+  /* ================= KEEPSAKES / grid ================= */
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .kcard{background:var(--surface-2); border:1px solid var(--line); border-radius:16px; overflow:hidden; cursor:pointer; transition:.18s; text-align:left; padding:0; font-family:inherit; color:inherit}
+  .kcard:hover{transform:translateY(-3px); box-shadow:0 14px 28px -20px rgba(51,38,20,.6)}
+  .kcard .photo{border-radius:0; border:0; height:104px}
+  .kcard .kbody{padding:10px 11px 12px}
+  .kcard h4{font-family:var(--serif); font-size:15px; margin:0; font-weight:600; line-height:1.2}
+  .kcard .krow{display:flex; align-items:center; justify-content:space-between; margin-top:7px}
+  .kcard .krow .val{font-size:12.5px; color:var(--ink-soft)}
+  .heir-chip{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--brass-deep); font-weight:600}
+  .heir-chip .av{width:16px; height:16px; border-radius:50%; background:var(--brass); color:#fff; font-size:9px; display:flex; align-items:center; justify-content:center; font-weight:700}
+
+  /* ================= HEIRS ================= */
+  .plist{display:flex; flex-direction:column; gap:11px}
+  .prow{display:flex; align-items:center; gap:13px; background:var(--surface-2); border:1px solid var(--line); border-radius:16px; padding:13px 15px}
+  .av-lg{width:44px; height:44px; border-radius:50%; background:linear-gradient(150deg,var(--brass),var(--brass-deep)); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex:none; font-family:var(--serif)}
+  .prow .pmain{flex:1; min-width:0}
+  .prow h4{margin:0; font-size:15px; font-weight:700}
+  .prow .rel{font-size:11.5px; color:var(--ink-faint)}
+  .prow .pcount{text-align:right}
+  .prow .pcount .n{font-family:var(--serif); font-size:20px; font-weight:700; color:var(--brass-deep)}
+  .prow .pcount .l{font-size:10px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.1em}
+  .reveal-note{margin-top:14px; padding:12px 14px; background:var(--sunken); border-radius:12px; font-size:12px; color:var(--ink-soft); line-height:1.5; display:flex; gap:9px}
+  .reveal-note svg{width:16px; height:16px; stroke:var(--brass); fill:none; stroke-width:1.6; flex:none; margin-top:1px}
+
+  /* ================= EXPORT ================= */
+  .xcard{background:var(--surface-2); border:1px solid var(--line); border-radius:18px; padding:18px; margin-bottom:14px}
+  .xcard.feature{border-color:var(--brass); background:linear-gradient(170deg,var(--brass-tint),var(--surface-2))}
+  .xcard .xtop{display:flex; align-items:flex-start; gap:12px}
+  .xicon{width:40px; height:40px; border-radius:12px; background:var(--surface); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; flex:none; color:var(--brass-deep)}
+  .xicon svg{width:21px; height:21px; stroke:currentColor; fill:none; stroke-width:1.6}
+  .xcard h4{font-family:var(--serif); font-size:18px; margin:0; font-weight:600}
+  .xcard .xmeta{font-size:12px; color:var(--ink-soft); margin-top:3px}
+  .xbtns{display:flex; gap:10px; margin-top:15px}
+  .btn{flex:1; text-align:center; padding:11px; border-radius:11px; font-weight:700; font-size:13px; cursor:pointer; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-family:inherit; transition:.18s}
+  .btn:hover{border-color:var(--brass)}
+  .btn.primary{background:var(--ink); color:var(--surface-2); border-color:transparent}
+  .btn.primary:hover{background:var(--brass-deep)}
+  .disclaimer{font-size:10.5px; color:var(--ink-faint); margin-top:12px; line-height:1.5; display:flex; gap:7px; align-items:flex-start}
+  .disclaimer svg{width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.6; flex:none; margin-top:1px}
+  .xmini{display:flex; align-items:center; gap:12px}
+  .xmini .xicon{width:34px; height:34px}
+  .xmini h4{font-size:15px}
+
+  /* ================= CAPTURE ================= */
+  .cam{flex:1; margin:6px 16px 0; border-radius:22px; overflow:hidden; position:relative;
+    background:radial-gradient(120% 90% at 50% 20%, #4a4136, #211c16);
+    display:flex; align-items:center; justify-content:center; min-height:380px}
+  .cam .frame-corners::before,.cam .frame-corners::after,
+  .cam .frame-corners i::before,.cam .frame-corners i::after{
+    content:""; position:absolute; width:26px; height:26px; border:2px solid rgba(240,230,210,.75)}
+  .cam .frame-corners::before{top:20px; left:20px; border-right:0; border-bottom:0; border-radius:6px 0 0 0}
+  .cam .frame-corners::after{top:20px; right:20px; border-left:0; border-bottom:0; border-radius:0 6px 0 0}
+  .cam .frame-corners i::before{bottom:76px; left:20px; border-right:0; border-top:0; border-radius:0 0 0 6px}
+  .cam .frame-corners i::after{bottom:76px; right:20px; border-left:0; border-top:0; border-radius:0 0 6px 0}
+  .cam .subject{width:120px; height:120px; opacity:.9}
+  .cam .subject svg{width:100%; height:100%; stroke:rgba(244,236,220,.9); fill:none; stroke-width:1}
+  .room-pill{position:absolute; top:18px; left:50%; transform:translateX(-50%); background:rgba(20,16,12,.6); color:#f4ecdc; backdrop-filter:blur(6px); padding:6px 14px; border-radius:999px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px}
+  .sync-pill{position:absolute; top:18px; right:16px; background:rgba(20,16,12,.6); color:#f4ecdc; padding:6px 11px; border-radius:999px; font-size:11px; font-weight:600; display:flex; align-items:center; gap:5px}
+  .sync-pill svg{width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.6}
+  .ai-hint{position:absolute; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(166,124,52,.92); color:#fff; padding:7px 14px; border-radius:999px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:7px; white-space:nowrap; box-shadow:0 6px 18px -6px rgba(0,0,0,.5)}
+  .ai-hint .spark{width:14px;height:14px}
+  .cam-dock{flex:none; padding:16px 20px 8px; display:flex; align-items:center; justify-content:space-between}
+  .roll{display:flex; gap:6px}
+  .roll span{width:34px; height:34px; border-radius:8px; background:var(--sunken); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; color:var(--brass-deep)}
+  .roll span svg{width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.3}
+  .roll .more{font-family:var(--mono); font-size:11px; color:var(--ink-soft); background:var(--surface-2)}
+  .shutter{width:66px; height:66px; border-radius:50%; border:4px solid var(--ink); background:var(--surface-2); cursor:pointer; flex:none; position:relative; transition:.12s}
+  .shutter::after{content:""; position:absolute; inset:5px; border-radius:50%; background:var(--ink)}
+  .shutter:active{transform:scale(.9)}
+  .batch-note{text-align:center; font-size:11.5px; color:var(--ink-soft); padding:2px 20px 14px; font-weight:600}
+  .batch-note b{color:var(--brass-deep)}
+
+  /* ================= INVENTORY ================= */
+  .filters{display:flex; gap:7px; overflow-x:auto; padding:2px 0 12px; -ms-overflow-style:none; scrollbar-width:none}
+  .filters::-webkit-scrollbar{display:none}
+  .fchip{flex:none; font-size:12px; font-weight:600; padding:7px 13px; border-radius:999px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink-soft); cursor:pointer; transition:.18s}
+  .fchip[aria-pressed="true"]{background:var(--ink); color:var(--surface-2); border-color:transparent}
+  .searchbar{display:flex; align-items:center; gap:9px; background:var(--sunken); border:1px solid var(--line); border-radius:12px; padding:10px 13px; margin-bottom:12px; color:var(--ink-faint); font-size:13px}
+  .searchbar svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.7}
+  .irow{display:flex; align-items:center; gap:12px; padding:11px 4px; border-bottom:1px solid var(--line-soft); cursor:pointer; transition:.15s}
+  .irow:hover{background:var(--surface-2); border-radius:12px; padding-left:10px; padding-right:10px}
+  .ithumb{width:52px; height:52px; border-radius:12px; flex:none}
+  .ithumb svg{width:46%; height:46%}
+  .imain{flex:1; min-width:0}
+  .imain h4{font-family:var(--serif); font-size:15.5px; margin:0; font-weight:600}
+  .imain .isub{display:flex; gap:7px; align-items:center; margin-top:4px; flex-wrap:wrap}
+  .imain .isub small{font-size:11px; color:var(--ink-faint)}
+  .iend{text-align:right; flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:5px}
+  .iend .val{font-size:12.5px}
+  .lock{display:inline-flex; align-items:center; gap:3px; font-size:10px; color:var(--ink-faint); font-weight:600}
+  .lock svg{width:11px; height:11px; stroke:currentColor; fill:none; stroke-width:1.7}
+
+  /* ================= REQUESTS ================= */
+  .rq{background:var(--surface-2); border:1px solid var(--line); border-radius:16px; padding:14px; margin-bottom:12px; display:flex; gap:12px; align-items:center}
+  .rq .ithumb{width:46px; height:46px}
+  .rq .rqmain{flex:1}
+  .rq h4{font-family:var(--serif); font-size:15px; margin:0; font-weight:600}
+  .rq p{margin:3px 0 0; font-size:11.5px; color:var(--ink-soft)}
+  .status{font-size:11px; font-weight:700; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .status.open{background:var(--sunken); color:var(--ink-soft)}
+  .status.ack{background:var(--donate-tint); color:var(--donate)}
+  .status.granted{background:var(--keep-tint); color:var(--keep)}
+
+  /* ================= FAMILY ================= */
+  .fam-row{display:flex; align-items:center; gap:13px; padding:13px 4px; border-bottom:1px solid var(--line-soft)}
+  .fam-row .pmain{flex:1}
+  .fam-row h4{margin:0; font-size:15px; font-weight:700}
+  .fam-row .rel{font-size:11.5px; color:var(--ink-faint)}
+  .role-badge{font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:5px 10px; border-radius:8px}
+  .role-badge.owner{background:var(--brass-tint); color:var(--brass-deep)}
+  .role-badge.contrib{background:var(--sunken); color:var(--ink-soft)}
+  .role-badge.exec{background:var(--donate-tint); color:var(--donate)}
+  .authority-card{margin:4px 0 16px; padding:14px 16px; border-radius:14px; background:var(--sunken); border:1px solid var(--line); display:flex; gap:11px; align-items:flex-start}
+  .authority-card svg{width:20px; height:20px; stroke:var(--brass); fill:none; stroke-width:1.6; flex:none; margin-top:1px}
+  .authority-card p{margin:0; font-size:12px; color:var(--ink-soft); line-height:1.5}
+  .authority-card b{color:var(--ink)}
+
+  /* ================= ITEM DETAIL ================= */
+  .detail-back{display:flex; align-items:center; gap:8px; padding:6px 20px 4px; background:transparent; border:0; color:var(--ink-soft); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer}
+  .detail-back svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2}
+  .dhero{margin:6px 20px 0; border-radius:20px; height:190px}
+  .dhero svg{width:34%; height:34%}
+  .dbody{padding:16px 20px 20px}
+  .dstate{display:flex; align-items:center; gap:9px; margin-bottom:14px}
+  .dbody h2{font-family:var(--serif); font-size:24px; margin:0 0 3px; font-weight:600}
+  .story{background:var(--sunken); border-radius:16px; padding:14px; margin:14px 0}
+  .story .play{display:flex; align-items:center; gap:11px}
+  .story .playbtn{width:38px; height:38px; border-radius:50%; background:var(--brass); color:#fff; border:0; display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none}
+  .story .playbtn svg{width:16px; height:16px; fill:currentColor; stroke:none}
+  .wave{flex:1; display:flex; align-items:center; gap:3px; height:26px}
+  .wave i{flex:1; background:var(--brass); opacity:.5; border-radius:2px; height:30%}
+  .story .qt{font-family:var(--serif); font-style:italic; font-size:14px; color:var(--ink); margin:12px 0 0; line-height:1.5}
+  .story .qmeta{font-size:11px; color:var(--ink-faint); margin-top:6px}
+  .field-label{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--brass-deep); font-weight:700; margin:18px 0 8px}
+  .heir-select{display:flex; align-items:center; gap:11px; background:var(--surface-2); border:1px solid var(--line); border-radius:14px; padding:12px 14px}
+  .heir-select .av-lg{width:34px; height:34px; font-size:13px}
+  .heir-select h4{margin:0; font-size:15px; font-weight:700}
+  .heir-select .rel{font-size:11px; color:var(--ink-faint)}
+  .heir-select .caret{margin-left:auto; color:var(--ink-faint)}
+  .vis-opts{display:flex; flex-direction:column; gap:2px; margin-top:10px}
+  .vis-opt{display:flex; align-items:center; gap:11px; padding:11px 13px; border-radius:12px; cursor:pointer; transition:.15s; border:1px solid transparent}
+  .vis-opt:hover{background:var(--surface-2)}
+  .vis-opt[aria-checked="true"]{background:var(--brass-tint); border-color:var(--brass)}
+  .radio{width:19px; height:19px; border-radius:50%; border:2px solid var(--line); flex:none; position:relative; transition:.15s}
+  .vis-opt[aria-checked="true"] .radio{border-color:var(--brass)}
+  .vis-opt[aria-checked="true"] .radio::after{content:""; position:absolute; inset:3px; border-radius:50%; background:var(--brass)}
+  .vis-opt .vt{font-size:14px; font-weight:600}
+  .vis-opt .vd{font-size:11.5px; color:var(--ink-faint)}
+  .value-line{display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding-top:16px; border-top:1px solid var(--line-soft)}
+  .value-line .vgroup{display:flex; flex-direction:column}
+  .value-line .vgroup .val{font-family:var(--serif); font-size:22px; color:var(--ink)}
+  .value-line .vgroup small{font-size:10.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.1em; margin-top:2px}
+
+  /* ---------- Bottom sheet ---------- */
+  .sheet-scrim{position:absolute; inset:0; background:rgba(30,22,12,.42); opacity:0; visibility:hidden; transition:.3s; z-index:20}
+  .sheet-scrim.open{opacity:1; visibility:visible}
+  .sheet{position:absolute; left:0; right:0; bottom:0; background:var(--surface-2); border-radius:26px 26px 0 0; padding:8px 22px 26px; transform:translateY(100%); transition:transform .34s cubic-bezier(.4,0,.2,1); z-index:21}
+  .sheet.open{transform:none}
+  .sheet .grab{width:38px; height:4px; border-radius:2px; background:var(--line); margin:6px auto 16px}
+  .sheet h3{font-family:var(--serif); font-size:20px; margin:0 0 4px; text-align:center}
+  .sheet .who{text-align:center; font-size:12px; color:var(--ink-soft); margin-bottom:18px}
+  .recorder{display:flex; flex-direction:column; align-items:center; gap:16px; padding:6px 0 4px}
+  .mic-btn{width:78px; height:78px; border-radius:50%; background:var(--toss); color:#fff; border:0; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 0 0 0 rgba(166,90,74,.5)}
+  .mic-btn svg{width:32px; height:32px; stroke:currentColor; fill:none; stroke-width:1.6}
+  .mic-btn.recording{animation:pulse 1.6s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(166,90,74,.45)}100%{box-shadow:0 0 0 26px rgba(166,90,74,0)}}
+  .rec-time{font-family:var(--mono); font-size:15px; color:var(--ink-soft); font-variant-numeric:tabular-nums}
+  .transcript{background:var(--sunken); border-radius:14px; padding:14px; margin-top:18px; min-height:54px; font-family:var(--serif); font-style:italic; font-size:14px; color:var(--ink); line-height:1.55; opacity:0; transition:.4s}
+  .transcript.show{opacity:1}
+  .transcript .cursor{display:inline-block; width:2px; height:15px; background:var(--brass); vertical-align:-2px; animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* ================= ONBOARDING ================= */
+  .ob-top{display:flex; align-items:center; justify-content:space-between; padding:10px 20px 2px; flex:none}
+  .ob-top .detail-back{padding:0}
+  .ob-hero{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 34px 44px}
+  .ob-kicker{font-size:10.5px; letter-spacing:.28em; text-transform:uppercase; color:var(--brass-deep); font-weight:700; margin-bottom:10px}
+  .ob-hero .wordmark{font-size:46px}
+  .ob-lede{font-family:var(--serif); font-style:italic; font-size:16.5px; color:var(--ink-soft); line-height:1.55; margin:14px 0 0}
+  .ob-cta{margin-top:26px; width:100%; padding:14px}
+  .ob-fine{font-size:11px; color:var(--ink-faint); margin-top:12px; line-height:1.5; text-align:center}
+  .role-card{display:flex; align-items:flex-start; gap:13px; width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--line); border-radius:18px; padding:16px; cursor:pointer; font-family:inherit; color:inherit; transition:.18s; margin-bottom:12px}
+  .role-card:hover{border-color:var(--brass); transform:translateY(-2px); box-shadow:0 14px 28px -20px rgba(51,38,20,.6)}
+  .role-card .rt{display:block; font-family:var(--serif); font-size:17px; font-weight:600}
+  .role-card .rd{display:block; font-size:12px; color:var(--ink-soft); margin-top:3px; line-height:1.45}
+  .ob-input{display:flex; align-items:center; background:var(--surface-2); border:1.5px solid var(--brass); border-radius:14px; padding:14px 16px; font-family:var(--serif); font-size:18px; color:var(--ink)}
+  .ob-input .cursor{display:inline-block; width:2px; height:18px; background:var(--brass); margin-left:2px; animation:blink 1s steps(2) infinite}
+  .ob-suggest{display:flex; gap:7px; flex-wrap:wrap; margin-top:10px}
+  .ob-glyph{width:86px; height:86px; border-radius:26px; background:var(--brass-tint); color:var(--brass-deep); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; margin:6px auto 0}
+  .ob-glyph svg{width:50px; height:50px; stroke:currentColor; fill:none; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round}
+  .ob-center{text-align:center; padding:12px 10px 0}
+  .ob-center h3{font-family:var(--serif); font-size:22px; margin:16px 0 0; font-weight:600}
+  .ob-center p{font-size:13px; color:var(--ink-soft); line-height:1.55; margin:8px 0 0}
+  .invite-btn{flex:none; padding:8px 15px; border-radius:999px; border:1px solid var(--brass); background:transparent; color:var(--brass-deep); font-weight:700; font-size:12px; cursor:pointer; font-family:inherit; transition:.15s}
+  .invite-btn:hover{background:var(--brass-tint)}
+  .invite-btn[disabled]{border-color:transparent; color:var(--keep); background:var(--keep-tint); cursor:default}
+
+  /* ================= LEGACY (executor) ================= */
+  .vsteps{display:flex; flex-direction:column; margin-top:2px}
+  .vstep{display:flex; gap:13px; padding:11px 2px; position:relative}
+  .vstep .vnum{width:26px; height:26px; border-radius:50%; background:var(--brass-tint); border:1px solid var(--brass); color:var(--brass-deep); font-family:var(--serif); font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; position:relative; z-index:1}
+  .vstep:not(:last-child)::before{content:""; position:absolute; left:15px; top:40px; bottom:-9px; width:1.5px; background:var(--line)}
+  .vstep h5{margin:2px 0 0; font-size:14px; font-weight:700; color:var(--ink)}
+  .vstep p{margin:3px 0 0; font-size:12px; color:var(--ink-soft); line-height:1.5}
+  .xcard.linked{width:100%; text-align:left; font-family:inherit; color:inherit; cursor:pointer; transition:.18s}
+  .xcard.linked:hover{border-color:var(--brass)}
+
+  /* ---------- Annotation rail ---------- */
+  .rail{padding-top:8px}
+  @media (max-width:820px){ .rail{max-width:340px} }
+  .rail .now-showing{font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-faint); font-weight:700}
+  .rail h2{font-family:var(--serif); font-size:clamp(24px,3.4vw,32px); margin:8px 0 0; font-weight:600; text-wrap:balance; line-height:1.15}
+  .rail .rail-lede{font-size:15px; color:var(--ink-soft); line-height:1.6; margin:14px 0 0; max-width:52ch}
+  .rail-notes{list-style:none; padding:0; margin:24px 0 0; display:flex; flex-direction:column; gap:2px}
+  .rail-notes li{display:flex; gap:13px; padding:14px 0; border-top:1px solid var(--line-soft); font-size:14px; line-height:1.55; color:var(--ink-soft)}
+  .rail-notes li b{color:var(--ink); font-weight:600}
+  .rail-notes .mk{font-family:var(--serif); font-size:13px; font-weight:700; color:var(--brass); flex:none; width:20px; padding-top:1px}
+  .rail-notes svg{width:19px; height:19px; stroke:var(--brass); fill:none; stroke-width:1.6; flex:none; margin-top:1px}
+  .rail-foot{margin-top:26px; padding:16px 18px; border-radius:16px; background:var(--surface); border:1px solid var(--line)}
+  .rail-foot .rf-label{font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--brass-deep); font-weight:700}
+  .rail-foot p{margin:9px 0 0; font-size:13px; color:var(--ink-soft); line-height:1.55}
+  .rail-foot p b{color:var(--ink)}
+  .hint-tap{display:inline-flex; align-items:center; gap:6px; margin-top:18px; font-size:12.5px; color:var(--brass-deep); font-weight:600}
+  .hint-tap svg{width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.8}
+
+  /* Heading system: dark navy (steel blue in dark theme) */
+  .wordmark,.scr-title,.card-meta h3,.kcard h4,.allcaught h3,.xcard h4,
+  .rq h4,.imain h4,.dbody h2,.sheet h3,.rail h2{color:var(--heading)}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms !important; transition-duration:.05ms !important}
+  }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand-row">
+      <h1 class="wordmark">Declutter<span class="dot">.</span></h1>
+      <span class="kicker">Household&nbsp;Legacy</span>
+    </div>
+    <p class="lede">Swedish death cleaning, <b>together</b>. Children photograph what's in the house; parents decide, in their own time, what to keep, pass on, or let go — one object at a time.</p>
+  </header>
+
+  <div class="stage">
+    <!-- ============ DEVICE ============ -->
+    <div class="device-col">
+      <div class="mode-toggle" role="group" aria-label="Switch experience">
+        <button id="mode-start" aria-pressed="false" onclick="setMode('start')">Start<span class="who">new family</span></button>
+        <button id="mode-parent" aria-pressed="true" onclick="setMode('parent')">Parent<span class="who">the owner</span></button>
+        <button id="mode-child" aria-pressed="false" onclick="setMode('child')">Child<span class="who">the helper</span></button>
+      </div>
+
+      <div class="phone">
+        <div class="screen-frame">
+          <div class="notch"></div>
+          <div class="statusbar">
+            <span>9:41</span>
+            <span class="glyphs"><span></span></span>
+          </div>
+
+          <div class="viewport" id="viewport">
+            <!-- ===== PARENT: DECIDE ===== -->
+            <section class="screen active" data-mode="parent" data-tab="decide">
+              <div class="decide-head">
+                <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+                <div class="togo"><b id="togo-n">12</b> to go</div>
+              </div>
+              <div class="deck" id="deck">
+                <!-- cards injected -->
+                <div class="allcaught" id="allcaught">
+                  <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                  <h3>All caught up</h3>
+                  <p>Sam added 3 more from the study.<br>They'll be here whenever you're ready.</p>
+                </div>
+              </div>
+              <div class="decide-actions" id="decide-actions">
+                <div class="actcol">
+                  <button class="act toss" onclick="decide('toss')" aria-label="Let go"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+                  <span class="act-lbl">Let go</span>
+                </div>
+                <div class="actcol">
+                  <button class="act donate" onclick="decide('donate')" aria-label="Donate"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"/></svg></button>
+                  <span class="act-lbl">Donate</span>
+                </div>
+                <div class="actcol">
+                  <button class="act keep" onclick="decide('keep')" aria-label="Keep"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 7"/></svg></button>
+                  <span class="act-lbl" style="color:var(--keep)">Keep</span>
+                </div>
+              </div>
+              <button class="tellbar" onclick="openSheet()"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Tell me about this one</button>
+            </section>
+
+            <!-- ===== PARENT: KEEPSAKES ===== -->
+            <section class="screen" data-mode="parent" data-tab="keepsakes">
+              <div class="scr-head">
+                <div class="scr-eyebrow">Kept · 38 items</div>
+                <h2 class="scr-title">Keepsakes</h2>
+                <p class="scr-sub">Tap any piece to add its story or say who it's for.</p>
+              </div>
+              <div class="scr-body">
+                <div class="grid2">
+                  <button class="kcard" onclick="openDetail()">
+                    <div class="photo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-teapot"/></svg></div>
+                    <div class="kbody"><h4>Blue Delft teapot</h4>
+                      <div class="krow"><span class="heir-chip"><span class="av">M</span>Maya</span><span class="val">$120</span></div>
+                    </div>
+                  </button>
+                  <button class="kcard" onclick="openDetail()">
+                    <div class="photo"><svg viewBox="0 0 24 24"><use href="#i-ring"/></svg></div>
+                    <div class="kbody"><h4>Grandmother's ring</h4>
+                      <div class="krow"><span class="heir-chip"><span class="av">S</span>Sam</span><span class="val">$1,400</span></div>
+                    </div>
+                  </button>
+                  <button class="kcard" onclick="openDetail()">
+                    <div class="photo"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></div>
+                    <div class="kbody"><h4>Mantel clock</h4>
+                      <div class="krow"><span class="heir-chip" style="color:var(--ink-faint)">Unassigned</span><span class="val">$340</span></div>
+                    </div>
+                  </button>
+                  <button class="kcard" onclick="openDetail()">
+                    <div class="photo"><svg viewBox="0 0 24 24"><use href="#i-books"/></svg></div>
+                    <div class="kbody"><h4>Dad's poetry books</h4>
+                      <div class="krow"><span class="heir-chip"><span class="av">L</span>Leo</span><span class="val">—</span></div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== PARENT: HEIRS ===== -->
+            <section class="screen" data-mode="parent" data-tab="heirs">
+              <div class="scr-head">
+                <div class="scr-eyebrow">Who gets what</div>
+                <h2 class="scr-title">Heirs</h2>
+                <p class="scr-sub">Only you can see these until you choose to share.</p>
+              </div>
+              <div class="scr-body">
+                <div class="plist">
+                  <div class="prow"><div class="av-lg">M</div><div class="pmain"><h4>Maya</h4><div class="rel">Daughter</div></div><div class="pcount"><div class="n">9</div><div class="l">items</div></div></div>
+                  <div class="prow"><div class="av-lg">S</div><div class="pmain"><h4>Sam</h4><div class="rel">Son</div></div><div class="pcount"><div class="n">7</div><div class="l">items</div></div></div>
+                  <div class="prow"><div class="av-lg">L</div><div class="pmain"><h4>Leo</h4><div class="rel">Grandson</div></div><div class="pcount"><div class="n">4</div><div class="l">items</div></div></div>
+                </div>
+                <div class="reveal-note">
+                  <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>
+                  <span>18 items assigned, all <b>private to you</b>. Reveal to family now, after you're gone, or never — your call, per item.</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== PARENT: EXPORT ===== -->
+            <section class="screen" data-mode="parent" data-tab="export">
+              <div class="scr-head">
+                <div class="scr-eyebrow">Peace of mind</div>
+                <h2 class="scr-title">Export</h2>
+              </div>
+              <div class="scr-body">
+                <div class="xcard feature">
+                  <div class="xtop">
+                    <div class="xicon"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></div>
+                    <div><h4>Personal Property Memorandum</h4><div class="xmeta">38 items · 6 heirs · updated today</div></div>
+                  </div>
+                  <div class="xbtns">
+                    <button class="btn">Preview</button>
+                    <button class="btn primary">Export PDF</button>
+                  </div>
+                  <div class="disclaimer"><svg viewBox="0 0 24 24"><path d="M12 2L2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7z"/></svg><span>Not legal advice. In many states this can be referenced by your will — take it to your attorney to make it binding.</span></div>
+                </div>
+                <div class="xcard"><div class="xmini"><div class="xicon"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg></div><div><h4>Insurance inventory</h4><div class="xmeta">Same photos, valuation report</div></div></div></div>
+                <div class="xcard"><div class="xmini"><div class="xicon"><svg viewBox="0 0 24 24"><path d="M4 4h16v4H4zM6 8v12h12V8M9 12h6"/></svg></div><div><h4>Donation tax receipts</h4><div class="xmeta">11 donated · itemized for filing</div></div></div></div>
+                <button class="xcard linked" onclick="showTab('parent','legacy')"><div class="xmini"><div class="xicon"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div><h4>Legacy access</h4><div class="xmeta">Rebecca, your executor · read-only, when the time comes</div></div><span style="margin-left:auto;color:var(--ink-faint);font-size:18px" aria-hidden="true">›</span></div></button>
+              </div>
+            </section>
+
+            <!-- ===== PARENT: LEGACY (executor unlock) ===== -->
+            <section class="screen" data-mode="parent" data-tab="legacy">
+              <button class="detail-back" onclick="showTab('parent','export')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Export</button>
+              <div class="scr-head">
+                <div class="scr-eyebrow">When the time comes</div>
+                <h2 class="scr-title">Legacy access</h2>
+                <p class="scr-sub">Someone you trust, ready — and locked out until truly needed.</p>
+              </div>
+              <div class="scr-body">
+                <div class="prow">
+                  <div class="av-lg" style="background:linear-gradient(150deg,var(--donate),#3a5a6b)">R</div>
+                  <div class="pmain"><h4>Rebecca</h4><div class="rel">Family attorney</div></div>
+                  <span class="status ack">Designated</span>
+                </div>
+
+                <div class="field-label">How unlock works</div>
+                <div class="vsteps">
+                  <div class="vstep"><span class="vnum">1</span><div><h5>Rebecca requests access</h5><p>One button on her side, nothing more. If you're able to respond, you're notified — a false alarm ends right here.</p></div></div>
+                  <div class="vstep"><span class="vnum">2</span><div><h5>Documentation is reviewed</h5><p>A death certificate or incapacity papers are checked before anything opens. No documentation, no unlock.</p></div></div>
+                  <div class="vstep"><span class="vnum">3</span><div><h5>Read-only unlock</h5><p>The inventory and your memorandum open to her exactly as you left them — stories, heirs, and wishes intact.</p></div></div>
+                </div>
+
+                <div class="reveal-note">
+                  <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>
+                  <span>Rebecca can <b>read, never edit</b> — and you can hand this role to someone else anytime. Nothing here is set in stone.</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== PARENT: ITEM DETAIL ===== -->
+            <section class="screen" data-mode="parent" data-tab="detail">
+              <button class="detail-back" onclick="showTab('parent','keepsakes')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Keepsakes</button>
+              <div class="photo dhero"><svg viewBox="0 0 24 24"><use href="#i-teapot"/></svg></div>
+              <div class="dbody">
+                <div class="dstate"><span class="chip keep">Keeping ✓</span><span class="chip">Kitchen</span></div>
+                <h2>Blue Delft teapot</h2>
+
+                <div class="story">
+                  <div class="play">
+                    <button class="playbtn" aria-label="Play story"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+                    <div class="wave" id="wave"></div>
+                    <span class="val" style="font-size:12px;color:var(--ink-soft)">0:34</span>
+                  </div>
+                  <p class="qt">"My mother carried this back from Delft in 1962. It sat on every kitchen table we ever had."</p>
+                  <div class="qmeta">Recorded in your voice · auto-transcribed</div>
+                </div>
+
+                <div class="field-label">Who gets this?</div>
+                <div class="heir-select"><div class="av-lg">M</div><div><h4>Maya</h4><div class="rel">Daughter</div></div><span class="caret">▾</span></div>
+
+                <div class="vis-opts" role="radiogroup" aria-label="Visibility">
+                  <div class="vis-opt" aria-checked="true" role="radio" tabindex="0" onclick="setVis(this)"><span class="radio"></span><span><span class="vt">Only me</span><span class="vd"> · nobody else sees this yet</span></span></div>
+                  <div class="vis-opt" aria-checked="false" role="radio" tabindex="0" onclick="setVis(this)"><span class="radio"></span><span><span class="vt">After I'm gone</span><span class="vd"> · unlocks for the executor</span></span></div>
+                  <div class="vis-opt" aria-checked="false" role="radio" tabindex="0" onclick="setVis(this)"><span class="radio"></span><span><span class="vt">Reveal to Maya now</span><span class="vd"> · she'll be notified</span></span></div>
+                </div>
+
+                <div class="value-line">
+                  <div class="vgroup"><span class="val">$120</span><small>Market value</small></div>
+                  <div class="vgroup" style="align-items:flex-end"><span class="val" style="color:var(--toss)">♡</span><small>Sentimental</small></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== CHILD: CAPTURE ===== -->
+            <section class="screen" data-mode="child" data-tab="capture">
+              <div class="cam">
+                <div class="frame-corners"><i></i></div>
+                <div class="room-pill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Kitchen ▾</div>
+                <div class="sync-pill"><svg viewBox="0 0 24 24"><path d="M4 14a5 5 0 0 1 4-8 6 6 0 0 1 11 2 4 4 0 0 1-1 8H7"/><path d="M12 12v6M9 15l3 3 3-3"/></svg>8</div>
+                <div class="subject"><svg viewBox="0 0 24 24"><use href="#i-vase"/></svg></div>
+                <div class="ai-hint"><svg class="spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>Looks like glassware · #vase</div>
+              </div>
+              <div class="cam-dock">
+                <div class="roll">
+                  <span><svg viewBox="0 0 24 24"><use href="#i-teapot"/></svg></span>
+                  <span><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></span>
+                  <span class="more">+30</span>
+                </div>
+                <button class="shutter" aria-label="Take photo"></button>
+                <div style="width:76px"></div>
+              </div>
+              <div class="batch-note"><b>Batch mode</b> · keep shooting, decide later. Works offline in the basement.</div>
+            </section>
+
+            <!-- ===== CHILD: INVENTORY ===== -->
+            <section class="screen" data-mode="child" data-tab="inventory">
+              <div class="scr-head">
+                <div class="scr-eyebrow">247 items · 6 rooms</div>
+                <h2 class="scr-title">Inventory</h2>
+              </div>
+              <div class="scr-body">
+                <div class="searchbar"><svg viewBox="0 0 24 24"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"/></svg>Search items, tags, rooms…</div>
+                <div class="filters">
+                  <button class="fchip" aria-pressed="true">All</button>
+                  <button class="fchip" aria-pressed="false">Keep</button>
+                  <button class="fchip" aria-pressed="false">Donate</button>
+                  <button class="fchip" aria-pressed="false">Let go</button>
+                  <button class="fchip" aria-pressed="false">Undecided</button>
+                </div>
+                <div class="irow" onclick="showTab('child','crequest')">
+                  <div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-teapot"/></svg></div>
+                  <div class="imain"><h4>Blue Delft teapot</h4><div class="isub"><span class="chip keep">Keep</span><span class="chip tag">#china</span></div></div>
+                  <div class="iend"><span class="val">$120</span><span class="heir-chip"><span class="av">M</span>Maya</span></div>
+                </div>
+                <div class="irow" onclick="showTab('child','crequest')">
+                  <div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-drill"/></svg></div>
+                  <div class="imain"><h4>Cordless drill</h4><div class="isub"><span class="chip donate">Donate</span><span class="chip tag">#tools</span></div></div>
+                  <div class="iend"><span class="val" style="color:var(--ink-faint)">—</span></div>
+                </div>
+                <div class="irow" onclick="showTab('child','crequest')">
+                  <div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-ring"/></svg></div>
+                  <div class="imain"><h4>Grandmother's ring</h4><div class="isub"><span class="chip keep">Keep</span><span class="chip tag">#jewelry</span></div></div>
+                  <div class="iend"><span class="val">$1,400</span><span class="lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>heir hidden</span></div>
+                </div>
+                <div class="irow" onclick="showTab('child','crequest')">
+                  <div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></div>
+                  <div class="imain"><h4>Mantel clock</h4><div class="isub"><span class="chip">Undecided</span><span class="chip tag">#decor</span></div></div>
+                  <div class="iend"><span class="val">$340</span></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== CHILD: ITEM (request) ===== -->
+            <section class="screen" data-mode="child" data-tab="crequest">
+              <button class="detail-back" onclick="showTab('child','inventory')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Inventory</button>
+              <div class="photo dhero"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></div>
+              <div class="dbody">
+                <div class="dstate"><span class="chip">Undecided</span><span class="chip tag">#decor</span><span class="chip">Living room</span></div>
+                <h2>Mantel clock</h2>
+                <p style="font-size:13px;color:var(--ink-soft);line-height:1.55;margin:6px 0 0">Added by you, 2 days ago. Mom hasn't decided yet.</p>
+
+                <div class="field-label">If Mom keeps it…</div>
+                <button class="btn primary" style="width:100%;padding:14px" onclick="markRequested(this)">I'd love to have this one</button>
+                <p style="font-size:11.5px;color:var(--ink-faint);line-height:1.5;margin:10px 2px 0;text-align:center">Only Mom sees who's asked. Siblings never see each other's requests.</p>
+              </div>
+            </section>
+
+            <!-- ===== CHILD: REQUESTS ===== -->
+            <section class="screen" data-mode="child" data-tab="requests">
+              <div class="scr-head">
+                <div class="scr-eyebrow">Between you & Mom</div>
+                <h2 class="scr-title">My requests</h2>
+              </div>
+              <div class="scr-body">
+                <div class="rq"><div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-books"/></svg></div><div class="rqmain"><h4>Dad's poetry books</h4><p>You asked · 5 days ago</p></div><span class="status granted">Yours ✓</span></div>
+                <div class="rq"><div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-teapot"/></svg></div><div class="rqmain"><h4>Blue Delft teapot</h4><p>You asked · 1 week ago</p></div><span class="status ack">Mom saw it</span></div>
+                <div class="rq"><div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></div><div class="rqmain"><h4>Mantel clock</h4><p>Just now</p></div><span class="status open">Waiting</span></div>
+              </div>
+            </section>
+
+            <!-- ===== CHILD: FAMILY ===== -->
+            <section class="screen" data-mode="child" data-tab="family">
+              <div class="scr-head">
+                <div class="scr-eyebrow">The Thompson household</div>
+                <h2 class="scr-title">Family</h2>
+              </div>
+              <div class="scr-body">
+                <div class="authority-card">
+                  <svg viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3 7-7 9-4-2-7-4-7-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
+                  <p><b>Mom owns this household.</b> Every keep, donate, and heir choice is hers. You and your siblings help by adding photos and notes.</p>
+                </div>
+                <div class="fam-row"><div class="av-lg">E</div><div class="pmain"><h4>Eleanor</h4><div class="rel">Mom</div></div><span class="role-badge owner">Owner</span></div>
+                <div class="fam-row"><div class="av-lg">S</div><div class="pmain"><h4>Sam (you)</h4><div class="rel">Son</div></div><span class="role-badge contrib">Helper</span></div>
+                <div class="fam-row"><div class="av-lg">M</div><div class="pmain"><h4>Maya</h4><div class="rel">Daughter</div></div><span class="role-badge contrib">Helper</span></div>
+                <div class="fam-row"><div class="av-lg" style="background:linear-gradient(150deg,var(--donate),#3a5a6b)">R</div><div class="pmain"><h4>Rebecca</h4><div class="rel">Family attorney</div></div><span class="role-badge exec">Executor</span></div>
+              </div>
+            </section>
+
+            <!-- ===== START: WELCOME ===== -->
+            <section class="screen" data-mode="start" data-tab="welcome">
+              <div class="ob-hero">
+                <div class="ob-kicker">Household Legacy</div>
+                <h2 class="wordmark">Declutter<span class="dot">.</span></h2>
+                <p class="ob-lede">The family home holds a lifetime of stories. Let's go through it together — gently, and in your own time.</p>
+                <button class="btn primary ob-cta" onclick="showTab('start','role')">Get started</button>
+                <p class="ob-fine">One household, the whole family. No ads, ever.</p>
+              </div>
+            </section>
+
+            <!-- ===== START: ROLE PICK ===== -->
+            <section class="screen" data-mode="start" data-tab="role">
+              <div class="ob-top">
+                <button class="detail-back" onclick="showTab('start','welcome')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+                <div class="dots" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
+              </div>
+              <div class="scr-head">
+                <div class="scr-eyebrow">Step 1 of 4</div>
+                <h2 class="scr-title">Whose home is it?</h2>
+                <p class="scr-sub">This decides who holds the keys — everything else follows from it.</p>
+              </div>
+              <div class="scr-body">
+                <button class="role-card" onclick="showTab('start','join')">
+                  <span class="xicon"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+                  <span><span class="rt">I'm organizing a family home</span><span class="rd">I'll photograph and help sort — the owner makes every decision.</span></span>
+                </button>
+                <button class="role-card" onclick="showTab('start','household')">
+                  <span class="xicon"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg></span>
+                  <span><span class="rt">It's my home</span><span class="rd">I decide what's kept, passed on, and let go — at my own pace.</span></span>
+                </button>
+              </div>
+            </section>
+
+            <!-- ===== START: JOIN (helper path) ===== -->
+            <section class="screen" data-mode="start" data-tab="join">
+              <div class="ob-top">
+                <button class="detail-back" onclick="showTab('start','role')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+                <div class="dots" aria-hidden="true"><i></i><i class="on"></i><i></i><i></i></div>
+              </div>
+              <div class="scr-head">
+                <div class="scr-eyebrow">Step 2 · Helper</div>
+                <h2 class="scr-title">Join your family</h2>
+                <p class="scr-sub">Declutter households open by invitation only.</p>
+              </div>
+              <div class="scr-body">
+                <div class="ob-center">
+                  <div class="ob-glyph"><svg viewBox="0 0 24 24"><path d="M3 6h18v12H3z"/><path d="M3 7l9 6 9-6"/></svg></div>
+                  <h3>Ask for an invite</h3>
+                  <p>When the owner — Mom, Dad, whoever's home it is — invites you, a link arrives by text. The owner approves every member, so nobody wanders in.</p>
+                </div>
+                <button class="btn primary" style="width:100%;padding:14px;margin-top:22px" onclick="setMode('child')">Preview the helper app</button>
+              </div>
+            </section>
+
+            <!-- ===== START: HOUSEHOLD NAME (owner path) ===== -->
+            <section class="screen" data-mode="start" data-tab="household">
+              <div class="ob-top">
+                <button class="detail-back" onclick="showTab('start','role')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+                <div class="dots" aria-hidden="true"><i></i><i class="on"></i><i></i><i></i></div>
+              </div>
+              <div class="scr-head">
+                <div class="scr-eyebrow">Step 2 of 4</div>
+                <h2 class="scr-title">Name your household</h2>
+                <p class="scr-sub">Just something the family will recognize.</p>
+              </div>
+              <div class="scr-body">
+                <div class="field-label">Household name</div>
+                <div class="ob-input">The Thompson House<span class="cursor"></span></div>
+                <div class="ob-suggest"><span class="chip">Mom's house</span><span class="chip">The lake cottage</span><span class="chip">Grandma Eleanor's</span></div>
+                <button class="btn primary" style="width:100%;padding:14px;margin-top:24px" onclick="showTab('start','passkey')">Continue</button>
+              </div>
+            </section>
+
+            <!-- ===== START: PASSKEY (owner path) ===== -->
+            <section class="screen" data-mode="start" data-tab="passkey">
+              <div class="ob-top">
+                <button class="detail-back" onclick="showTab('start','household')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+                <div class="dots" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></div>
+              </div>
+              <div class="scr-head">
+                <div class="scr-eyebrow">Step 3 of 4</div>
+                <h2 class="scr-title">Your key is your face</h2>
+              </div>
+              <div class="scr-body">
+                <div class="ob-center">
+                  <div class="ob-glyph"><svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 10v1M15 10v1M12 10v3h-1M9.5 15.5a3.5 3.5 0 0 0 5 0"/></svg></div>
+                  <h3>No passwords to remember</h3>
+                  <p>Sign in the same way you unlock your phone — a glance or a fingertip. Nothing to write on a sticky note, nothing to forget.</p>
+                </div>
+                <button class="btn primary" style="width:100%;padding:14px;margin-top:24px" onclick="showTab('start','invite')">Set up Face ID</button>
+                <p class="ob-fine">Prefer a code? A six-digit backup works on shared iPads.</p>
+              </div>
+            </section>
+
+            <!-- ===== START: INVITE FAMILY (owner path) ===== -->
+            <section class="screen" data-mode="start" data-tab="invite">
+              <div class="ob-top">
+                <button class="detail-back" onclick="showTab('start','passkey')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+                <div class="dots" aria-hidden="true"><i></i><i></i><i></i><i class="on"></i></div>
+              </div>
+              <div class="scr-head">
+                <div class="scr-eyebrow">Step 4 of 4</div>
+                <h2 class="scr-title">Invite the family</h2>
+                <p class="scr-sub">They can start adding photos the moment they join.</p>
+              </div>
+              <div class="scr-body">
+                <div class="plist">
+                  <div class="prow"><div class="av-lg">M</div><div class="pmain"><h4>Maya</h4><div class="rel">Daughter</div></div><button class="invite-btn" onclick="invite(this)">Invite</button></div>
+                  <div class="prow"><div class="av-lg">S</div><div class="pmain"><h4>Sam</h4><div class="rel">Son</div></div><button class="invite-btn" onclick="invite(this)">Invite</button></div>
+                  <div class="prow"><div class="av-lg" style="background:linear-gradient(150deg,var(--donate),#3a5a6b)">R</div><div class="pmain"><h4>Rebecca</h4><div class="rel">Family attorney</div></div><button class="invite-btn" onclick="invite(this)">Invite</button></div>
+                </div>
+                <div class="reveal-note">
+                  <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  <span>Invites go out from you, and <b>only you approve who joins</b>. Change anyone's role — or remove them — whenever you like.</span>
+                </div>
+                <button class="btn primary" style="width:100%;padding:14px;margin-top:16px" onclick="setMode('parent')">Open my household</button>
+              </div>
+            </section>
+
+            <!-- ===== Bottom sheet (voice) ===== -->
+            <div class="sheet-scrim" id="scrim" onclick="closeSheet()"></div>
+            <div class="sheet" id="sheet">
+              <div class="grab"></div>
+              <h3 id="sheet-title">Blue china teapot</h3>
+              <div class="who">Kitchen · added by Sam</div>
+              <div class="recorder">
+                <button class="mic-btn" id="mic" onclick="toggleRec()" aria-label="Record"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+                <div class="rec-time" id="rectime">Tap to speak</div>
+              </div>
+              <div class="transcript" id="transcript"></div>
+            </div>
+
+          </div><!-- /viewport -->
+
+          <!-- ===== TAB BARS ===== -->
+          <nav class="tabbar" id="tabs-parent">
+            <button aria-selected="true" onclick="showTab('parent','decide')"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 7l2 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l2-12M9 7V5a3 3 0 0 1 6 0v2"/></svg>Decide</button>
+            <button aria-selected="false" onclick="showTab('parent','keepsakes')"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6C19 16.5 12 21 12 21z"/></svg>Keepsakes</button>
+            <button aria-selected="false" onclick="showTab('parent','heirs')"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Heirs</button>
+            <button aria-selected="false" onclick="showTab('parent','export')"><svg viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>Export</button>
+          </nav>
+          <nav class="tabbar" id="tabs-child" style="display:none">
+            <button aria-selected="true" onclick="showTab('child','capture')"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>Capture</button>
+            <button aria-selected="false" onclick="showTab('child','inventory')"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Inventory</button>
+            <button aria-selected="false" onclick="showTab('child','requests')"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6C19 16.5 12 21 12 21z"/></svg>Requests</button>
+            <button aria-selected="false" onclick="showTab('child','family')"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Family</button>
+          </nav>
+
+        </div>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-faint);text-align:center;max-width:300px;line-height:1.5">Interactive mockup — switch modes above, swipe the deck, tap “Tell me about this,” open any keepsake.</p>
+    </div>
+
+    <!-- ============ ANNOTATION RAIL ============ -->
+    <aside class="rail" id="rail">
+      <div class="now-showing" id="rail-eyebrow">Parent experience</div>
+      <h2 id="rail-title">The couch decision, not the confrontation</h2>
+      <p class="rail-lede" id="rail-lede">The parent's whole app is one calm question at a time. Sam photographed the house; Eleanor swipes through it on a Sunday afternoon — keep, donate, or let go — and taps to leave a story in her own voice.</p>
+      <ul class="rail-notes" id="rail-notes">
+        <li><span class="mk">01</span><span><b>One object, one decision.</b> No inbox of 247 things. Gentle "12 to go," never a guilt-inducing backlog.</span></li>
+        <li><span class="mk">02</span><span><b>Voice over typing.</b> The most valuable legacy isn't the teapot — it's why it mattered. Auto-transcribed, no keyboard.</span></li>
+        <li><span class="mk">03</span><span><b>The parent is the only authority.</b> Heir choices are hers alone, private until she decides to reveal — per item.</span></li>
+      </ul>
+      <div class="rail-foot">
+        <div class="rf-label">Built to be trusted</div>
+        <p>This is a photographed, valued catalog of an elder's home — so it's treated like one: <b>GPS stripped from every photo, private storage, encrypted values, passkey sign-in, and an audit log the owner can read.</b> Subscription-funded — never ads, never selling the data.</p>
+      </div>
+      <span class="hint-tap"><svg viewBox="0 0 24 24"><path d="M9 11V6a2 2 0 0 1 4 0v5M9 11V9a2 2 0 0 0-4 0v5a7 7 0 0 0 14 0v-3a2 2 0 0 0-4 0"/></svg>Try the Child mode toggle to see the helper's side</span>
+    </aside>
+  </div>
+</div>
+
+<!-- ===== line-art sprite ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-teapot" viewBox="0 0 24 24"><path d="M5 11a6 6 0 0 1 12 0v1a6 6 0 0 1-6 6 6 6 0 0 1-6-6zM17 11h2a2 2 0 0 1 0 4h-1M8 6l1-2M11 6l.5-2M8 11h6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-ring" viewBox="0 0 24 24"><circle cx="12" cy="14" r="6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M9 8l3-4 3 4M12 4v4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M12 9v4l3 2M9 3h6M8 4l1 2M16 4l-1 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-books" viewBox="0 0 24 24"><path d="M5 4h4v16H5zM9 4h4v16H9zM13 5l4-1 3 15-4 1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-drill" viewBox="0 0 24 24"><path d="M4 9h9v5H4zM4 14v3h4v-3M13 10h4l4-2v4l-4-2M8 9V7h3v2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-vase" viewBox="0 0 24 24"><path d="M8 3h8l-1 4a6 6 0 0 1 3 5c0 4-3 7-6 7s-6-3-6-7a6 6 0 0 1 3-5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+</svg>
+
+<script>
+  var state = { mode:'parent', tab:'decide' };
+
+  function setMode(m){
+    state.mode = m;
+    document.getElementById('mode-start').setAttribute('aria-pressed', m==='start');
+    document.getElementById('mode-parent').setAttribute('aria-pressed', m==='parent');
+    document.getElementById('mode-child').setAttribute('aria-pressed', m==='child');
+    // onboarding ('start') has no tab bar — both stay hidden
+    document.getElementById('tabs-parent').style.display = m==='parent' ? 'flex':'none';
+    document.getElementById('tabs-child').style.display  = m==='child' ? 'flex':'none';
+    showTab(m, m==='parent' ? 'decide' : m==='child' ? 'capture' : 'welcome');
+  }
+
+  function showTab(mode, tab){
+    state.mode = mode; state.tab = tab;
+    var screens = document.querySelectorAll('.screen');
+    for (var i=0;i<screens.length;i++){
+      var s = screens[i];
+      s.classList.toggle('active', s.dataset.mode===mode && s.dataset.tab===tab);
+    }
+    // sync tab highlight (no bar exists in 'start' mode)
+    var bar = document.getElementById('tabs-'+mode);
+    if (bar){
+      var btns = bar.querySelectorAll('button');
+      var map = mode==='parent'
+        ? {decide:0,keepsakes:1,heirs:2,export:3,detail:1,legacy:3}
+        : {capture:0,inventory:1,requests:2,family:3,crequest:1};
+      for (var j=0;j<btns.length;j++) btns[j].setAttribute('aria-selected', j===map[tab]);
+    }
+    updateRail();
+    document.getElementById('viewport').scrollTop = 0;
+  }
+
+  // ---------- Onboarding ----------
+  function invite(btn){ btn.textContent='Invited ✓'; btn.disabled=true; }
+
+  // ---------- Decide deck ----------
+  var deckItems = [
+    {t:'Blue china teapot', s:'Kitchen · added by Sam', icon:'i-teapot'},
+    {t:'Cordless drill', s:'Garage · added by Sam', icon:'i-drill'},
+    {t:'Crystal vase', s:'Dining room · added by Maya', icon:'i-vase'},
+    {t:'Mantel clock', s:'Living room · added by Sam', icon:'i-clock'}
+  ];
+  var deckIdx = 0, total = 12;
+  function renderDeck(){
+    var deck = document.getElementById('deck');
+    // remove existing cards
+    var old = deck.querySelectorAll('.swipe-card'); for (var i=0;i<old.length;i++) old[i].remove();
+    var caught = document.getElementById('allcaught');
+    if (deckIdx >= deckItems.length){
+      caught.style.display='flex';
+      document.getElementById('decide-actions').style.opacity=.35;
+      document.getElementById('decide-actions').style.pointerEvents='none';
+      return;
+    }
+    caught.style.display='none';
+    document.getElementById('decide-actions').style.opacity=1;
+    document.getElementById('decide-actions').style.pointerEvents='auto';
+    // render up to 2 stacked (back first)
+    for (var k=Math.min(deckIdx+1, deckItems.length-1); k>=deckIdx; k--){
+      var it = deckItems[k];
+      var card = document.createElement('div');
+      card.className='swipe-card';
+      var depth = k-deckIdx;
+      card.style.transform = depth? 'scale(.955) translateY(10px)':'none';
+      card.style.zIndex = 10-depth;
+      card.innerHTML =
+        '<div class="verdict keep">Keep</div><div class="verdict donate">Donate</div><div class="verdict toss">Let go</div>'+
+        '<div class="photo"><svg viewBox="0 0 24 24"><use href="#'+it.icon+'"/></svg></div>'+
+        '<div class="card-meta"><h3>'+it.t+'</h3><p>'+it.s+'</p></div>';
+      deck.insertBefore(card, document.getElementById('allcaught'));
+    }
+  }
+  function decide(kind){
+    var deck = document.getElementById('deck');
+    var cards = deck.querySelectorAll('.swipe-card');
+    if (!cards.length) return;
+    var top = cards[cards.length-1];
+    var v = top.querySelector('.verdict.'+(kind==='keep'?'keep':kind==='donate'?'donate':'toss'));
+    if (v) v.classList.add('show');
+    top.classList.add(kind==='keep'?'leave-right':kind==='donate'?'leave-left':'leave-down');
+    deckIdx++; total = Math.max(0, total-1);
+    document.getElementById('togo-n').textContent = total;
+    var dots = document.querySelectorAll('#dots i');
+    var filled = Math.min(dots.length, deckIdx+1);
+    for (var i=0;i<dots.length;i++) dots[i].classList.toggle('on', i<filled);
+    setTimeout(renderDeck, 360);
+  }
+
+  // ---------- Voice sheet ----------
+  var recTimer=null, recSecs=0, recording=false;
+  function openSheet(){ document.getElementById('scrim').classList.add('open'); document.getElementById('sheet').classList.add('open'); }
+  function closeSheet(){
+    document.getElementById('scrim').classList.remove('open'); document.getElementById('sheet').classList.remove('open');
+    if(recording) toggleRec();
+    setTimeout(function(){ document.getElementById('transcript').classList.remove('show'); document.getElementById('transcript').innerHTML=''; document.getElementById('rectime').textContent='Tap to speak'; recSecs=0; }, 300);
+  }
+  var demoLine = "My mother carried this back from Delft in 1962. It sat on every kitchen table we ever had.";
+  function toggleRec(){
+    var mic=document.getElementById('mic'); recording=!recording;
+    if(recording){
+      mic.classList.add('recording');
+      recSecs=0; document.getElementById('rectime').textContent='0:00';
+      recTimer=setInterval(function(){ recSecs++; var m=Math.floor(recSecs/60), s=recSecs%60; document.getElementById('rectime').textContent=m+':'+(s<10?'0':'')+s; if(recSecs>=3){ toggleRec(); } },1000);
+    } else {
+      mic.classList.remove('recording'); clearInterval(recTimer);
+      document.getElementById('rectime').textContent='Transcribing…';
+      typeTranscript();
+    }
+  }
+  function typeTranscript(){
+    var el=document.getElementById('transcript'); el.classList.add('show'); el.innerHTML='';
+    var i=0;
+    (function tick(){
+      if(i<=demoLine.length){
+        el.innerHTML='“'+demoLine.slice(0,i)+'”<span class="cursor"></span>';
+        i+=2; setTimeout(tick, 24);
+      } else { el.innerHTML='“'+demoLine+'”'; document.getElementById('rectime').textContent='Saved to Blue teapot ✓'; }
+    })();
+  }
+
+  // ---------- Item detail ----------
+  function openDetail(){ showTab('parent','detail'); }
+  function setVis(el){
+    var opts=el.parentElement.querySelectorAll('.vis-opt');
+    for(var i=0;i<opts.length;i++) opts[i].setAttribute('aria-checked','false');
+    el.setAttribute('aria-checked','true');
+  }
+  function markRequested(btn){ btn.textContent='Mom will see you asked ✓'; btn.style.background='var(--keep)'; btn.disabled=true; }
+
+  // ---------- Rail copy ----------
+  var railCopy = {
+    parent:{
+      eyebrow:'Parent experience',
+      decide:{t:'The couch decision, not the confrontation', l:'The parent\'s whole app is one calm question at a time. Sam photographed the house; Eleanor swipes through it on a Sunday — keep, donate, or let go — and taps to leave a story in her own voice.'},
+      keepsakes:{t:'Everything kept, quietly gathered', l:'Kept pieces collect here as big, tappable cards. Value and heir accrue over weeks — there\'s no rush, and no pressure to finish in one sitting.'},
+      heirs:{t:'Who gets what — and who\'s allowed to know', l:'Assignments are grouped by person, visible to the parent alone. Reveal now, reveal after you\'re gone, or never. This is the anti–sibling-feud design.'},
+      export:{t:'From a photo album to a legal document', l:'One tap turns the inventory into a personal property memorandum a lawyer can attach to a will — plus insurance and donation-receipt exports from the very same data.'},
+      detail:{t:'The object, and the reason it matters', l:'Voice story up top, heir and visibility below, market vs. sentimental value at the foot. Big targets, almost no typing — designed for an 80-year-old on an old iPad.'},
+      legacy:{t:'The break-glass protocol, in plain sight', l:'The executor is named early and the owner sees exactly what would happen: request, documentation review, read-only unlock. Because the protocol is visible and reversible, trusting it costs nothing.'}
+    },
+    start:{
+      eyebrow:'Onboarding',
+      welcome:{t:'The first ten seconds set the tone', l:'No feature tour, no pricing table. One warm sentence and a single button — the person arriving here is often mid-overwhelm, and the app\'s first job is to lower the temperature.'},
+      role:{t:'Authority is decided at the front door', l:'Helper or owner is the one fork in the whole product. Everything downstream — who decides, who sees heirs, who approves invites — flows from this single, plainly worded choice.'},
+      join:{t:'Helpers wait at the door', l:'A child can\'t create Mom\'s household around her. If it isn\'t your home, the only way in is an invite the owner approves — the hierarchy holds before anyone has even signed up.'},
+      household:{t:'A household, not an account', l:'You name a place, not a profile. The unit of Declutter is the home itself — one shared inventory the whole family orbits, owned by exactly one person.'},
+      passkey:{t:'Security an 80-year-old already knows', l:'Passkeys make sign-in the same glance that unlocks the phone. No password to forget, reuse, or write on a sticky note — the safest option is also the easiest one.'},
+      invite:{t:'The guest list belongs to the owner', l:'Family joins by invitation, and only the owner approves members. The trust model is visible from minute one: helpers are welcomed in — they never let themselves in.'}
+    },
+    child:{
+      eyebrow:'Child experience',
+      capture:{t:'Photograph a whole room in two minutes', l:'The helper\'s job is fast, batch capture — shoot everything, decide nothing. AI pre-tags each object, photos queue offline, and the parent gets a tidy deck to swipe later.'},
+      inventory:{t:'The power tool under the calm surface', l:'Same database, denser UI. Filter by decision, room, tag, or value. Heir assignments show as a lock — the child can see an heir exists, never who, unless revealed.'},
+      crequest:{t:'Ask, without starting a fight', l:'A child can raise a hand for an item. Only the parent sees requests — siblings never see each other\'s. Interest, not entitlement.'},
+      requests:{t:'A gentle back-channel with Mom', l:'Every request and its status in one place. No group-chat negotiations over the good china — it stays between each child and the parent.'},
+      family:{t:'One household, unmistakable authority', l:'Roles are explicit: the parent owns everything, children are helpers, an executor unlocks read-only access later. The ethics are the architecture.'}
+    }
+  };
+  function updateRail(){
+    var m=railCopy[state.mode], c=m[state.tab]; if(!c) return;
+    document.getElementById('rail-eyebrow').textContent=m.eyebrow;
+    document.getElementById('rail-title').textContent=c.t;
+    document.getElementById('rail-lede').textContent=c.l;
+    document.getElementById('rail-notes').style.display = (state.mode==='parent'&&state.tab==='decide')?'flex':'none';
+  }
+
+  // wave bars
+  (function(){ var w=document.getElementById('wave'); if(w){ for(var i=0;i<26;i++){ var b=document.createElement('i'); b.style.height=(20+Math.abs(Math.sin(i*0.9))*70)+'%'; w.appendChild(b);} } })();
+
+  renderDeck(); updateRail();
+</script>

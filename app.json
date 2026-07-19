@@ -1,22 +1,31 @@
 {
   "expo": {
-    "name": "Trove",
-    "slug": "Trove",
+    "name": "Declutter",
+    "slug": "declutter",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "trove",
-    "userInterfaceStyle": "automatic",
+    "scheme": "declutter",
+    "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.kavita.declutter",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Declutter uses the camera to photograph household items you want to catalog.",
+        "NSMicrophoneUsageDescription": "Declutter uses the microphone to record the stories behind your keepsakes.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.kavita.declutter",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -28,9 +37,17 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      "expo-audio",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Declutter uses the camera to photograph household items you want to catalog.",
+          "microphonePermission": "Declutter uses the microphone to record the stories behind your keepsakes."
         }
       ]
     ],

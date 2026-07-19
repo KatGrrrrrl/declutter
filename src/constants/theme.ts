@@ -1,26 +1,54 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Declutter design tokens — translated from docs/mockup/declutter-mockup.html.
+ * Single light theme by design decision (white ground, navy headings, brass
+ * accents). A dark theme may return later as an explicit user option.
  */
 
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
+export const T = {
+  // grounds
+  ground: '#FFFFFF',
+  surface: '#FFFFFF',
+  sunken: '#F6F5F3',
+  // text
+  ink: '#1B1815',
+  inkSoft: '#6D675F',
+  inkFaint: '#A09A90',
+  heading: '#1E3A5F', // dark navy — all display headings
+  // hairlines
+  line: '#E9E8E5',
+  lineSoft: '#F2F1EE',
+  // brand accent
+  brass: '#A67C34',
+  brassDeep: '#7E5D22',
+  brassTint: '#F7F0DF',
+  // decision colors
+  keep: '#4E7247',
+  donate: '#44708A',
+  toss: '#A65441',
+  keepTint: '#ECF3E8',
+  donateTint: '#E9F2F6',
+  tossTint: '#FAECE7',
+} as const;
+
+/** Legacy scaffold export shape — both schemes resolve to the white theme. */
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: T.ink,
+    background: T.ground,
+    backgroundElement: T.sunken,
+    backgroundSelected: T.lineSoft,
+    textSecondary: T.inkSoft,
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: T.ink,
+    background: T.ground,
+    backgroundElement: T.sunken,
+    backgroundSelected: T.lineSoft,
+    textSecondary: T.inkSoft,
   },
 } as const;
 
@@ -28,13 +56,9 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -44,10 +68,10 @@ export const Fonts = Platform.select({
     mono: 'monospace',
   },
   web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
+    sans: "'Avenir Next','Segoe UI',system-ui,sans-serif",
+    serif: "'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif",
+    rounded: 'system-ui',
+    mono: "'SF Mono','Cascadia Code',ui-monospace,monospace",
   },
 });
 
@@ -59,6 +83,12 @@ export const Spacing = {
   four: 24,
   five: 32,
   six: 64,
+} as const;
+
+export const Radius = {
+  card: 22,
+  control: 14,
+  pill: 999,
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
