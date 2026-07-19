@@ -2,42 +2,58 @@
  * Child family — the household roster, plain about authority: the designated
  * decider(s) hold the final say on every item; everyone else helps. Shows who
  * set the home up and who has the final say (per household — different homes
- * can have different deciders). Includes a pending-request info row, an
- * invite stub, and a quiet demo control to view the app as the owner.
+ * can have different deciders).
+ *
+ * Membership flow: anyone may invite a family member by name; the invitation
+ * waits as "Invited" until a decider approves (or declines) it here. With no
+ * backend yet these are local records — nothing is emailed; real invite
+ * delivery arrives with accounts + sync.
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Avatar, notify } from '@/components/child/shared';
+import { Avatar } from '@/components/child/shared';
 import { SETTINGS_ROUTE } from '@/components/settings/routes';
 import { Btn, Card, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
-import { Spacing, T } from '@/constants/theme';
-import { useActiveHousehold, useStore } from '@/lib/store';
+import { Radius, Spacing, T } from '@/constants/theme';
+import { useActiveHousehold, useCanDecide, useMembers, useStore } from '@/lib/store';
 
 export default function FamilyScreen() {
   const router = useRouter();
   const householdName = useStore((s) => s.householdName);
   const ownerName = useStore((s) => s.ownerName);
   const userName = useStore((s) => s.userName);
-  const people = useStore((s) => s.people);
   const items = useStore((s) => s.items);
   const setRole = useStore((s) => s.setRole);
+  const inviteMember = useStore((s) => s.inviteMember);
+  const approveMember = useStore((s) => s.approveMember);
+  const declineMember = useStore((s) => s.declineMember);
   const household = useActiveHousehold();
+  const members = useMembers();
+  const canDecide = useCanDecide();
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteRel, setInviteRel] = useState('');
 
   const deciders = household?.deciderNames ?? [ownerName];
   const createdBy = household?.createdBy ?? ownerName;
 
+  const active = members.filter((m) => m.status === 'active');
+  const invited = members.filter((m) => m.status === 'invited');
   const pending = items.filter((i) => i.requestedBy);
 
-  // Roster: owner, then you, then other known family (skip your own name),
-  // with one "Invited" example so the state is visible in the demo.
-  const others = people.filter(
-    (p) => p.displayName !== userName && p.displayName !== ownerName
-  );
-  const invitedExample = others[others.length - 1];
-  const activeOthers = others.slice(0, -1);
+  const sendInvite = () => {
+    const name = inviteName.trim();
+    if (!name) return;
+    inviteMember(name, inviteRel.trim() || undefined);
+    setInviteName('');
+    setInviteRel('');
+    setInviteOpen(false);
+  };
 
   const viewAsOwner = () => {
     setRole('owner');
@@ -73,41 +89,66 @@ export default function FamilyScreen() {
 
       {/* members */}
       <View style={styles.list}>
-        <MemberRow
-          name={ownerName}
-          rel="Owner of the home"
-          badge="Owner"
-          badgeKind="owner"
-          finalSay={deciders.includes(ownerName)}
-        />
-        <MemberRow
-          name={`${userName} (you)`}
-          avatarName={userName}
-          rel="Helping organize"
-          badge="Helper"
-          finalSay={deciders.includes(userName)}
-        />
-        {activeOthers.map((p) => (
+        {active.map((m) => (
           <MemberRow
-            key={p.id}
-            name={p.displayName}
-            rel={p.relationship}
-            badge="Helper"
-            finalSay={deciders.includes(p.displayName)}
+            key={m.id}
+            name={m.name === userName ? `${m.name} (you)` : m.name}
+            avatarName={m.name}
+            rel={m.relationship ?? (m.name === createdBy ? 'Set up the home' : 'Family')}
+            badge={deciders.includes(m.name) ? 'Owner' : 'Helper'}
+            badgeKind={deciders.includes(m.name) ? 'owner' : 'helper'}
+            finalSay={deciders.includes(m.name)}
           />
         ))}
-        {invitedExample && (
-          <MemberRow
-            name={invitedExample.displayName}
-            rel={invitedExample.relationship}
-            badge="Invited"
-            badgeKind="invited"
-            finalSay={deciders.includes(invitedExample.displayName)}
-          />
-        )}
       </View>
 
-      {/* pending request */}
+      {/* pending invitations — deciders approve, everyone else sees status */}
+      {invited.length > 0 && (
+        <>
+          <Label>Waiting to join</Label>
+          {invited.map((m) => (
+            <Card key={m.id} style={styles.pendingCard}>
+              <Row style={styles.contactRow}>
+                <Avatar name={m.name} size={44} color={T.inkFaint} />
+                <View style={styles.flex}>
+                  <Text style={styles.memberName}>{m.name}</Text>
+                  <Muted style={styles.memberRel}>
+                    {m.relationship ? `${m.relationship} · ` : ''}invited by {m.invitedBy}
+                  </Muted>
+                </View>
+                {canDecide ? (
+                  <Row style={styles.approveRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Approve ${m.name}`}
+                      onPress={() => approveMember(m.id)}
+                      style={[styles.actBtn, styles.approveBtn]}
+                    >
+                      <Text style={styles.approveText}>Approve</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Decline ${m.name}`}
+                      onPress={() => declineMember(m.id)}
+                      style={[styles.actBtn, styles.declineBtn]}
+                    >
+                      <Text style={styles.declineText}>Decline</Text>
+                    </Pressable>
+                  </Row>
+                ) : (
+                  <View style={[styles.badge, styles.badgeInvited]}>
+                    <Text style={[styles.badgeText, styles.badgeInvitedText]}>
+                      Awaiting {deciders[0]}
+                    </Text>
+                  </View>
+                )}
+              </Row>
+            </Card>
+          ))}
+        </>
+      )}
+
+      {/* pending item request */}
       {pending.length > 0 && (
         <Well style={styles.pendingWell}>
           <Row style={styles.authorityRow}>
@@ -126,18 +167,51 @@ export default function FamilyScreen() {
         </Well>
       )}
 
-      <View style={styles.inviteBtn}>
-        <Btn
-          label="Invite someone"
-          kind="quiet"
-          onPress={() =>
-            notify(
-              'Invites need approval',
-              `Invites require ${ownerName}'s approval as the owner. She'll get a note to confirm before anyone joins.`
-            )
-          }
-        />
-      </View>
+      {/* invite form */}
+      {inviteOpen ? (
+        <Card style={styles.inviteCard}>
+          <Label style={styles.inviteLabel}>Invite a family member</Label>
+          <TextInput
+            style={styles.input}
+            value={inviteName}
+            onChangeText={setInviteName}
+            placeholder="Name — e.g. Noor"
+            placeholderTextColor={T.inkFaint}
+            autoFocus
+            returnKeyType="next"
+          />
+          <TextInput
+            style={[styles.input, styles.inputGap]}
+            value={inviteRel}
+            onChangeText={setInviteRel}
+            placeholder="Relationship (optional)"
+            placeholderTextColor={T.inkFaint}
+            returnKeyType="done"
+            onSubmitEditing={sendInvite}
+          />
+          <Muted style={styles.inviteNote}>
+            {canDecide
+              ? 'You hold the final say, so they join once you approve.'
+              : `They'll wait for ${deciders.join(' or ')} to approve.`}
+          </Muted>
+          <Row style={styles.inviteActions}>
+            <View style={styles.flex}>
+              <Btn label="Send invitation" onPress={sendInvite} />
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setInviteOpen(false)}
+              style={styles.cancelBtn}
+            >
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </Row>
+        </Card>
+      ) : (
+        <View style={styles.inviteBtn}>
+          <Btn label="Invite someone" kind="quiet" onPress={() => setInviteOpen(true)} />
+        </View>
+      )}
 
       <Pressable
         accessibilityRole="button"
@@ -218,7 +292,7 @@ const styles = StyleSheet.create({
   govRow: { marginTop: Spacing.two, gap: Spacing.two },
   govText: { fontSize: 12.5, color: T.inkSoft },
 
-  list: { marginTop: Spacing.three },
+  list: { marginTop: Spacing.three, marginBottom: Spacing.two },
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -251,7 +325,39 @@ const styles = StyleSheet.create({
   },
   badgeFinalText: { color: T.brassDeep },
 
+  pendingCard: { marginTop: Spacing.two },
+  contactRow: { gap: Spacing.three },
+  approveRow: { gap: Spacing.two },
+  actBtn: {
+    minHeight: 44,
+    justifyContent: 'center',
+    borderRadius: Radius.control,
+    paddingHorizontal: 14,
+  },
+  approveBtn: { backgroundColor: T.keepTint },
+  approveText: { color: T.keep, fontWeight: '700', fontSize: 13 },
+  declineBtn: { backgroundColor: T.sunken },
+  declineText: { color: T.inkSoft, fontWeight: '700', fontSize: 13 },
+
   pendingWell: { marginTop: Spacing.three },
+
+  inviteCard: { marginTop: Spacing.four },
+  inviteLabel: { marginTop: 0 },
+  input: {
+    minHeight: 52,
+    borderRadius: Radius.control,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+    paddingHorizontal: Spacing.three,
+    fontSize: 16,
+    color: T.ink,
+  },
+  inputGap: { marginTop: Spacing.two },
+  inviteNote: { marginTop: Spacing.two, fontSize: 12.5 },
+  inviteActions: { marginTop: Spacing.three, gap: Spacing.two },
+  cancelBtn: { minHeight: 52, justifyContent: 'center', paddingHorizontal: Spacing.three },
+  cancelText: { color: T.inkSoft, fontWeight: '600', fontSize: 15 },
   inviteBtn: { marginTop: Spacing.four },
 
   settingsBtn: {

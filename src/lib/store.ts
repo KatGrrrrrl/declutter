@@ -68,6 +68,23 @@ export interface ItemMessage {
   createdAt: string;
 }
 
+export type MemberStatus = 'invited' | 'active' | 'declined';
+
+/**
+ * A household member (or pending invitee). Distinct from `Person` (heirs may
+ * never use the app). Anyone may invite; a decider approves or declines.
+ * NOTE: with no backend yet, invitations are local records — nothing is sent.
+ * Real invite delivery (email/link) arrives with accounts + sync.
+ */
+export interface Member {
+  id: string;
+  name: string;
+  relationship?: string;
+  status: MemberStatus;
+  invitedBy: string;
+  invitedAt: string;
+}
+
 /** Free tier limits — see PLAN_LIMITS. Paid removes both. */
 export const FREE_ITEM_LIMIT = 50;
 export const FREE_HOUSEHOLD_LIMIT = 1;
@@ -110,6 +127,8 @@ interface AppState {
   items: Item[];
   /** Per-item family chat threads. */
   messages: ItemMessage[];
+  /** Household roster: active members + pending invitations. */
+  members: Member[];
 
   // actions
   completeOnboarding: (opts: {
@@ -119,7 +138,14 @@ interface AppState {
     startEmpty?: boolean;
     /** Final-say holders for the new household; defaults to the creator. */
     deciderNames?: string[];
+    /** People invited during setup (deciders are auto-included). */
+    invites?: { name: string; relationship?: string }[];
   }) => void;
+  /** Invite a family member (any role may invite; a decider approves). */
+  inviteMember: (name: string, relationship?: string) => void;
+  /** Decider actions on pending invitations. */
+  approveMember: (id: string) => void;
+  declineMember: (id: string) => void;
   /** Wipe everything and return to the welcome screen (the "log out"). */
   signOut: () => void;
   /** Replace demo content with an empty household of the same name. */
@@ -215,6 +241,26 @@ const seedItems: Item[] = [
 
 const DEMO_HOUSEHOLD_ID = 'h-demo';
 
+const seedMembers: Member[] = [
+  {
+    id: 'mem-rose', name: 'Rose', relationship: 'Mum', status: 'active',
+    invitedBy: 'Sam', invitedAt: '2026-06-27T09:00:00Z',
+  },
+  {
+    id: 'mem-sam', name: 'Sam', relationship: 'Son', status: 'active',
+    invitedBy: 'Sam', invitedAt: '2026-06-27T09:00:00Z',
+  },
+  {
+    id: 'mem-maya', name: 'Maya', relationship: 'Daughter', status: 'active',
+    invitedBy: 'Sam', invitedAt: '2026-06-27T09:30:00Z',
+  },
+  // Pending invitation — demos the decider approval flow on Family.
+  {
+    id: 'mem-noor', name: 'Noor', relationship: 'Granddaughter', status: 'invited',
+    invitedBy: 'Maya', invitedAt: '2026-07-15T12:00:00Z',
+  },
+];
+
 const seedMessages: ItemMessage[] = [
   {
     id: 'm-1', itemId: 'i-teapot', author: 'Sam',
@@ -257,6 +303,7 @@ const initial = {
   people: seedPeople,
   items: seedItems,
   messages: seedMessages,
+  members: seedMembers,
 };
 
 export const useStore = create<AppState>()(
@@ -264,22 +311,45 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       ...initial,
 
-      completeOnboarding: ({ role, householdName, userName, startEmpty, deciderNames }) =>
+      completeOnboarding: ({ role, householdName, userName, startEmpty, deciderNames, invites }) =>
         set(() => {
           const id = uid();
+          const now = new Date().toISOString();
           const deciders = deciderNames?.length ? deciderNames : [userName];
+          // Roster: creator is active immediately; named deciders and any
+          // setup invitees start as 'invited' (they haven't joined yet).
+          // Dedupe by name, creator wins.
+          const roster: Member[] = [
+            { id: uid(), name: userName, status: 'active', invitedBy: userName, invitedAt: now },
+          ];
+          const addInvite = (name: string, relationship?: string) => {
+            const trimmed = name.trim();
+            if (!trimmed || roster.some((m) => m.name.toLowerCase() === trimmed.toLowerCase()))
+              return;
+            roster.push({
+              id: uid(),
+              name: trimmed,
+              relationship,
+              status: 'invited',
+              invitedBy: userName,
+              invitedAt: now,
+            });
+          };
+          deciders.forEach((d) => addInvite(d, 'Final say'));
+          invites?.forEach((i) => addInvite(i.name, i.relationship));
           // A real household starts empty: no sample items, no sample heirs.
           const fresh = startEmpty
             ? {
                 items: [] as Item[],
                 people: [] as Person[],
                 messages: [] as ItemMessage[],
+                members: roster,
                 isDemo: false,
                 households: [
                   {
                     id,
                     name: householdName,
-                    createdAt: new Date().toISOString(),
+                    createdAt: now,
                     deciderNames: deciders,
                     createdBy: userName,
                   },
@@ -291,23 +361,59 @@ export const useStore = create<AppState>()(
           return { onboarded: true, role, householdName, userName, ...fresh };
         }),
 
+      inviteMember: (name, relationship) => {
+        const s = get();
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        if (s.members.some((m) => m.name.toLowerCase() === trimmed.toLowerCase())) return;
+        set({
+          members: [
+            ...s.members,
+            {
+              id: uid(),
+              name: trimmed,
+              relationship,
+              status: 'invited',
+              invitedBy: s.userName,
+              invitedAt: new Date().toISOString(),
+            },
+          ],
+        });
+      },
+
+      approveMember: (id) =>
+        set((s) => ({
+          members: s.members.map((m) => (m.id === id ? { ...m, status: 'active' as const } : m)),
+        })),
+
+      declineMember: (id) =>
+        set((s) => ({
+          members: s.members.map((m) =>
+            m.id === id ? { ...m, status: 'declined' as const } : m
+          ),
+        })),
+
       signOut: () => set({ ...initial }),
 
       startFresh: (householdName) =>
         set((s) => {
           const id = uid();
           const name = householdName ?? s.householdName;
+          const now = new Date().toISOString();
           return {
             items: [],
             people: [],
             messages: [],
+            members: [
+              { id: uid(), name: s.userName, status: 'active' as const, invitedBy: s.userName, invitedAt: now },
+            ],
             isDemo: false,
             householdName: name,
             households: [
               {
                 id,
                 name,
-                createdAt: new Date().toISOString(),
+                createdAt: now,
                 deciderNames: [s.userName],
                 createdBy: s.userName,
               },
@@ -434,19 +540,38 @@ export const useStore = create<AppState>()(
     {
       name: 'declutter-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
-      /** v1 → v2: add chat messages and per-household deciders/creator. */
+      version: 3,
+      /**
+       * v1 → v2: chat messages + per-household deciders/creator.
+       * v2 → v3: member roster (backfilled from deciders + current user).
+       */
       migrate: (persisted) => {
         const s = persisted as Partial<AppState>;
-        return {
-          ...s,
-          messages: s.messages ?? [],
-          households: (s.households ?? []).map((h) => ({
-            ...h,
-            deciderNames: h.deciderNames ?? [s.ownerName ?? 'Rose'],
-            createdBy: h.createdBy ?? s.userName ?? 'Rose',
-          })),
-        } as AppState;
+        const now = new Date().toISOString();
+        const households = (s.households ?? []).map((h) => ({
+          ...h,
+          deciderNames: h.deciderNames ?? [s.ownerName ?? 'Rose'],
+          createdBy: h.createdBy ?? s.userName ?? 'Rose',
+        }));
+        let members = s.members;
+        if (!members) {
+          const names = new Set<string>();
+          members = [];
+          const push = (name: string | undefined, status: MemberStatus) => {
+            if (!name || names.has(name.toLowerCase())) return;
+            names.add(name.toLowerCase());
+            members!.push({
+              id: Math.random().toString(36).slice(2, 10),
+              name,
+              status,
+              invitedBy: s.userName ?? name,
+              invitedAt: now,
+            });
+          };
+          push(s.userName, 'active');
+          households.forEach((h) => h.deciderNames.forEach((d) => push(d, 'active')));
+        }
+        return { ...s, messages: s.messages ?? [], households, members } as AppState;
       },
     }
   )
@@ -501,6 +626,9 @@ export const selectCanDecide = (s: AppState) => {
 };
 
 export const useCanDecide = () => useStore(selectCanDecide);
+
+/** Full roster (stable reference). Filter by status at the call site. */
+export const useMembers = () => useStore(useShallow((s: AppState) => s.members));
 
 /**
  * Hook form of selectEntitlement. selectEntitlement builds a NEW object every

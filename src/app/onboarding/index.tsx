@@ -43,11 +43,11 @@ const STEPS: Step[] = ['role', 'household', 'deciders', 'passkey', 'invite'];
 /** Who is this home being set up for — someone else, or the user's own? */
 type SetupFor = 'other' | 'self';
 
-const CONTACTS = [
-  { name: 'Maya', relationship: 'Daughter' },
-  { name: 'Sam', relationship: 'Son' },
-  { name: 'Rebecca', relationship: 'Family attorney', color: T.donate },
-];
+/** A family member added during setup, invited when the household opens. */
+interface SetupInvite {
+  name: string;
+  relationship?: string;
+}
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -62,7 +62,9 @@ export default function OnboardingScreen() {
   /** Deciders other than the user, added by name. */
   const [otherDeciders, setOtherDeciders] = useState<string[]>([]);
   const [deciderInput, setDeciderInput] = useState('');
-  const [invited, setInvited] = useState<string[]>([]);
+  const [invites, setInvites] = useState<SetupInvite[]>([]);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteRel, setInviteRel] = useState('');
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -104,6 +106,23 @@ export default function OnboardingScreen() {
    * derived from the final-say choice: among the deciders → owner; setting the
    * home up for someone else → contributor.
    */
+  const addInvite = () => {
+    const name = inviteName.trim();
+    if (!name) return;
+    const exists =
+      invites.some((i) => i.name.toLowerCase() === name.toLowerCase()) ||
+      deciderNames.some((d) => d.toLowerCase() === name.toLowerCase()) ||
+      name.toLowerCase() === displayName.toLowerCase();
+    if (!exists) {
+      setInvites((v) => [...v, { name, relationship: inviteRel.trim() || undefined }]);
+    }
+    setInviteName('');
+    setInviteRel('');
+  };
+
+  const removeInvite = (name: string) =>
+    setInvites((v) => v.filter((i) => i.name !== name));
+
   const finish = () => {
     const deciders = deciderNames.length ? deciderNames : [displayName];
     completeOnboarding({
@@ -112,6 +131,7 @@ export default function OnboardingScreen() {
       userName: displayName,
       startEmpty: true,
       deciderNames: deciders,
+      invites,
     });
     router.replace('/');
   };
@@ -380,38 +400,77 @@ export default function OnboardingScreen() {
                 They can start adding photos the moment they join.
               </Muted>
 
-              {CONTACTS.map((c) => {
-                const done = invited.includes(c.name);
-                return (
-                  <Card key={c.name} style={styles.contactCard}>
+              {/* The decider(s) named earlier are invited automatically. */}
+              {deciderNames
+                .filter((d) => d.toLowerCase() !== displayName.toLowerCase())
+                .map((d) => (
+                  <Card key={d} style={styles.contactCard}>
                     <Row style={styles.contactRow}>
-                      <Avatar name={c.name} size={44} color={c.color ?? T.brass} />
+                      <Avatar name={d} size={44} color={T.brass} />
                       <View style={styles.flex}>
-                        <Text style={styles.contactName}>{c.name}</Text>
-                        <Muted>{c.relationship}</Muted>
+                        <Text style={styles.contactName}>{d}</Text>
+                        <Muted>Final say — invited automatically</Muted>
                       </View>
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={done}
-                        onPress={() => setInvited((v) => [...v, c.name])}
-                        style={[styles.inviteBtn, done && styles.inviteBtnDone]}
-                      >
-                        <Text style={[styles.inviteText, done && styles.inviteTextDone]}>
-                          {done ? 'Invited ✓' : 'Invite'}
+                      <View style={[styles.inviteBtn, styles.inviteBtnDone]}>
+                        <Text style={[styles.inviteText, styles.inviteTextDone]}>
+                          Invited ✓
                         </Text>
-                      </Pressable>
+                      </View>
                     </Row>
                   </Card>
-                );
-              })}
+                ))}
+
+              {invites.map((c) => (
+                <Card key={c.name} style={styles.contactCard}>
+                  <Row style={styles.contactRow}>
+                    <Avatar name={c.name} size={44} color={T.donate} />
+                    <View style={styles.flex}>
+                      <Text style={styles.contactName}>{c.name}</Text>
+                      <Muted>{c.relationship ?? 'Family'}</Muted>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${c.name}`}
+                      onPress={() => removeInvite(c.name)}
+                      style={styles.inviteBtn}
+                    >
+                      <Text style={styles.inviteText}>Remove</Text>
+                    </Pressable>
+                  </Row>
+                </Card>
+              ))}
+
+              {/* Add anyone by name — relationship optional. */}
+              <Card style={styles.contactCard}>
+                <TextInput
+                  style={styles.input}
+                  value={inviteName}
+                  onChangeText={setInviteName}
+                  placeholder="Name — e.g. Maya"
+                  placeholderTextColor={T.inkFaint}
+                  returnKeyType="next"
+                />
+                <TextInput
+                  style={[styles.input, styles.inviteRelInput]}
+                  value={inviteRel}
+                  onChangeText={setInviteRel}
+                  placeholder="Relationship (optional) — e.g. Daughter"
+                  placeholderTextColor={T.inkFaint}
+                  returnKeyType="done"
+                  onSubmitEditing={addInvite}
+                />
+                <View style={styles.inviteAddRow}>
+                  <Btn label="Add family member" kind="quiet" onPress={addInvite} />
+                </View>
+              </Card>
 
               <Well style={styles.note}>
                 <Row style={styles.noteRow}>
                   <Ionicons name="lock-closed-outline" size={16} color={T.brass} />
                   <Muted style={styles.flex}>
                     The household opens by invitation only — nobody wanders in.
-                    Roles can be changed, and anyone removed, whenever the family
-                    likes.
+                    Anyone can suggest a new member later; whoever holds the
+                    final say approves them.
                   </Muted>
                 </Row>
               </Well>
@@ -586,6 +645,8 @@ const styles = StyleSheet.create({
   inviteBtnDone: { borderColor: 'transparent', backgroundColor: T.keepTint },
   inviteText: { fontSize: 12, fontWeight: '700', color: T.brassDeep },
   inviteTextDone: { color: T.keep },
+  inviteRelInput: { marginTop: Spacing.two },
+  inviteAddRow: { marginTop: Spacing.three },
   note: { marginTop: Spacing.three },
   noteRow: { alignItems: 'flex-start', gap: Spacing.two },
 
