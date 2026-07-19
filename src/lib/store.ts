@@ -130,6 +130,22 @@ interface AppState {
   /** Household roster: active members + pending invitations. */
   members: Member[];
 
+  /** Cloud backup linkage (set after the first successful backup). */
+  cloudHouseholdId?: string;
+  lastBackupAt?: string;
+  setCloudMeta: (meta: { cloudHouseholdId?: string; lastBackupAt?: string }) => void;
+  /** Replace local state wholesale from a cloud restore snapshot. */
+  restoreSnapshot: (snap: {
+    householdName: string;
+    deciderNames: string[];
+    createdBy: string;
+    cloudHouseholdId: string;
+    items: Item[];
+    people: Person[];
+    messages: ItemMessage[];
+    members: Member[];
+  }) => void;
+
   // actions
   completeOnboarding: (opts: {
     role: Role;
@@ -534,6 +550,34 @@ export const useStore = create<AppState>()(
 
       addPerson: (p) =>
         set((s) => ({ people: [...s.people, { ...p, id: uid() }] })),
+
+      setCloudMeta: (meta) => set(meta),
+
+      restoreSnapshot: (snap) =>
+        set(() => {
+          const id = uid();
+          return {
+            onboarded: true,
+            isDemo: false,
+            householdName: snap.householdName,
+            households: [
+              {
+                id,
+                name: snap.householdName,
+                createdAt: new Date().toISOString(),
+                deciderNames: snap.deciderNames,
+                createdBy: snap.createdBy,
+              },
+            ],
+            activeHouseholdId: id,
+            ownerName: snap.deciderNames[0] ?? snap.createdBy,
+            cloudHouseholdId: snap.cloudHouseholdId,
+            items: snap.items,
+            people: snap.people,
+            messages: snap.messages,
+            members: snap.members,
+          };
+        }),
 
       resetAll: () => set({ ...initial, onboarded: false }),
     }),

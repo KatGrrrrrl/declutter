@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { notify } from '@/components/child/shared';
+import { AccountSync } from '@/components/settings/account-sync';
 import { UPGRADE_ROUTE } from '@/components/settings/routes';
 import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
@@ -298,13 +299,16 @@ export default function SettingsScreen() {
           </Card>
         )}
 
-        {/* ---------- account ---------- */}
-        <Label>Account</Label>
+        {/* ---------- account & cloud backup ---------- */}
+        <AccountSync />
+
+        {/* ---------- local profile ---------- */}
+        <Label>On this device</Label>
         <Card>
-          <Heading style={styles.cardTitle}>Signed in as {userName}</Heading>
+          <Heading style={styles.cardTitle}>You&rsquo;re {userName} here</Heading>
           <Muted style={styles.cardMeta}>
-            This is a local profile on this device. There&rsquo;s no cloud account
-            yet, so nothing about you leaves this phone.
+            Your inventory lives on this device first; the account above only
+            holds what you choose to back up.
           </Muted>
         </Card>
 

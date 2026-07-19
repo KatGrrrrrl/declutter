@@ -82,7 +82,14 @@ supabase db push
 - Phase gating (see SPEC §3/§9): don't build Phase-2 (heirs/memorandum) or
   Phase-3 (AI valuation/executor unlock) features until the Phase-1 loop is
   validated with real families.
-- No Supabase project is linked yet. When one is created: put the URL/anon key
-  in `.env` (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`),
-  never commit `.env`, and keep service-role keys only in Supabase secrets.
-  `EXPO_PUBLIC_*` vars are embedded in the client bundle and are public.
+- **Supabase**: project `declutter` (`xkzuoogmcfrxicmoybzp`, ca-central-1),
+  linked via CLI. URL + publishable key are committed in
+  `src/lib/supabase.ts` (public by design; RLS is the boundary). DB password
+  in `.dbpassword.local` (gitignored). Migrations: `supabase db push`; auth
+  config/email templates: `supabase config push` (use `npx supabase@latest` —
+  the installed CLI has a config-push bug). Auth = email six-digit OTP (the
+  magic_link template leads with `{{ .Token }}`). Cloud sync v1 =
+  snapshot backup/restore in `src/lib/sync.ts` (Settings → Account & sync);
+  `localOnly` items are never uploaded. Photos/audio not yet uploaded (await
+  EXIF-strip edge function). Service-role/Stripe secrets: Supabase secrets
+  only, never the repo.

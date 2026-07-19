@@ -1,0 +1,21 @@
+# Supabase project config (linked: declutter / xkzuoogmcfrxicmoybzp).
+# Only the settings we deliberately manage are declared; `supabase config push`
+# applies them to the hosted project.
+
+project_id = "declutter"
+
+[auth]
+site_url = "https://inventoryourhouse.com"
+additional_redirect_urls = ["https://inventoryourhouse.com", "declutter://"]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+# Six-digit codes, elder-friendly: the sign-in email leads with {{ .Token }}
+# instead of a magic link (the app's whole auth UX is "type the six digits").
+otp_length = 6
+otp_expiry = 3600
+
+[auth.email.template.magic_link]
+subject = "Your Declutter sign-in code"
+content_path = "./supabase/templates/magic_link.html"
