@@ -30,6 +30,8 @@ import {
   View,
 } from 'react-native';
 
+import { DonateTo } from '@/components/donate-to';
+import { ItemChat } from '@/components/item-chat';
 import { Avatar, VISIBILITY_META, formatDuration } from '@/components/parent/bits';
 import {
   Btn,
@@ -200,6 +202,8 @@ export default function ItemDetailScreen() {
           <Text style={styles.roomText}>{item.room}</Text>
         </View>
       </Row>
+      {/* Donation destination — part of the decision, so only deciders edit. */}
+      <DonateTo item={item} canEdit={isOwner} />
       <Text style={styles.itemTitle}>{item.title}</Text>
       {item.tags.length > 0 ? (
         <Row style={styles.tagRow}>
@@ -408,7 +412,14 @@ export default function ItemDetailScreen() {
             </Pressable>
           </Row>
         </>
-      ) : (
+      ) : null}
+
+      {/* ---- Family chat — the whole household sees this thread ---- */}
+      <View style={styles.chatBlock}>
+        <ItemChat itemId={item.id} />
+      </View>
+
+      {!isOwner ? (
         <>
           {/* ---- Contributor: request ---- */}
           <View style={styles.requestBlock}>
@@ -432,7 +443,7 @@ export default function ItemDetailScreen() {
             </Muted>
           </View>
         </>
-      )}
+      ) : null}
 
       <View style={styles.bottomSpace} />
     </Screen>
@@ -625,6 +636,8 @@ const styles = StyleSheet.create({
   },
   heartBtnOn: { borderColor: T.toss, backgroundColor: T.tossTint },
   heartLbl: { fontSize: 14, fontWeight: '600', color: T.ink },
+
+  chatBlock: { marginBottom: Spacing.two },
 
   requestBlock: { marginTop: Spacing.four, gap: Spacing.two },
   requestedChip: {

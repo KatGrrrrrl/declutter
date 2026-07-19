@@ -45,11 +45,26 @@ export interface Item {
   heirVisibility: HeirVisibility;
   requestedBy?: string; // contributor interest signal (owner-visible only)
   /**
+   * Where a donated item should go — a charity ("Goodwill") or a person
+   * ("cousin Jane"). Only meaningful when decision === 'donate'.
+   */
+  donateTo?: string;
+  donateToKind?: 'charity' | 'person';
+  /**
    * High-ticket privacy tier: when true, this item must NEVER leave the
    * device — excluded from any future Supabase sync/upload and from shared
    * family views. Kept in the model now so the sync layer honors it later.
    */
   localOnly?: boolean;
+  createdAt: string;
+}
+
+/** A family-chat message about one item. Visible to the whole household. */
+export interface ItemMessage {
+  id: string;
+  itemId: string;
+  author: string; // display name
+  text: string;
   createdAt: string;
 }
 
@@ -63,6 +78,15 @@ export interface Household {
   id: string;
   name: string;
   createdAt: string;
+  /**
+   * Who holds the final say on items in THIS house. Anyone can set a home up
+   * (usually the adult child), but only deciders may keep/donate/let-go and
+   * assign heirs. Different houses can have different deciders — Mum decides
+   * at Mum's house, an aunt at the cottage.
+   */
+  deciderNames: string[];
+  /** Who created the household (may or may not be a decider). */
+  createdBy: string;
 }
 
 interface AppState {
@@ -84,6 +108,8 @@ interface AppState {
 
   people: Person[];
   items: Item[];
+  /** Per-item family chat threads. */
+  messages: ItemMessage[];
 
   // actions
   completeOnboarding: (opts: {
@@ -91,13 +117,20 @@ interface AppState {
     householdName: string;
     userName: string;
     startEmpty?: boolean;
+    /** Final-say holders for the new household; defaults to the creator. */
+    deciderNames?: string[];
   }) => void;
   /** Wipe everything and return to the welcome screen (the "log out"). */
   signOut: () => void;
   /** Replace demo content with an empty household of the same name. */
   startFresh: (householdName?: string) => void;
-  addHousehold: (name: string) => { ok: boolean; reason?: 'limit' };
+  addHousehold: (
+    name: string,
+    deciderNames?: string[]
+  ) => { ok: boolean; reason?: 'limit' };
   switchHousehold: (id: string) => void;
+  /** Post a chat message on an item, authored by the current user. */
+  addMessage: (itemId: string, text: string) => void;
   setPlan: (plan: Plan) => void;
   setRole: (role: Role) => void; // demo-mode view switch
   decide: (id: string, decision: Decision) => void;
@@ -175,11 +208,30 @@ const seedItems: Item[] = [
     id: 'i-mower', title: 'Push mower', room: 'Garage', decision: 'donate',
     decidedAt: '2026-06-28T15:30:00Z', tags: ['tools'], addedBy: 'Maya',
     isSentimental: false, heirVisibility: 'owner_only',
+    donateTo: 'Habitat ReStore', donateToKind: 'charity',
     createdAt: '2026-06-27T09:15:00Z',
   },
 ];
 
 const DEMO_HOUSEHOLD_ID = 'h-demo';
+
+const seedMessages: ItemMessage[] = [
+  {
+    id: 'm-1', itemId: 'i-teapot', author: 'Sam',
+    text: 'Is this the one you brought back from Delft? The glaze looks right.',
+    createdAt: '2026-07-01T18:20:00Z',
+  },
+  {
+    id: 'm-2', itemId: 'i-teapot', author: 'Rose',
+    text: 'It is — from our honeymoon. Your father haggled terribly for it.',
+    createdAt: '2026-07-01T19:02:00Z',
+  },
+  {
+    id: 'm-3', itemId: 'i-quilt', author: 'Maya',
+    text: 'Noor asked about this quilt last Christmas — she loved the stories in the squares.',
+    createdAt: '2026-06-29T10:15:00Z',
+  },
+];
 
 /** Pristine app state — the seeded sample household, pre-onboarding. */
 const initial = {
@@ -189,13 +241,22 @@ const initial = {
   userName: 'Rose',
   householdName: 'The Lakehouse',
   households: [
-    { id: DEMO_HOUSEHOLD_ID, name: 'The Lakehouse', createdAt: '2026-06-27T09:00:00Z' },
+    {
+      id: DEMO_HOUSEHOLD_ID,
+      name: 'The Lakehouse',
+      createdAt: '2026-06-27T09:00:00Z',
+      // Sam (the son) set the home up; Rose holds the final say — the
+      // recommended shape: anyone starts it, the family designates deciders.
+      deciderNames: ['Rose'],
+      createdBy: 'Sam',
+    },
   ] as Household[],
   activeHouseholdId: DEMO_HOUSEHOLD_ID,
   plan: 'free' as Plan,
   isDemo: true,
   people: seedPeople,
   items: seedItems,
+  messages: seedMessages,
 };
 
 export const useStore = create<AppState>()(
@@ -203,20 +264,28 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       ...initial,
 
-      completeOnboarding: ({ role, householdName, userName, startEmpty }) =>
+      completeOnboarding: ({ role, householdName, userName, startEmpty, deciderNames }) =>
         set(() => {
           const id = uid();
+          const deciders = deciderNames?.length ? deciderNames : [userName];
           // A real household starts empty: no sample items, no sample heirs.
           const fresh = startEmpty
             ? {
                 items: [] as Item[],
                 people: [] as Person[],
+                messages: [] as ItemMessage[],
                 isDemo: false,
                 households: [
-                  { id, name: householdName, createdAt: new Date().toISOString() },
+                  {
+                    id,
+                    name: householdName,
+                    createdAt: new Date().toISOString(),
+                    deciderNames: deciders,
+                    createdBy: userName,
+                  },
                 ] as Household[],
                 activeHouseholdId: id,
-                ownerName: role === 'owner' ? userName : 'Rose',
+                ownerName: deciders[0] ?? userName,
               }
             : {};
           return { onboarded: true, role, householdName, userName, ...fresh };
@@ -231,26 +300,62 @@ export const useStore = create<AppState>()(
           return {
             items: [],
             people: [],
+            messages: [],
             isDemo: false,
             householdName: name,
-            households: [{ id, name, createdAt: new Date().toISOString() }],
+            households: [
+              {
+                id,
+                name,
+                createdAt: new Date().toISOString(),
+                deciderNames: [s.userName],
+                createdBy: s.userName,
+              },
+            ],
             activeHouseholdId: id,
             ownerName: s.role === 'owner' ? s.userName : s.ownerName,
           };
         }),
 
-      addHousehold: (name) => {
+      addHousehold: (name, deciderNames) => {
         const s = get();
         if (s.plan === 'free' && s.households.length >= FREE_HOUSEHOLD_LIMIT) {
           return { ok: false, reason: 'limit' as const };
         }
         const id = uid();
         set({
-          households: [...s.households, { id, name, createdAt: new Date().toISOString() }],
+          households: [
+            ...s.households,
+            {
+              id,
+              name,
+              createdAt: new Date().toISOString(),
+              deciderNames: deciderNames?.length ? deciderNames : [s.userName],
+              createdBy: s.userName,
+            },
+          ],
           activeHouseholdId: id,
           householdName: name,
         });
         return { ok: true };
+      },
+
+      addMessage: (itemId, text) => {
+        const s = get();
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        set({
+          messages: [
+            ...s.messages,
+            {
+              id: uid(),
+              itemId,
+              author: s.userName,
+              text: trimmed,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        });
       },
 
       switchHousehold: (id) =>
@@ -329,6 +434,20 @@ export const useStore = create<AppState>()(
     {
       name: 'declutter-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
+      version: 2,
+      /** v1 → v2: add chat messages and per-household deciders/creator. */
+      migrate: (persisted) => {
+        const s = persisted as Partial<AppState>;
+        return {
+          ...s,
+          messages: s.messages ?? [],
+          households: (s.households ?? []).map((h) => ({
+            ...h,
+            deciderNames: h.deciderNames ?? [s.ownerName ?? 'Rose'],
+            createdBy: h.createdBy ?? s.userName ?? 'Rose',
+          })),
+        } as AppState;
+      },
     }
   )
 );
@@ -353,6 +472,35 @@ export const selectKeepsakes = (s: AppState) =>
 /** Stable-reference hooks — always use these in components. */
 export const useQueue = () => useStore(useShallow(selectQueue));
 export const useKeepsakes = () => useStore(useShallow(selectKeepsakes));
+
+/** Chat thread for one item, oldest first. */
+export const useItemMessages = (itemId: string) =>
+  useStore(useShallow((s: AppState) => s.messages.filter((m) => m.itemId === itemId)));
+
+/** Message count per item id — for chat badges on lists. */
+export const useMessageCount = (itemId: string) =>
+  useStore((s) => s.messages.reduce((n, m) => (m.itemId === itemId ? n + 1 : n), 0));
+
+/** The household currently open (undefined only if state is corrupt). */
+export const selectActiveHousehold = (s: AppState) =>
+  s.households.find((h) => h.id === s.activeHouseholdId);
+
+export const useActiveHousehold = () => useStore(useShallow(selectActiveHousehold));
+
+/**
+ * Whether the current user holds the final say in the ACTIVE household.
+ * (In demo mode the view toggle also flips userName-vs-ownerName roles, so
+ * role is still consulted; once real auth exists this becomes purely
+ * membership-based.)
+ */
+export const selectCanDecide = (s: AppState) => {
+  const h = selectActiveHousehold(s);
+  if (!h) return s.role === 'owner';
+  const name = s.role === 'owner' ? s.ownerName : s.userName;
+  return h.deciderNames.includes(name) || s.role === 'owner';
+};
+
+export const useCanDecide = () => useStore(selectCanDecide);
 
 /**
  * Hook form of selectEntitlement. selectEntitlement builds a NEW object every

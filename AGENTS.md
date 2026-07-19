@@ -64,6 +64,13 @@ supabase db push
 
 ## Conventions & gotchas
 
+- **Zustand v5 selector discipline**: never pass a selector that builds a new
+  object/array to `useStore()` — it triggers a "getSnapshot should be cached"
+  infinite loop that blank-screens web (Hermes tolerates it, React web does
+  not). Use the exported `useShallow`-wrapped hooks in `src/lib/store.ts`
+  (`useEntitlement`, `useQueue`, `useKeepsakes`, `useItemMessages`,
+  `useActiveHousehold`, …) or single-field selectors only.
+
 - **DB authority checks live in `private.*` SECURITY DEFINER functions** (e.g.
   `private.is_household_member`) to avoid recursive RLS on
   `household_members`. Never write a policy that selects from

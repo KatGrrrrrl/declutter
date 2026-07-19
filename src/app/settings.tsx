@@ -39,6 +39,7 @@ export default function SettingsScreen() {
 
   const [addingHousehold, setAddingHousehold] = useState(false);
   const [newHouseholdName, setNewHouseholdName] = useState('');
+  const [newDeciderNames, setNewDeciderNames] = useState('');
   const [freshName, setFreshName] = useState(householdName);
   const [confirmFresh, setConfirmFresh] = useState(false);
   const [confirmErase, setConfirmErase] = useState(false);
@@ -53,12 +54,18 @@ export default function SettingsScreen() {
   const saveHousehold = () => {
     const name = newHouseholdName.trim();
     if (!name) return;
-    const res = addHousehold(name);
+    // Comma-separated names; blank means the current user holds the final say.
+    const deciders = newDeciderNames
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean);
+    const res = addHousehold(name, deciders.length ? deciders : undefined);
     if (!res.ok) {
       goUpgrade();
       return;
     }
     setNewHouseholdName('');
+    setNewDeciderNames('');
     setAddingHousehold(false);
   };
 
@@ -169,6 +176,9 @@ export default function SettingsScreen() {
                 />
                 <View style={styles.cardMain}>
                   <Text style={styles.rowTitle}>{h.name}</Text>
+                  <Muted style={styles.rowMeta}>
+                    Final say: {h.deciderNames.join(', ')}
+                  </Muted>
                   {active && <Muted style={styles.rowMeta}>Currently open</Muted>}
                 </View>
               </Pressable>
@@ -186,6 +196,19 @@ export default function SettingsScreen() {
                   placeholderTextColor={T.inkFaint}
                   accessibilityLabel="New household name"
                 />
+                <Label>Who has final say there?</Label>
+                <TextInput
+                  style={styles.input}
+                  value={newDeciderNames}
+                  onChangeText={setNewDeciderNames}
+                  placeholder={userName}
+                  placeholderTextColor={T.inkFaint}
+                  accessibilityLabel="Who has final say in the new household"
+                />
+                <Muted style={styles.deciderHint}>
+                  Leave blank if it&rsquo;s you. Separate names with commas for
+                  more than one.
+                </Muted>
                 <View style={styles.cta}>
                   <Btn label="Add household" onPress={saveHousehold} />
                   <View style={styles.ctaGap} />
@@ -195,6 +218,7 @@ export default function SettingsScreen() {
                     onPress={() => {
                       setAddingHousehold(false);
                       setNewHouseholdName('');
+                      setNewDeciderNames('');
                     }}
                   />
                 </View>
@@ -415,6 +439,7 @@ const styles = StyleSheet.create({
   },
 
   addBox: { paddingVertical: Spacing.two },
+  deciderHint: { fontSize: 12.5, marginTop: Spacing.two },
   input: {
     backgroundColor: T.surface,
     borderWidth: 1.5,

@@ -11,9 +11,23 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar, VISIBILITY_META, formatDuration } from '@/components/parent/bits';
 import { Heading, Muted, PhotoBox, Row, Screen, Tag, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
-import { useKeepsakes, useStore } from '@/lib/store';
+import { useKeepsakes, useMessageCount, useStore } from '@/lib/store';
 
 import type { Item } from '@/lib/store';
+
+/** "2 notes from the family" — own component so the count hook runs per card. */
+function FamilyNotes({ itemId }: { itemId: string }) {
+  const count = useMessageCount(itemId);
+  if (count === 0) return null;
+  return (
+    <Row style={styles.notesRow}>
+      <Ionicons name="chatbubble-outline" size={14} color={T.inkSoft} />
+      <Text style={styles.notesText}>
+        {count} {count === 1 ? 'note' : 'notes'} from the family
+      </Text>
+    </Row>
+  );
+}
 
 export default function KeepsakesScreen() {
   const router = useRouter();
@@ -79,6 +93,8 @@ export default function KeepsakesScreen() {
                     <Text style={styles.storyPrompt}>Add the story</Text>
                   </Row>
                 )}
+
+                <FamilyNotes itemId={item.id} />
 
                 <Row style={styles.footRow}>
                   {item.heirPersonId && heirName(item) ? (
@@ -147,6 +163,9 @@ const styles = StyleSheet.create({
     color: T.brassDeep,
     fontStyle: 'italic',
   },
+
+  notesRow: { marginTop: 8, gap: 7 },
+  notesText: { fontSize: 13.5, fontWeight: '600', color: T.inkSoft },
 
   footRow: {
     marginTop: 12,

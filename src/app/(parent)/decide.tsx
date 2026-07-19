@@ -15,11 +15,17 @@ import {
   SwipeCardHandle,
   SwipeDecision,
 } from '@/components/parent/swipe-card';
-import { DECISION_META, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
+import { Btn, DECISION_META, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
-import { useQueue, useStore } from '@/lib/store';
+import { useActiveHousehold, useCanDecide, useQueue, useStore } from '@/lib/store';
 
 const UNDO_MS = 6000;
+
+/** "Rose", "Rose and Arthur", "Rose, Arthur and June". */
+function joinNames(names: string[]) {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
 
 function successHaptic() {
   if (Platform.OS === 'web') return;
@@ -31,6 +37,9 @@ export default function DecideScreen() {
   const queue = useQueue();
   const decide = useStore((s) => s.decide);
   const undoDecision = useStore((s) => s.undoDecision);
+  const canDecide = useCanDecide();
+  const household = useActiveHousehold();
+  const setRole = useStore((s) => s.setRole);
 
   const cardRef = useRef<SwipeCardHandle>(null);
   const busyRef = useRef(false);
@@ -84,6 +93,37 @@ export default function DecideScreen() {
   // Gentle progress: dots fill as today's pile shrinks.
   const total = queue.length + sessionDone;
   const dotsOn = total === 0 ? 5 : Math.round((sessionDone / total) * 5);
+
+  // Reachable edge: viewing as owner without holding the final say in the
+  // active household. The deck belongs to the deciders — explain warmly and
+  // offer the helper view instead.
+  if (!canDecide) {
+    const deciders = joinNames(household?.deciderNames ?? []);
+    return (
+      <Screen scroll={false}>
+        <Title style={styles.title}>Decide</Title>
+        <View style={styles.notYours}>
+          <Ionicons name="key-outline" size={54} color={T.brass} />
+          <Text style={styles.notYoursTitle}>This deck isn&apos;t yours to swipe</Text>
+          <Muted style={styles.notYoursBody}>
+            The final say in {household?.name ?? 'this home'} belongs to{' '}
+            {deciders || 'the family'}. You can add items and chat — deciding is
+            theirs.
+          </Muted>
+          <View style={styles.notYoursCta}>
+            <Btn
+              label="Take me to the helper view"
+              big
+              onPress={() => {
+                setRole('contributor');
+                router.replace('/');
+              }}
+            />
+          </View>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll={false}>
@@ -251,6 +291,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   allCaughtSub: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
+
+  /* not-a-decider explainer */
+  notYours: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: Spacing.four,
+  },
+  notYoursTitle: {
+    fontFamily: Fonts?.serif,
+    fontSize: 24,
+    fontWeight: '600',
+    color: T.heading,
+    textAlign: 'center',
+  },
+  notYoursBody: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  notYoursCta: { alignSelf: 'stretch', marginTop: Spacing.three },
 
   undoChip: {
     position: 'absolute',

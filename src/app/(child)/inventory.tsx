@@ -13,9 +13,21 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { ItemQuotaMeter } from '@/components/limit-banner';
 import { Heading, Label, Muted, PhotoBox, Screen, DecisionPill, Title } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
-import { Decision, useStore } from '@/lib/store';
+import { Decision, useMessageCount, useStore } from '@/lib/store';
 
 type Filter = 'all' | Decision;
+
+/** Chat count on a row — its own component so the hook runs per item. */
+function ChatBadge({ itemId }: { itemId: string }) {
+  const count = useMessageCount(itemId);
+  if (count === 0) return null;
+  return (
+    <View style={styles.chatBadge}>
+      <Ionicons name="chatbubble-outline" size={11} color={T.inkSoft} />
+      <Text style={styles.chatBadgeText}>{count}</Text>
+    </View>
+  );
+}
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -137,6 +149,12 @@ export default function InventoryScreen() {
                       #{t}
                     </Text>
                   ))}
+                  <ChatBadge itemId={it.id} />
+                  {it.decision === 'donate' && it.donateTo ? (
+                    <View style={styles.donateChip}>
+                      <Text style={styles.donateChipText}>→ {it.donateTo}</Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
               <View style={styles.end}>
@@ -227,6 +245,15 @@ const styles = StyleSheet.create({
   },
   roomText: { fontSize: 11.5 },
   tagText: { fontSize: 11.5, color: T.brassDeep },
+  chatBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  chatBadgeText: { fontSize: 11, fontWeight: '600', color: T.inkSoft },
+  donateChip: {
+    backgroundColor: T.donateTint,
+    borderRadius: Radius.pill,
+    paddingVertical: 1,
+    paddingHorizontal: 7,
+  },
+  donateChipText: { fontSize: 10.5, fontWeight: '700', color: T.donate },
   end: { alignItems: 'flex-end', gap: 5 },
   heirText: { fontSize: 11, fontWeight: '600', color: T.brassDeep },
   lock: { flexDirection: 'row', alignItems: 'center', gap: 3 },

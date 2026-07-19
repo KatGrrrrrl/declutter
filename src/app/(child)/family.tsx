@@ -1,8 +1,9 @@
 /**
- * Child family — the household roster, plain about authority: the owner
- * decides everything; contributors help. Includes a pending-request info row,
- * an invite stub (invites need the owner's approval), and a quiet demo
- * control to view the app as the owner.
+ * Child family — the household roster, plain about authority: the designated
+ * decider(s) hold the final say on every item; everyone else helps. Shows who
+ * set the home up and who has the final say (per household — different homes
+ * can have different deciders). Includes a pending-request info row, an
+ * invite stub, and a quiet demo control to view the app as the owner.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +14,7 @@ import { Avatar, notify } from '@/components/child/shared';
 import { SETTINGS_ROUTE } from '@/components/settings/routes';
 import { Btn, Card, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Spacing, T } from '@/constants/theme';
-import { useStore } from '@/lib/store';
+import { useActiveHousehold, useStore } from '@/lib/store';
 
 export default function FamilyScreen() {
   const router = useRouter();
@@ -23,6 +24,10 @@ export default function FamilyScreen() {
   const people = useStore((s) => s.people);
   const items = useStore((s) => s.items);
   const setRole = useStore((s) => s.setRole);
+  const household = useActiveHousehold();
+
+  const deciders = household?.deciderNames ?? [ownerName];
+  const createdBy = household?.createdBy ?? ownerName;
 
   const pending = items.filter((i) => i.requestedBy);
 
@@ -48,18 +53,48 @@ export default function FamilyScreen() {
         <Row style={styles.authorityRow}>
           <Ionicons name="shield-checkmark-outline" size={20} color={T.brass} />
           <Muted style={styles.flex}>
-            <Text style={styles.strong}>{ownerName} owns this household.</Text> Every
-            keep, donate, and heir choice is hers. You help by adding photos and notes.
+            <Text style={styles.strong}>
+              {deciders.join(' and ')} {deciders.length === 1 ? 'holds' : 'hold'} the
+              final say here.
+            </Text>{' '}
+            Every keep, donate, and heir choice is theirs. Everyone else helps by
+            adding photos and notes.
           </Muted>
+        </Row>
+        <Row style={styles.govRow}>
+          <Ionicons name="key-outline" size={15} color={T.brass} />
+          <Muted style={styles.govText}>Final say: {deciders.join(', ')}</Muted>
+        </Row>
+        <Row style={styles.govRow}>
+          <Ionicons name="home-outline" size={15} color={T.brass} />
+          <Muted style={styles.govText}>Set up by {createdBy}</Muted>
         </Row>
       </Card>
 
       {/* members */}
       <View style={styles.list}>
-        <MemberRow name={ownerName} rel="Owner of the home" badge="Owner" badgeKind="owner" />
-        <MemberRow name={`${userName} (you)`} avatarName={userName} rel="Helping organize" badge="Helper" />
+        <MemberRow
+          name={ownerName}
+          rel="Owner of the home"
+          badge="Owner"
+          badgeKind="owner"
+          finalSay={deciders.includes(ownerName)}
+        />
+        <MemberRow
+          name={`${userName} (you)`}
+          avatarName={userName}
+          rel="Helping organize"
+          badge="Helper"
+          finalSay={deciders.includes(userName)}
+        />
         {activeOthers.map((p) => (
-          <MemberRow key={p.id} name={p.displayName} rel={p.relationship} badge="Helper" />
+          <MemberRow
+            key={p.id}
+            name={p.displayName}
+            rel={p.relationship}
+            badge="Helper"
+            finalSay={deciders.includes(p.displayName)}
+          />
         ))}
         {invitedExample && (
           <MemberRow
@@ -67,6 +102,7 @@ export default function FamilyScreen() {
             rel={invitedExample.relationship}
             badge="Invited"
             badgeKind="invited"
+            finalSay={deciders.includes(invitedExample.displayName)}
           />
         )}
       </View>
@@ -127,12 +163,15 @@ function MemberRow({
   badge,
   badgeKind = 'helper',
   avatarName,
+  finalSay = false,
 }: {
   name: string;
   rel: string;
   badge: string;
   badgeKind?: 'owner' | 'helper' | 'invited';
   avatarName?: string;
+  /** True when this member holds the final say in the active household. */
+  finalSay?: boolean;
 }) {
   const badgeStyle =
     badgeKind === 'owner'
@@ -157,6 +196,12 @@ function MemberRow({
         <Text style={styles.memberName}>{name}</Text>
         <Muted style={styles.memberRel}>{rel}</Muted>
       </View>
+      {finalSay && (
+        <View style={[styles.badge, styles.badgeFinal]}>
+          <Ionicons name="key" size={10} color={T.brassDeep} />
+          <Text style={[styles.badgeText, styles.badgeFinalText]}>Final say</Text>
+        </View>
+      )}
       <View style={[styles.badge, badgeStyle]}>
         <Text style={[styles.badgeText, badgeTextStyle]}>{badge}</Text>
       </View>
@@ -170,6 +215,8 @@ const styles = StyleSheet.create({
 
   authority: { marginTop: Spacing.two, backgroundColor: T.sunken },
   authorityRow: { alignItems: 'flex-start', gap: Spacing.two },
+  govRow: { marginTop: Spacing.two, gap: Spacing.two },
+  govText: { fontSize: 12.5, color: T.inkSoft },
 
   list: { marginTop: Spacing.three },
   memberRow: {
@@ -196,6 +243,13 @@ const styles = StyleSheet.create({
   badgeHelperText: { color: T.inkSoft },
   badgeInvited: { backgroundColor: T.donateTint },
   badgeInvitedText: { color: T.donate },
+  badgeFinal: {
+    backgroundColor: T.brassTint,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  badgeFinalText: { color: T.brassDeep },
 
   pendingWell: { marginTop: Spacing.three },
   inviteBtn: { marginTop: Spacing.four },

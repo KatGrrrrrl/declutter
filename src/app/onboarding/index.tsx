@@ -1,8 +1,16 @@
 /**
  * Stepped onboarding — one file, internal step state.
  *
- *   welcome → role pick → household (owner) / join (contributor)
- *           → passkey explainer → invite family (owner only) → done
+ *   welcome → who'll decide (setup-for pick) → household naming
+ *           → final say (pick the decider(s)) → passkey explainer
+ *           → invite family → done
+ *
+ * Anyone can start a family home — the adult child setting things up for a
+ * parent, or the owner themselves. The "final say" step designates who rules
+ * on every keep/donate/let-go; the finishing role is derived from it: you're
+ * an 'owner' if you're among the deciders, otherwise a 'contributor' who set
+ * the home up for someone else. (The old join-by-invitation path folded into
+ * this — creators now cover the helper case.)
  *
  * Demo scaffolding: no real auth or invites. Finish calls
  * completeOnboarding and lands on / (which redirects by role).
@@ -26,12 +34,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/child/shared';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Row, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
-import { Role, useStore } from '@/lib/store';
+import { useStore } from '@/lib/store';
 
-type Step = 'welcome' | 'role' | 'household' | 'join' | 'passkey' | 'invite';
+type Step = 'welcome' | 'role' | 'household' | 'deciders' | 'passkey' | 'invite';
 
-const OWNER_STEPS: Step[] = ['role', 'household', 'passkey', 'invite'];
-const CONTRIB_STEPS: Step[] = ['role', 'join', 'passkey'];
+const STEPS: Step[] = ['role', 'household', 'deciders', 'passkey', 'invite'];
+
+/** Who is this home being set up for — someone else, or the user's own? */
+type SetupFor = 'other' | 'self';
 
 const CONTACTS = [
   { name: 'Maya', relationship: 'Daughter' },
@@ -42,38 +52,66 @@ const CONTACTS = [
 export default function OnboardingScreen() {
   const router = useRouter();
   const completeOnboarding = useStore((s) => s.completeOnboarding);
-  const ownerName = useStore((s) => s.ownerName);
 
   const [step, setStep] = useState<Step>('welcome');
-  const [role, setRole] = useState<Role>('owner');
+  const [setupFor, setSetupFor] = useState<SetupFor>('self');
   const [householdName, setHouseholdName] = useState('The Lakehouse');
   const [userName, setUserName] = useState('');
+  /** Is the user themselves among the deciders? */
+  const [includeMe, setIncludeMe] = useState(true);
+  /** Deciders other than the user, added by name. */
+  const [otherDeciders, setOtherDeciders] = useState<string[]>([]);
+  const [deciderInput, setDeciderInput] = useState('');
   const [invited, setInvited] = useState<string[]>([]);
 
-  const steps = role === 'owner' ? OWNER_STEPS : CONTRIB_STEPS;
-  const stepIndex = steps.indexOf(step);
+  const stepIndex = STEPS.indexOf(step);
+
+  /** What we'd call the user right now, falling back to the path's example. */
+  const displayName = userName.trim() || (setupFor === 'self' ? 'Rose' : 'Sam');
+  const deciderNames = [...(includeMe ? [displayName] : []), ...otherDeciders];
 
   const goBack = () => {
     if (step === 'role') setStep('welcome');
-    else if (stepIndex > 0) setStep(steps[stepIndex - 1]);
+    else if (stepIndex > 0) setStep(STEPS[stepIndex - 1]);
   };
 
-  const pickRole = (r: Role) => {
-    setRole(r);
-    setUserName((name) => name || (r === 'owner' ? 'Rose' : 'Sam'));
-    setStep(r === 'owner' ? 'household' : 'join');
+  const pickPath = (who: SetupFor) => {
+    setSetupFor(who);
+    // Helpers usually aren't the decider; owners usually are. Both can change
+    // their mind on the final-say step.
+    setIncludeMe(who === 'self');
+    setUserName((name) => name || (who === 'self' ? 'Rose' : 'Sam'));
+    setStep('household');
   };
+
+  const addDecider = () => {
+    const name = deciderInput.trim();
+    if (!name) return;
+    if (name === displayName) {
+      setIncludeMe(true); // typing your own name is the same as the Me chip
+    } else if (!otherDeciders.includes(name)) {
+      setOtherDeciders((v) => [...v, name]);
+    }
+    setDeciderInput('');
+  };
+
+  const removeDecider = (name: string) =>
+    setOtherDeciders((v) => v.filter((n) => n !== name));
 
   /**
    * A real sign-up starts with an EMPTY household — no sample items, no sample
-   * heirs. The seeded demo content is now opt-in from the welcome screen.
+   * heirs. The seeded demo content is opt-in from the welcome screen. Role is
+   * derived from the final-say choice: among the deciders → owner; setting the
+   * home up for someone else → contributor.
    */
   const finish = () => {
+    const deciders = deciderNames.length ? deciderNames : [displayName];
     completeOnboarding({
-      role,
+      role: deciders.includes(displayName) ? 'owner' : 'contributor',
       householdName: householdName.trim() || 'The Lakehouse',
-      userName: userName.trim() || (role === 'owner' ? 'Rose' : 'Sam'),
+      userName: displayName,
       startEmpty: true,
+      deciderNames: deciders,
     });
     router.replace('/');
   };
@@ -134,7 +172,7 @@ export default function OnboardingScreen() {
             <Text style={styles.backText}>Back</Text>
           </Pressable>
           <View style={styles.dots}>
-            {steps.map((s, i) => (
+            {STEPS.map((s, i) => (
               <View key={s} style={[styles.dot, i <= stepIndex && styles.dotOn]} />
             ))}
           </View>
@@ -148,26 +186,28 @@ export default function OnboardingScreen() {
         >
           {step === 'role' && (
             <>
-              <Label>Step 1 of {steps.length}</Label>
-              <Title style={styles.stepTitle}>Whose home is it?</Title>
+              <Label>Step 1 of {STEPS.length}</Label>
+              <Title style={styles.stepTitle}>Who&apos;ll have the final say?</Title>
               <Muted style={styles.stepSub}>
-                This decides who holds the keys — everything else follows from it.
+                Anyone can start a family home. The final say on every item belongs
+                to whoever the family names — you&apos;ll choose in a moment.
               </Muted>
 
               <Pressable
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.roleCard, pressed && styles.pressed]}
-                onPress={() => pickRole('contributor')}
+                onPress={() => pickPath('other')}
               >
                 <View style={styles.roleIcon}>
-                  <Ionicons name="camera-outline" size={22} color={T.brassDeep} />
+                  <Ionicons name="people-outline" size={22} color={T.brassDeep} />
                 </View>
                 <View style={styles.flex}>
                   <Heading style={styles.roleTitle}>
-                    I&apos;m helping organize a family home
+                    I&apos;m setting this up for someone
                   </Heading>
                   <Muted style={styles.roleDesc}>
-                    I&apos;ll photograph and help sort — the owner makes every decision.
+                    Helping a parent or relative get started — the final say will
+                    usually be theirs, not mine.
                   </Muted>
                 </View>
               </Pressable>
@@ -175,15 +215,16 @@ export default function OnboardingScreen() {
               <Pressable
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.roleCard, pressed && styles.pressed]}
-                onPress={() => pickRole('owner')}
+                onPress={() => pickPath('self')}
               >
                 <View style={styles.roleIcon}>
                   <Ionicons name="home-outline" size={22} color={T.brassDeep} />
                 </View>
                 <View style={styles.flex}>
-                  <Heading style={styles.roleTitle}>It&apos;s my home</Heading>
+                  <Heading style={styles.roleTitle}>It&apos;s my home — I&apos;ll decide</Heading>
                   <Muted style={styles.roleDesc}>
-                    I decide what&apos;s kept, passed on, and let go — at my own pace.
+                    I hold the final say on what&apos;s kept, passed on, and let go —
+                    at my own pace.
                   </Muted>
                 </View>
               </Pressable>
@@ -192,8 +233,10 @@ export default function OnboardingScreen() {
 
           {step === 'household' && (
             <>
-              <Label>Step 2 of {steps.length}</Label>
-              <Title style={styles.stepTitle}>Name your household</Title>
+              <Label>Step {stepIndex + 1} of {STEPS.length}</Label>
+              <Title style={styles.stepTitle}>
+                {setupFor === 'other' ? 'Name their home' : 'Name your household'}
+              </Title>
               <Muted style={styles.stepSub}>Just something the family will recognize.</Muted>
 
               <Label>Household name</Label>
@@ -210,57 +253,99 @@ export default function OnboardingScreen() {
                 style={styles.input}
                 value={userName}
                 onChangeText={setUserName}
-                placeholder="Rose"
+                placeholder={setupFor === 'self' ? 'Rose' : 'Sam'}
                 placeholderTextColor={T.inkFaint}
               />
 
               <View style={styles.stepCta}>
-                <Btn label="Continue" big onPress={() => setStep('passkey')} />
+                <Btn label="Continue" big onPress={() => setStep('deciders')} />
               </View>
             </>
           )}
 
-          {step === 'join' && (
+          {step === 'deciders' && (
             <>
-              <Label>Step 2 of {steps.length} · Helper</Label>
-              <Title style={styles.stepTitle}>Join your family</Title>
+              <Label>Step {stepIndex + 1} of {STEPS.length}</Label>
+              <Title style={styles.stepTitle}>Who has the final say?</Title>
               <Muted style={styles.stepSub}>
-                Declutter households open by invitation only.
+                Every home needs one voice that settles it — usually Mum or Dad.
+                Whoever you name here rules on every keep, donate, and let-go.
+                Everyone else helps with photos and notes.
               </Muted>
 
-              <Card style={styles.joinCard}>
-                <Row style={styles.joinRow}>
-                  <Avatar name={householdName} size={44} />
-                  <View style={styles.flex}>
-                    <Heading style={styles.roleTitle}>{householdName}</Heading>
-                    <Muted>
-                      {ownerName} invited you — she approves every member, so nobody
-                      wanders in.
-                    </Muted>
-                  </View>
-                  <Ionicons name="checkmark-circle" size={22} color={T.keep} />
-                </Row>
-              </Card>
+              <Label>Final say in {householdName.trim() || 'this home'}</Label>
 
-              <Label>Your name</Label>
-              <TextInput
-                style={styles.input}
-                value={userName}
-                onChangeText={setUserName}
-                placeholder="Sam"
-                placeholderTextColor={T.inkFaint}
-              />
+              <View style={styles.chipRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: includeMe }}
+                  onPress={() => setIncludeMe((v) => !v)}
+                  style={[styles.chip, includeMe && styles.chipOn]}
+                >
+                  <Ionicons
+                    name={includeMe ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={18}
+                    color={includeMe ? T.brassDeep : T.inkFaint}
+                  />
+                  <Text style={[styles.chipText, includeMe && styles.chipTextOn]}>
+                    Me — {displayName}
+                  </Text>
+                </Pressable>
+
+                {otherDeciders.map((name) => (
+                  <Pressable
+                    key={name}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${name} from the final say`}
+                    onPress={() => removeDecider(name)}
+                    style={[styles.chip, styles.chipOn]}
+                  >
+                    <Text style={[styles.chipText, styles.chipTextOn]}>{name}</Text>
+                    <Ionicons name="close-circle" size={18} color={T.brassDeep} />
+                  </Pressable>
+                ))}
+              </View>
+
+              {setupFor === 'other' && (
+                <Muted style={styles.deciderHint}>
+                  Usually the parent, not the helper — add their name below.
+                </Muted>
+              )}
+
+              <Row style={styles.addRow}>
+                <TextInput
+                  style={[styles.input, styles.flex]}
+                  value={deciderInput}
+                  onChangeText={setDeciderInput}
+                  onSubmitEditing={addDecider}
+                  returnKeyType="done"
+                  placeholder="Add a name — e.g. Rose"
+                  placeholderTextColor={T.inkFaint}
+                  accessibilityLabel="Add someone to the final say"
+                />
+                <Btn label="Add" onPress={addDecider} />
+              </Row>
 
               <View style={styles.stepCta}>
-                <Btn label="Accept the invitation" big onPress={() => setStep('passkey')} />
+                <Btn
+                  label="Continue"
+                  big
+                  disabled={deciderNames.length === 0}
+                  onPress={() => setStep('passkey')}
+                />
               </View>
+              <Muted style={styles.fine}>
+                {deciderNames.length === 0
+                  ? 'Name at least one person to continue.'
+                  : 'More than one person can share the final say. You can change this later.'}
+              </Muted>
             </>
           )}
 
           {step === 'passkey' && (
             <>
               <Label>
-                Step {stepIndex + 1} of {steps.length}
+                Step {stepIndex + 1} of {STEPS.length}
               </Label>
               <Title style={styles.stepTitle}>Your key is your face</Title>
 
@@ -279,11 +364,7 @@ export default function OnboardingScreen() {
               </View>
 
               <View style={styles.stepCta}>
-                <Btn
-                  label="Continue"
-                  big
-                  onPress={() => (role === 'owner' ? setStep('invite') : finish())}
-                />
+                <Btn label="Continue" big onPress={() => setStep('invite')} />
               </View>
               <Muted style={styles.fine}>
                 Prefer a code? A six-digit backup works on shared iPads.
@@ -293,7 +374,7 @@ export default function OnboardingScreen() {
 
           {step === 'invite' && (
             <>
-              <Label>Step {steps.length} of {steps.length}</Label>
+              <Label>Step {STEPS.length} of {STEPS.length}</Label>
               <Title style={styles.stepTitle}>Invite the family</Title>
               <Muted style={styles.stepSub}>
                 They can start adding photos the moment they join.
@@ -303,7 +384,7 @@ export default function OnboardingScreen() {
                 const done = invited.includes(c.name);
                 return (
                   <Card key={c.name} style={styles.contactCard}>
-                    <Row style={styles.joinRow}>
+                    <Row style={styles.contactRow}>
                       <Avatar name={c.name} size={44} color={c.color ?? T.brass} />
                       <View style={styles.flex}>
                         <Text style={styles.contactName}>{c.name}</Text>
@@ -328,14 +409,19 @@ export default function OnboardingScreen() {
                 <Row style={styles.noteRow}>
                   <Ionicons name="lock-closed-outline" size={16} color={T.brass} />
                   <Muted style={styles.flex}>
-                    Invitations require your approval as the owner. Change anyone&apos;s
-                    role — or remove them — whenever you like.
+                    The household opens by invitation only — nobody wanders in.
+                    Roles can be changed, and anyone removed, whenever the family
+                    likes.
                   </Muted>
                 </Row>
               </Well>
 
               <View style={styles.stepCta}>
-                <Btn label="Open my household" big onPress={finish} />
+                <Btn
+                  label={setupFor === 'self' ? 'Open my household' : 'Open the household'}
+                  big
+                  onPress={finish}
+                />
               </View>
             </>
           )}
@@ -462,11 +548,46 @@ const styles = StyleSheet.create({
     color: T.ink,
   },
 
-  /* join (contributor) */
-  joinCard: { marginTop: Spacing.three },
-  joinRow: { gap: Spacing.three },
+  /* final say (deciders) */
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 48,
+    borderWidth: 1.5,
+    borderColor: T.line,
+    borderRadius: Radius.pill,
+    backgroundColor: T.surface,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  chipOn: { borderColor: T.brass, backgroundColor: T.brassTint },
+  chipText: { fontSize: 15, fontWeight: '600', color: T.inkSoft },
+  chipTextOn: { color: T.brassDeep },
+  deciderHint: { marginTop: Spacing.two, fontSize: 13.5 },
+  addRow: { marginTop: Spacing.three, gap: Spacing.two, alignItems: 'stretch' },
+
+  /* invite */
   contactCard: { marginTop: Spacing.two, padding: Spacing.three },
+  contactRow: { gap: Spacing.three },
   contactName: { fontSize: 15, fontWeight: '700', color: T.ink },
+  inviteBtn: {
+    borderWidth: 1,
+    borderColor: T.brass,
+    borderRadius: Radius.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  inviteBtnDone: { borderColor: 'transparent', backgroundColor: T.keepTint },
+  inviteText: { fontSize: 12, fontWeight: '700', color: T.brassDeep },
+  inviteTextDone: { color: T.keep },
+  note: { marginTop: Spacing.three },
+  noteRow: { alignItems: 'flex-start', gap: Spacing.two },
 
   /* passkey */
   glyphWrap: { alignItems: 'center', marginTop: Spacing.four },
@@ -488,18 +609,4 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
     paddingHorizontal: Spacing.two,
   },
-
-  /* invite */
-  inviteBtn: {
-    borderWidth: 1,
-    borderColor: T.brass,
-    borderRadius: Radius.pill,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-  },
-  inviteBtnDone: { borderColor: 'transparent', backgroundColor: T.keepTint },
-  inviteText: { fontSize: 12, fontWeight: '700', color: T.brassDeep },
-  inviteTextDone: { color: T.keep },
-  note: { marginTop: Spacing.three },
-  noteRow: { alignItems: 'flex-start', gap: Spacing.two },
 });
