@@ -20,6 +20,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // Web must read the session from the URL after an OAuth (Google) redirect;
+    // native uses the OTP flow and never has one.
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });

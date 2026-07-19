@@ -15,11 +15,12 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Avatar } from '@/components/child/shared';
+import { Avatar, notify } from '@/components/child/shared';
 import { SETTINGS_ROUTE } from '@/components/settings/routes';
 import { Btn, Card, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
-import { useActiveHousehold, useCanDecide, useMembers, useStore } from '@/lib/store';
+import { sendInviteEmail } from '@/lib/invites';
+import { Member, useActiveHousehold, useCanDecide, useMembers, useStore } from '@/lib/store';
 
 export default function FamilyScreen() {
   const router = useRouter();
@@ -38,6 +39,7 @@ export default function FamilyScreen() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteRel, setInviteRel] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
 
   const deciders = household?.deciderNames ?? [ownerName];
   const createdBy = household?.createdBy ?? ownerName;
@@ -48,11 +50,43 @@ export default function FamilyScreen() {
 
   const sendInvite = () => {
     const name = inviteName.trim();
+    const email = inviteEmail.trim().toLowerCase();
     if (!name) return;
-    inviteMember(name, inviteRel.trim() || undefined);
+    if (!email.includes('@') || !email.includes('.')) {
+      notify(
+        'An email is needed',
+        'The invitation has to reach them somewhere — add their email address.'
+      );
+      return;
+    }
+    inviteMember(name, inviteRel.trim() || undefined, email);
     setInviteName('');
     setInviteRel('');
+    setInviteEmail('');
     setInviteOpen(false);
+  };
+
+  /** Approve → membership flips locally, then the invitation email goes out. */
+  const approveAndSend = async (m: Member) => {
+    approveMember(m.id);
+    if (!m.email) {
+      notify(
+        'Approved — no email on file',
+        `${m.name} is approved, but this invitation has no email address. Add them again with one to send it.`
+      );
+      return;
+    }
+    const res = await sendInviteEmail(m, householdName, userName);
+    if (res.ok) {
+      notify(
+        'Invitation sent',
+        res.alreadyRegistered
+          ? `${m.name} already has a Declutter account — we let them know they're in.`
+          : `${m.name} will get an email at ${m.email} with a link to join.`
+      );
+    } else {
+      notify('Approved, but the email didn’t send', res.error ?? 'Try again from this screen.');
+    }
   };
 
   const viewAsOwner = () => {
@@ -114,6 +148,7 @@ export default function FamilyScreen() {
                   <Text style={styles.memberName}>{m.name}</Text>
                   <Muted style={styles.memberRel}>
                     {m.relationship ? `${m.relationship} · ` : ''}invited by {m.invitedBy}
+                    {m.email ? ` · ${m.email}` : ' · no email yet'}
                   </Muted>
                 </View>
                 {canDecide ? (
@@ -121,7 +156,7 @@ export default function FamilyScreen() {
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Approve ${m.name}`}
-                      onPress={() => approveMember(m.id)}
+                      onPress={() => approveAndSend(m)}
                       style={[styles.actBtn, styles.approveBtn]}
                     >
                       <Text style={styles.approveText}>Approve</Text>
@@ -182,6 +217,16 @@ export default function FamilyScreen() {
           />
           <TextInput
             style={[styles.input, styles.inputGap]}
+            value={inviteEmail}
+            onChangeText={setInviteEmail}
+            placeholder="Their email — where the invite is sent"
+            placeholderTextColor={T.inkFaint}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            returnKeyType="next"
+          />
+          <TextInput
+            style={[styles.input, styles.inputGap]}
             value={inviteRel}
             onChangeText={setInviteRel}
             placeholder="Relationship (optional)"
@@ -191,8 +236,8 @@ export default function FamilyScreen() {
           />
           <Muted style={styles.inviteNote}>
             {canDecide
-              ? 'You hold the final say, so they join once you approve.'
-              : `They'll wait for ${deciders.join(' or ')} to approve.`}
+              ? 'You hold the final say — the email goes out the moment you approve.'
+              : `They'll wait for ${deciders.join(' or ')} to approve; the email is sent on approval.`}
           </Muted>
           <Row style={styles.inviteActions}>
             <View style={styles.flex}>

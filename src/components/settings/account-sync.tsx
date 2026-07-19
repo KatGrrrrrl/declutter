@@ -6,9 +6,10 @@
  * chat, roster, donation destinations — is covered.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { notify } from '@/components/child/shared';
 import { Btn, Card, Label, Muted, Row } from '@/components/ui';
@@ -33,6 +34,21 @@ export function AccountSync() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  /** OAuth sign-in (web). Buttons work once the provider is configured in
+   *  Supabase; until then they explain themselves instead of failing. */
+  const oauth = (provider: 'google' | 'apple') => async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: typeof location !== 'undefined' ? location.origin : undefined },
+    });
+    if (error) {
+      notify(
+        provider === 'google' ? 'Google sign-in isn’t ready yet' : 'Apple sign-in isn’t ready yet',
+        'Email codes work today — or check back after this provider is switched on.'
+      );
+    }
+  };
 
   const sendCode = async () => {
     const addr = email.trim().toLowerCase();
@@ -141,6 +157,31 @@ export function AccountSync() {
               <View style={styles.cta}>
                 <Btn label={busy ? 'Sending…' : 'Email me a code'} onPress={sendCode} disabled={busy} />
               </View>
+              {Platform.OS === 'web' && (
+                <>
+                  <Row style={styles.orRow}>
+                    <View style={styles.orLine} />
+                    <Muted style={styles.orText}>or</Muted>
+                    <View style={styles.orLine} />
+                  </Row>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={oauth('google')}
+                    style={styles.oauthBtn}
+                  >
+                    <Ionicons name="logo-google" size={18} color={T.ink} />
+                    <Text style={styles.oauthText}>Continue with Google</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={oauth('apple')}
+                    style={styles.oauthBtn}
+                  >
+                    <Ionicons name="logo-apple" size={18} color={T.ink} />
+                    <Text style={styles.oauthText}>Continue with Apple</Text>
+                  </Pressable>
+                </>
+              )}
             </>
           ) : (
             <>
@@ -203,9 +244,14 @@ export function AccountSync() {
                 />
               </View>
             )}
-            <Text style={styles.linkText} onPress={signOutAccount}>
-              Sign out of the account (keeps everything on this device)
-            </Text>
+            <View style={styles.cta}>
+              <Btn label="Log out" kind="quiet" onPress={signOutAccount} />
+            </View>
+            <Muted style={styles.signOutNote}>
+              Logging out keeps everything on this device and your backups in
+              your account. To erase this device instead, use &ldquo;Sign out &amp;
+              erase&rdquo; below.
+            </Muted>
           </>
         )}
       </Card>
@@ -238,4 +284,21 @@ const styles = StyleSheet.create({
   },
   signedRow: { marginBottom: Spacing.two },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: T.keep },
+  orRow: { marginTop: Spacing.three, gap: Spacing.two, alignItems: 'center' },
+  orLine: { flex: 1, height: 1, backgroundColor: T.lineSoft },
+  orText: { fontSize: 12 },
+  oauthBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    minHeight: 52,
+    marginTop: Spacing.two,
+    borderRadius: Radius.control,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+  },
+  oauthText: { fontSize: 15, fontWeight: '600', color: T.ink },
+  signOutNote: { marginTop: Spacing.two, fontSize: 12.5, textAlign: 'center' },
 });

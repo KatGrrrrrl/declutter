@@ -47,7 +47,10 @@ type SetupFor = 'other' | 'self';
 interface SetupInvite {
   name: string;
   relationship?: string;
+  email: string;
 }
+
+const looksLikeEmail = (v: string) => v.includes('@') && v.includes('.');
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -65,6 +68,9 @@ export default function OnboardingScreen() {
   const [invites, setInvites] = useState<SetupInvite[]>([]);
   const [inviteName, setInviteName] = useState('');
   const [inviteRel, setInviteRel] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  /** Emails for the auto-invited deciders, keyed by name. */
+  const [deciderEmails, setDeciderEmails] = useState<Record<string, string>>({});
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -106,18 +112,27 @@ export default function OnboardingScreen() {
    * derived from the final-say choice: among the deciders → owner; setting the
    * home up for someone else → contributor.
    */
+  const [inviteError, setInviteError] = useState('');
+
   const addInvite = () => {
     const name = inviteName.trim();
+    const email = inviteEmail.trim().toLowerCase();
     if (!name) return;
+    if (!looksLikeEmail(email)) {
+      setInviteError('Add their email — the invitation has to reach them somewhere.');
+      return;
+    }
+    setInviteError('');
     const exists =
       invites.some((i) => i.name.toLowerCase() === name.toLowerCase()) ||
       deciderNames.some((d) => d.toLowerCase() === name.toLowerCase()) ||
       name.toLowerCase() === displayName.toLowerCase();
     if (!exists) {
-      setInvites((v) => [...v, { name, relationship: inviteRel.trim() || undefined }]);
+      setInvites((v) => [...v, { name, relationship: inviteRel.trim() || undefined, email }]);
     }
     setInviteName('');
     setInviteRel('');
+    setInviteEmail('');
   };
 
   const removeInvite = (name: string) =>
@@ -132,6 +147,7 @@ export default function OnboardingScreen() {
       startEmpty: true,
       deciderNames: deciders,
       invites,
+      deciderEmails,
     });
     router.replace('/');
   };
@@ -400,7 +416,8 @@ export default function OnboardingScreen() {
                 They can start adding photos the moment they join.
               </Muted>
 
-              {/* The decider(s) named earlier are invited automatically. */}
+              {/* The decider(s) named earlier are invited automatically —
+                  but the invitation needs their email to reach them. */}
               {deciderNames
                 .filter((d) => d.toLowerCase() !== displayName.toLowerCase())
                 .map((d) => (
@@ -417,6 +434,15 @@ export default function OnboardingScreen() {
                         </Text>
                       </View>
                     </Row>
+                    <TextInput
+                      style={[styles.input, styles.deciderEmailInput]}
+                      value={deciderEmails[d] ?? ''}
+                      onChangeText={(v) => setDeciderEmails((m) => ({ ...m, [d]: v }))}
+                      placeholder={`${d}'s email — where their invite is sent`}
+                      placeholderTextColor={T.inkFaint}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
                   </Card>
                 ))}
 
@@ -426,7 +452,10 @@ export default function OnboardingScreen() {
                     <Avatar name={c.name} size={44} color={T.donate} />
                     <View style={styles.flex}>
                       <Text style={styles.contactName}>{c.name}</Text>
-                      <Muted>{c.relationship ?? 'Family'}</Muted>
+                      <Muted>
+                        {c.relationship ? `${c.relationship} · ` : ''}
+                        {c.email}
+                      </Muted>
                     </View>
                     <Pressable
                       accessibilityRole="button"
@@ -440,7 +469,7 @@ export default function OnboardingScreen() {
                 </Card>
               ))}
 
-              {/* Add anyone by name — relationship optional. */}
+              {/* Add anyone by name + email — relationship optional. */}
               <Card style={styles.contactCard}>
                 <TextInput
                   style={styles.input}
@@ -452,6 +481,16 @@ export default function OnboardingScreen() {
                 />
                 <TextInput
                   style={[styles.input, styles.inviteRelInput]}
+                  value={inviteEmail}
+                  onChangeText={setInviteEmail}
+                  placeholder="Their email — where the invite is sent"
+                  placeholderTextColor={T.inkFaint}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  returnKeyType="next"
+                />
+                <TextInput
+                  style={[styles.input, styles.inviteRelInput]}
                   value={inviteRel}
                   onChangeText={setInviteRel}
                   placeholder="Relationship (optional) — e.g. Daughter"
@@ -459,6 +498,7 @@ export default function OnboardingScreen() {
                   returnKeyType="done"
                   onSubmitEditing={addInvite}
                 />
+                {inviteError ? <Muted style={styles.inviteErr}>{inviteError}</Muted> : null}
                 <View style={styles.inviteAddRow}>
                   <Btn label="Add family member" kind="quiet" onPress={addInvite} />
                 </View>
@@ -647,6 +687,8 @@ const styles = StyleSheet.create({
   inviteTextDone: { color: T.keep },
   inviteRelInput: { marginTop: Spacing.two },
   inviteAddRow: { marginTop: Spacing.three },
+  deciderEmailInput: { marginTop: Spacing.two },
+  inviteErr: { marginTop: Spacing.two, color: T.toss },
   note: { marginTop: Spacing.three },
   noteRow: { alignItems: 'flex-start', gap: Spacing.two },
 

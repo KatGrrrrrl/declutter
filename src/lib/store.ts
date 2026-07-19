@@ -80,6 +80,8 @@ export interface Member {
   id: string;
   name: string;
   relationship?: string;
+  /** Where the invitation is delivered. Required for new invites. */
+  email?: string;
   status: MemberStatus;
   invitedBy: string;
   invitedAt: string;
@@ -155,10 +157,12 @@ interface AppState {
     /** Final-say holders for the new household; defaults to the creator. */
     deciderNames?: string[];
     /** People invited during setup (deciders are auto-included). */
-    invites?: { name: string; relationship?: string }[];
+    invites?: { name: string; relationship?: string; email?: string }[];
+    /** Emails for the auto-invited deciders, keyed by decider name. */
+    deciderEmails?: Record<string, string>;
   }) => void;
   /** Invite a family member (any role may invite; a decider approves). */
-  inviteMember: (name: string, relationship?: string) => void;
+  inviteMember: (name: string, relationship?: string, email?: string) => void;
   /** Decider actions on pending invitations. */
   approveMember: (id: string) => void;
   declineMember: (id: string) => void;
@@ -327,7 +331,7 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       ...initial,
 
-      completeOnboarding: ({ role, householdName, userName, startEmpty, deciderNames, invites }) =>
+      completeOnboarding: ({ role, householdName, userName, startEmpty, deciderNames, invites, deciderEmails }) =>
         set(() => {
           const id = uid();
           const now = new Date().toISOString();
@@ -338,7 +342,7 @@ export const useStore = create<AppState>()(
           const roster: Member[] = [
             { id: uid(), name: userName, status: 'active', invitedBy: userName, invitedAt: now },
           ];
-          const addInvite = (name: string, relationship?: string) => {
+          const addInvite = (name: string, relationship?: string, email?: string) => {
             const trimmed = name.trim();
             if (!trimmed || roster.some((m) => m.name.toLowerCase() === trimmed.toLowerCase()))
               return;
@@ -346,13 +350,14 @@ export const useStore = create<AppState>()(
               id: uid(),
               name: trimmed,
               relationship,
+              email: email?.trim().toLowerCase() || undefined,
               status: 'invited',
               invitedBy: userName,
               invitedAt: now,
             });
           };
-          deciders.forEach((d) => addInvite(d, 'Final say'));
-          invites?.forEach((i) => addInvite(i.name, i.relationship));
+          deciders.forEach((d) => addInvite(d, 'Final say', deciderEmails?.[d]));
+          invites?.forEach((i) => addInvite(i.name, i.relationship, i.email));
           // A real household starts empty: no sample items, no sample heirs.
           const fresh = startEmpty
             ? {
@@ -377,7 +382,7 @@ export const useStore = create<AppState>()(
           return { onboarded: true, role, householdName, userName, ...fresh };
         }),
 
-      inviteMember: (name, relationship) => {
+      inviteMember: (name, relationship, email) => {
         const s = get();
         const trimmed = name.trim();
         if (!trimmed) return;
@@ -389,6 +394,7 @@ export const useStore = create<AppState>()(
               id: uid(),
               name: trimmed,
               relationship,
+              email: email?.trim().toLowerCase() || undefined,
               status: 'invited',
               invitedBy: s.userName,
               invitedAt: new Date().toISOString(),

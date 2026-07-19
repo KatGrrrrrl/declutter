@@ -182,6 +182,7 @@ export async function backupHousehold(input: BackupInput): Promise<BackupResult>
         status: m.status,
         is_decider: input.deciderNames.includes(m.name),
         invited_by_name: m.invitedBy,
+        invited_email: m.email ?? null,
       }));
       const { error } = await supabase.from('roster_entries').insert(rows);
       if (error) throw error;
@@ -290,6 +291,7 @@ export async function restoreHousehold(): Promise<RestoreResult> {
       id: r.id,
       name: r.name,
       relationship: r.relationship ?? undefined,
+      email: r.invited_email ?? undefined,
       status: r.status,
       invitedBy: r.invited_by_name ?? '',
       invitedAt: r.created_at,
