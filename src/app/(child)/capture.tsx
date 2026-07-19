@@ -22,7 +22,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ROOMS } from '@/components/child/shared';
-import { Body, Btn, Card, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
+import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { useStore } from '@/lib/store';
 
@@ -277,7 +277,14 @@ function WebCapture() {
 /* ================= styles ================= */
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: T.ground },
+  // Capped + centered so the viewfinder stays phone-shaped on desktop.
+  screen: {
+    flex: 1,
+    backgroundColor: T.ground,
+    width: '100%',
+    maxWidth: CONTENT_MAX,
+    alignSelf: 'center',
+  },
   flex: { flex: 1 },
 
   /* permission */

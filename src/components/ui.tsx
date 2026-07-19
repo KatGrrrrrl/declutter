@@ -21,8 +21,16 @@ import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 
 import type { Decision } from '@/lib/store';
 
+/** Max width of the app column — roughly a large phone. */
+export const CONTENT_MAX = 460;
+
 /* ---------- layout ---------- */
 
+/**
+ * Every screen renders inside a centered column capped at CONTENT_MAX. On
+ * phones that's a no-op (viewport is narrower); on desktop it keeps the
+ * app phone-shaped instead of stretching across the monitor.
+ */
 export function Screen({
   children,
   scroll = true,
@@ -34,13 +42,13 @@ export function Screen({
       {scroll ? (
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[inner, styles.scrollContent]}
+          contentContainerStyle={[styles.column, inner, styles.scrollContent]}
           showsVerticalScrollIndicator={false}
         >
           {children}
         </ScrollView>
       ) : (
-        <View style={[styles.flex, inner]}>{children}</View>
+        <View style={[styles.flex, styles.columnFill, inner]}>{children}</View>
       )}
     </SafeAreaView>
   );
@@ -201,6 +209,9 @@ export function PhotoBox({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: T.ground },
   flex: { flex: 1 },
+  // Centered, phone-width column — caps the layout on desktop, no-op on phones.
+  column: { width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' },
+  columnFill: { width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' },
   padded: { paddingHorizontal: Spacing.three },
   scrollContent: { paddingBottom: Spacing.six },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },

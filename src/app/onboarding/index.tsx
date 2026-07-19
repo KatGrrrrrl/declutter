@@ -24,7 +24,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/child/shared';
-import { Body, Btn, Card, Heading, Label, Muted, Row, Title, Well } from '@/components/ui';
+import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Row, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { Role, useStore } from '@/lib/store';
 
@@ -332,6 +332,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.five,
+    width: '100%',
+    maxWidth: CONTENT_MAX,
+    alignSelf: 'center',
   },
   kicker: {
     fontSize: 11,
@@ -357,8 +360,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.three,
   },
-  // Full width on phones; capped so the button doesn't stretch on desktop.
-  heroCta: { alignSelf: 'center', width: '100%', maxWidth: 380, marginTop: Spacing.five },
+  heroCta: { alignSelf: 'stretch', marginTop: Spacing.five },
   fine: { textAlign: 'center', marginTop: Spacing.three, fontSize: 11.5 },
 
   /* stepped chrome */
@@ -381,7 +383,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
     alignSelf: 'center',
     width: '100%',
-    maxWidth: 520,
+    maxWidth: CONTENT_MAX,
   },
   stepTitle: { marginTop: Spacing.one },
   stepSub: { marginBottom: Spacing.two },

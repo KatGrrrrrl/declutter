@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
+import { CONTENT_MAX } from '@/components/ui';
 import { T } from '@/constants/theme';
 
 export default function ParentTabs() {
@@ -10,7 +11,14 @@ export default function ParentTabs() {
         headerShown: false,
         tabBarActiveTintColor: T.heading,
         tabBarInactiveTintColor: T.inkFaint,
-        tabBarStyle: { backgroundColor: T.surface, borderTopColor: T.line },
+        tabBarStyle: {
+          backgroundColor: T.surface,
+          borderTopColor: T.line,
+          // Match the centered app column on desktop.
+          width: '100%',
+          maxWidth: CONTENT_MAX,
+          alignSelf: 'center',
+        },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
     >
