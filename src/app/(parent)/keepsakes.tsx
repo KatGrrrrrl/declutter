@@ -11,13 +11,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar, VISIBILITY_META, formatDuration } from '@/components/parent/bits';
 import { Heading, Muted, PhotoBox, Row, Screen, Tag, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
-import { selectKeepsakes, useStore } from '@/lib/store';
+import { useKeepsakes, useStore } from '@/lib/store';
 
 import type { Item } from '@/lib/store';
 
 export default function KeepsakesScreen() {
   const router = useRouter();
-  const keepsakes = useStore(selectKeepsakes);
+  const keepsakes = useKeepsakes();
   const people = useStore((s) => s.people);
 
   const heirName = (item: Item) =>

@@ -17,7 +17,7 @@ import {
 } from '@/components/parent/swipe-card';
 import { DECISION_META, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
-import { selectQueue, useStore } from '@/lib/store';
+import { useQueue, useStore } from '@/lib/store';
 
 const UNDO_MS = 6000;
 
@@ -28,7 +28,7 @@ function successHaptic() {
 
 export default function DecideScreen() {
   const router = useRouter();
-  const queue = useStore(selectQueue);
+  const queue = useQueue();
   const decide = useStore((s) => s.decide);
   const undoDecision = useStore((s) => s.undoDecision);
 

@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar, notify } from '@/components/child/shared';
+import { SETTINGS_ROUTE } from '@/components/settings/routes';
 import { Btn, Card, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Spacing, T } from '@/constants/theme';
 import { useStore } from '@/lib/store';
@@ -102,6 +103,15 @@ export default function FamilyScreen() {
         />
       </View>
 
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push(SETTINGS_ROUTE)}
+        style={styles.settingsBtn}
+      >
+        <Ionicons name="settings-outline" size={17} color={T.inkSoft} />
+        <Text style={styles.settingsText}>Settings</Text>
+      </Pressable>
+
       {/* quiet demo control */}
       <Pressable accessibilityRole="button" onPress={viewAsOwner} style={styles.demoBtn}>
         <Ionicons name="swap-horizontal-outline" size={14} color={T.inkFaint} />
@@ -189,6 +199,18 @@ const styles = StyleSheet.create({
 
   pendingWell: { marginTop: Spacing.three },
   inviteBtn: { marginTop: Spacing.four },
+
+  settingsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    minHeight: 52,
+    marginTop: Spacing.four,
+    borderTopWidth: 1,
+    borderTopColor: T.lineSoft,
+  },
+  settingsText: { fontSize: 16, fontWeight: '700', color: T.ink },
 
   demoBtn: {
     flexDirection: 'row',

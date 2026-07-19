@@ -7,6 +7,7 @@
 import { Image } from 'expo-image';
 import { PropsWithChildren } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,6 +24,17 @@ import type { Decision } from '@/lib/store';
 
 /** Max width of the app column — roughly a large phone. */
 export const CONTENT_MAX = 460;
+
+/**
+ * Width cap for the tab bar — WEB ONLY. On native the tab bar is positioned
+ * absolutely and honors the device safe area; applying maxWidth/alignSelf
+ * there detaches it and it disappears off-screen (notably on iPhones with a
+ * home indicator). Never apply this on native.
+ */
+export const TAB_BAR_WIDTH_CAP =
+  Platform.OS === 'web'
+    ? ({ width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' } as const)
+    : ({} as const);
 
 /* ---------- layout ---------- */
 

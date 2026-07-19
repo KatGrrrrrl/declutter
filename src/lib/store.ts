@@ -10,6 +10,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 
 export type Role = 'owner' | 'contributor';
 export type Decision = 'undecided' | 'keep' | 'donate' | 'toss';
@@ -52,6 +53,18 @@ export interface Item {
   createdAt: string;
 }
 
+/** Free tier limits — see PLAN_LIMITS. Paid removes both. */
+export const FREE_ITEM_LIMIT = 50;
+export const FREE_HOUSEHOLD_LIMIT = 1;
+
+export type Plan = 'free' | 'pro';
+
+export interface Household {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 interface AppState {
   // profile / onboarding
   onboarded: boolean;
@@ -60,15 +73,40 @@ interface AppState {
   userName: string;
   householdName: string;
 
+  /** All households this user owns; free tier allows one. */
+  households: Household[];
+  /** Which household the app is currently showing. */
+  activeHouseholdId: string;
+  /** Subscription state. Real entitlement comes from RevenueCat later. */
+  plan: Plan;
+  /** True while the seeded sample household is loaded. */
+  isDemo: boolean;
+
   people: Person[];
   items: Item[];
 
   // actions
-  completeOnboarding: (opts: { role: Role; householdName: string; userName: string }) => void;
+  completeOnboarding: (opts: {
+    role: Role;
+    householdName: string;
+    userName: string;
+    startEmpty?: boolean;
+  }) => void;
+  /** Wipe everything and return to the welcome screen (the "log out"). */
+  signOut: () => void;
+  /** Replace demo content with an empty household of the same name. */
+  startFresh: (householdName?: string) => void;
+  addHousehold: (name: string) => { ok: boolean; reason?: 'limit' };
+  switchHousehold: (id: string) => void;
+  setPlan: (plan: Plan) => void;
   setRole: (role: Role) => void; // demo-mode view switch
   decide: (id: string, decision: Decision) => void;
   undoDecision: (id: string) => void;
-  addItem: (item: Omit<Item, 'id' | 'createdAt' | 'decision' | 'heirVisibility' | 'isSentimental' | 'tags'> & Partial<Item>) => void;
+  /** Returns ok:false when the free item limit is reached. */
+  addItem: (
+    item: Omit<Item, 'id' | 'createdAt' | 'decision' | 'heirVisibility' | 'isSentimental' | 'tags'> &
+      Partial<Item>
+  ) => { ok: boolean; reason?: 'limit' };
   updateItem: (id: string, patch: Partial<Item>) => void;
   setStory: (id: string, story: Story) => void;
   assignHeir: (id: string, personId: string | undefined, visibility: HeirVisibility) => void;
@@ -141,23 +179,87 @@ const seedItems: Item[] = [
   },
 ];
 
+const DEMO_HOUSEHOLD_ID = 'h-demo';
+
+/** Pristine app state — the seeded sample household, pre-onboarding. */
 const initial = {
   onboarded: false,
   role: 'owner' as Role,
   ownerName: 'Rose',
   userName: 'Rose',
   householdName: 'The Lakehouse',
+  households: [
+    { id: DEMO_HOUSEHOLD_ID, name: 'The Lakehouse', createdAt: '2026-06-27T09:00:00Z' },
+  ] as Household[],
+  activeHouseholdId: DEMO_HOUSEHOLD_ID,
+  plan: 'free' as Plan,
+  isDemo: true,
   people: seedPeople,
   items: seedItems,
 };
 
 export const useStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initial,
 
-      completeOnboarding: ({ role, householdName, userName }) =>
-        set({ onboarded: true, role, householdName, userName }),
+      completeOnboarding: ({ role, householdName, userName, startEmpty }) =>
+        set(() => {
+          const id = uid();
+          // A real household starts empty: no sample items, no sample heirs.
+          const fresh = startEmpty
+            ? {
+                items: [] as Item[],
+                people: [] as Person[],
+                isDemo: false,
+                households: [
+                  { id, name: householdName, createdAt: new Date().toISOString() },
+                ] as Household[],
+                activeHouseholdId: id,
+                ownerName: role === 'owner' ? userName : 'Rose',
+              }
+            : {};
+          return { onboarded: true, role, householdName, userName, ...fresh };
+        }),
+
+      signOut: () => set({ ...initial }),
+
+      startFresh: (householdName) =>
+        set((s) => {
+          const id = uid();
+          const name = householdName ?? s.householdName;
+          return {
+            items: [],
+            people: [],
+            isDemo: false,
+            householdName: name,
+            households: [{ id, name, createdAt: new Date().toISOString() }],
+            activeHouseholdId: id,
+            ownerName: s.role === 'owner' ? s.userName : s.ownerName,
+          };
+        }),
+
+      addHousehold: (name) => {
+        const s = get();
+        if (s.plan === 'free' && s.households.length >= FREE_HOUSEHOLD_LIMIT) {
+          return { ok: false, reason: 'limit' as const };
+        }
+        const id = uid();
+        set({
+          households: [...s.households, { id, name, createdAt: new Date().toISOString() }],
+          activeHouseholdId: id,
+          householdName: name,
+        });
+        return { ok: true };
+      },
+
+      switchHousehold: (id) =>
+        set((s) => {
+          const h = s.households.find((x) => x.id === id);
+          return h ? { activeHouseholdId: id, householdName: h.name } : {};
+        }),
+
+      setPlan: (plan) => set({ plan }),
 
       setRole: (role) => set({ role }),
 
@@ -175,8 +277,12 @@ export const useStore = create<AppState>()(
           ),
         })),
 
-      addItem: (item) =>
-        set((s) => ({
+      addItem: (item) => {
+        const s = get();
+        if (s.plan === 'free' && s.items.length >= FREE_ITEM_LIMIT) {
+          return { ok: false, reason: 'limit' as const };
+        }
+        set({
           items: [
             {
               decision: 'undecided',
@@ -189,7 +295,9 @@ export const useStore = create<AppState>()(
             } as Item,
             ...s.items,
           ],
-        })),
+        });
+        return { ok: true };
+      },
 
       updateItem: (id, patch) =>
         set((s) => ({
@@ -225,7 +333,14 @@ export const useStore = create<AppState>()(
   )
 );
 
-/** Undecided queue for the parent's Decide deck (oldest first). */
+/**
+ * Undecided queue for the parent's Decide deck (oldest first).
+ *
+ * NOTE: these array selectors build a NEW array every call. Consume them ONLY
+ * through the useShallow-wrapped hooks below — a raw useStore(selectQueue)
+ * trips Zustand v5's "getSnapshot should be cached" infinite loop (fatal on
+ * React web, silently tolerated by Hermes on device).
+ */
 export const selectQueue = (s: AppState) =>
   s.items.filter((i) => i.decision === 'undecided');
 
@@ -234,3 +349,36 @@ export const selectKeepsakes = (s: AppState) =>
   s.items
     .filter((i) => i.decision === 'keep')
     .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''));
+
+/** Stable-reference hooks — always use these in components. */
+export const useQueue = () => useStore(useShallow(selectQueue));
+export const useKeepsakes = () => useStore(useShallow(selectKeepsakes));
+
+/**
+ * Hook form of selectEntitlement. selectEntitlement builds a NEW object every
+ * call, which Zustand v5's useSyncExternalStore rejects ("getSnapshot should
+ * be cached" → infinite render loop). useShallow compares field-by-field so a
+ * new reference is only produced when a value actually changes. Always use
+ * THIS in components; call selectEntitlement(state) directly only on a state
+ * object you already hold.
+ */
+export const useEntitlement = () => useStore(useShallow(selectEntitlement));
+
+/** Plan limits + usage, for meters and upgrade prompts. */
+export const selectEntitlement = (s: AppState) => {
+  const pro = s.plan === 'pro';
+  const itemsUsed = s.items.length;
+  const householdsUsed = s.households.length;
+  return {
+    pro,
+    itemsUsed,
+    itemLimit: pro ? Infinity : FREE_ITEM_LIMIT,
+    itemsLeft: pro ? Infinity : Math.max(0, FREE_ITEM_LIMIT - itemsUsed),
+    atItemLimit: !pro && itemsUsed >= FREE_ITEM_LIMIT,
+    /** Warn as they approach the cap so the wall is never a surprise. */
+    nearItemLimit: !pro && itemsUsed >= FREE_ITEM_LIMIT - 10 && itemsUsed < FREE_ITEM_LIMIT,
+    householdsUsed,
+    householdLimit: pro ? Infinity : FREE_HOUSEHOLD_LIMIT,
+    canAddHousehold: pro || householdsUsed < FREE_HOUSEHOLD_LIMIT,
+  };
+};

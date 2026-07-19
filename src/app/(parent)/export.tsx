@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { SETTINGS_ROUTE } from '@/components/settings/routes';
 import { Btn, Card, Heading, Muted, Row, Screen, Title } from '@/components/ui';
 import { Spacing, T } from '@/constants/theme';
 import { useStore } from '@/lib/store';
@@ -141,6 +142,15 @@ export default function ExportScreen() {
       {/* Demo control — preview the helper experience */}
       <Pressable
         accessibilityRole="button"
+        onPress={() => router.push(SETTINGS_ROUTE)}
+        style={({ pressed }) => [styles.demoRow, pressed && styles.pressed]}
+      >
+        <Ionicons name="settings-outline" size={17} color={T.inkSoft} />
+        <Text style={styles.settingsText}>Settings</Text>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
         onPress={viewAsHelper}
         style={({ pressed }) => [styles.demoRow, pressed && styles.pressed]}
       >
@@ -211,6 +221,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   demoText: { fontSize: 15, fontWeight: '600', color: T.inkSoft },
+  settingsText: { fontSize: 16, fontWeight: '700', color: T.ink },
   demoNote: { textAlign: 'center', fontSize: 12.5, marginTop: 2 },
   pressed: { opacity: 0.7 },
 });

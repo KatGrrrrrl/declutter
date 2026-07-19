@@ -21,10 +21,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ROOMS } from '@/components/child/shared';
+import { notify, ROOMS } from '@/components/child/shared';
+import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
-import { useStore } from '@/lib/store';
+import { useEntitlement, useStore } from '@/lib/store';
 
 export default function CaptureScreen() {
   if (Platform.OS === 'web') return <WebCapture />;
@@ -37,6 +38,7 @@ function NativeCapture() {
   const [permission, requestPermission] = useCameraPermissions();
   const addItem = useStore((s) => s.addItem);
   const userName = useStore((s) => s.userName);
+  const ent = useEntitlement();
 
   const cameraRef = useRef<CameraView>(null);
   const [room, setRoom] = useState<string>(ROOMS[0]);
@@ -45,6 +47,18 @@ function NativeCapture() {
   const [pendingUri, setPendingUri] = useState<string | null>(null);
   const [title, setTitle] = useState('New item');
   const [busy, setBusy] = useState(false);
+
+  // Free plan is full: show the explainer instead of a viewfinder that can't
+  // save anything (and don't prompt for camera permission we can't use).
+  if (ent.atItemLimit) {
+    return (
+      <Screen>
+        <Label>Batch capture</Label>
+        <Title>Capture</Title>
+        <LimitReachedCard />
+      </Screen>
+    );
+  }
 
   if (!permission) {
     return (
@@ -96,13 +110,21 @@ function NativeCapture() {
 
   const saveItem = () => {
     if (!pendingUri) return;
-    addItem({
+    const res = addItem({
       title: title.trim() || 'New item',
       room,
       photoUri: pendingUri,
       addedBy: userName,
       tags: [],
     });
+    // Never fail silently: the shot they just took wasn't saved.
+    if (!res.ok) {
+      notify(
+        'Free plan is full',
+        `You've catalogued ${ent.itemLimit} items. Upgrade to Declutter Pro to keep adding — nothing already saved is affected.`
+      );
+      return;
+    }
     setShots((s) => [pendingUri, ...s].slice(0, 5));
     setCount((n) => n + 1);
     setPendingUri(null);
@@ -195,6 +217,8 @@ function NativeCapture() {
         </View>
       )}
 
+      {ent.nearItemLimit && <ItemQuotaMeter style={styles.quota} />}
+
       <Text style={styles.batchNote}>
         <Text style={styles.batchNoteStrong}>Batch mode</Text> · keep shooting, decide
         later.
@@ -208,26 +232,48 @@ function NativeCapture() {
 function WebCapture() {
   const addItem = useStore((s) => s.addItem);
   const userName = useStore((s) => s.userName);
+  const ent = useEntitlement();
 
   const [room, setRoom] = useState<string>(ROOMS[0]);
   const [title, setTitle] = useState('');
   const [added, setAdded] = useState(0);
 
   const add = () => {
-    addItem({
+    const res = addItem({
       title: title.trim() || 'New item',
       room,
       addedBy: userName,
       tags: [],
     });
+    // Refused at the free cap — say so rather than clearing the field silently.
+    if (!res.ok) {
+      notify(
+        'Free plan is full',
+        `You've catalogued ${ent.itemLimit} items. Upgrade to Declutter Pro to keep adding — nothing already saved is affected.`
+      );
+      return;
+    }
     setTitle('');
     setAdded((n) => n + 1);
   };
+
+  // At the cap the manual-add form is replaced by the explainer.
+  if (ent.atItemLimit) {
+    return (
+      <Screen>
+        <Label>Batch capture</Label>
+        <Title>Capture</Title>
+        <LimitReachedCard />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
       <Label>Batch capture</Label>
       <Title>Capture</Title>
+
+      {ent.nearItemLimit && <ItemQuotaMeter style={styles.webQuota} />}
 
       <Card style={styles.webCard}>
         <View style={styles.permGlyph}>
@@ -277,6 +323,7 @@ function WebCapture() {
 /* ================= styles ================= */
 
 const styles = StyleSheet.create({
+  quota: { marginHorizontal: Spacing.three, marginBottom: Spacing.two },
   // Capped + centered so the viewfinder stays phone-shaped on desktop.
   screen: {
     flex: 1,
@@ -416,6 +463,7 @@ const styles = StyleSheet.create({
   discardText: { fontSize: 13, fontWeight: '600', color: T.inkSoft },
 
   /* web fallback */
+  webQuota: { marginTop: Spacing.two },
   webCard: { marginTop: Spacing.two, alignItems: 'center' },
   webChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.three },
   webChip: {

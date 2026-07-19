@@ -10,6 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { ItemQuotaMeter } from '@/components/limit-banner';
 import { Heading, Label, Muted, PhotoBox, Screen, DecisionPill, Title } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
 import { Decision, useStore } from '@/lib/store';
@@ -58,6 +59,9 @@ export default function InventoryScreen() {
         {items.length} items{room ? ` · ${room}` : ''}
       </Label>
       <Title>Inventory</Title>
+
+      {/* free-plan usage; renders nothing on Pro */}
+      <ItemQuotaMeter style={styles.quota} />
 
       {/* search well */}
       <View style={styles.search}>
@@ -163,6 +167,8 @@ export default function InventoryScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+
+  quota: { marginTop: Spacing.one, marginBottom: Spacing.two },
 
   search: {
     flexDirection: 'row',

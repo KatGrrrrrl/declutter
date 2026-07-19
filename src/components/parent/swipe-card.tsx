@@ -61,23 +61,23 @@ export function SwipeCard({
 
   const commit = (decision: SwipeDecision) => onCommit(item.id, decision);
 
+  // Button path: animate the card off-screen for the visual, but commit on a
+  // plain JS timer rather than Reanimated's withTiming completion callback —
+  // that callback is unreliable on web, and the tap-a-button flow is the
+  // elder-friendly primary interaction, so it must always land. The swipe
+  // (gesture) path below keeps its own animation-driven commit.
   const fling = (decision: SwipeDecision) => {
     const offX = width * 1.3;
     if (decision === 'keep') {
       ty.value = withTiming(40, { duration: FLING_MS });
-      tx.value = withTiming(offX, { duration: FLING_MS }, (finished) => {
-        if (finished) runOnJS(commit)('keep');
-      });
+      tx.value = withTiming(offX, { duration: FLING_MS });
     } else if (decision === 'donate') {
       ty.value = withTiming(40, { duration: FLING_MS });
-      tx.value = withTiming(-offX, { duration: FLING_MS }, (finished) => {
-        if (finished) runOnJS(commit)('donate');
-      });
+      tx.value = withTiming(-offX, { duration: FLING_MS });
     } else {
-      ty.value = withTiming(height, { duration: FLING_MS }, (finished) => {
-        if (finished) runOnJS(commit)('toss');
-      });
+      ty.value = withTiming(height, { duration: FLING_MS });
     }
+    setTimeout(() => commit(decision), FLING_MS);
   };
 
   useImperativeHandle(ref, () => ({ fling }));

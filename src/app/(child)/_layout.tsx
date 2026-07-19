@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
 
-import { CONTENT_MAX } from '@/components/ui';
+import { TAB_BAR_WIDTH_CAP } from '@/components/ui';
 import { T } from '@/constants/theme';
 
 export default function ChildTabs() {
@@ -14,12 +15,10 @@ export default function ChildTabs() {
         tabBarStyle: {
           backgroundColor: T.surface,
           borderTopColor: T.line,
-          // Match the centered app column on desktop.
-          width: '100%',
-          maxWidth: CONTENT_MAX,
-          alignSelf: 'center',
+          ...TAB_BAR_WIDTH_CAP,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarHideOnKeyboard: Platform.OS === 'android',
       }}
     >
       <Tabs.Screen

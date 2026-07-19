@@ -64,11 +64,27 @@ export default function OnboardingScreen() {
     setStep(r === 'owner' ? 'household' : 'join');
   };
 
+  /**
+   * A real sign-up starts with an EMPTY household — no sample items, no sample
+   * heirs. The seeded demo content is now opt-in from the welcome screen.
+   */
   const finish = () => {
     completeOnboarding({
       role,
       householdName: householdName.trim() || 'The Lakehouse',
       userName: userName.trim() || (role === 'owner' ? 'Rose' : 'Sam'),
+      startEmpty: true,
+    });
+    router.replace('/');
+  };
+
+  /** Opt-in tour: keeps the seeded Lakehouse so the app can be explored. */
+  const exploreDemo = () => {
+    completeOnboarding({
+      role: 'owner',
+      householdName: 'The Lakehouse',
+      userName: 'Rose',
+      startEmpty: false,
     });
     router.replace('/');
   };
@@ -91,6 +107,13 @@ export default function OnboardingScreen() {
           <View style={styles.heroCta}>
             <Btn label="Get started" big onPress={() => setStep('role')} />
           </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={exploreDemo}
+            style={({ pressed }) => [styles.demoLink, pressed && styles.pressed]}
+          >
+            <Text style={styles.demoLinkText}>Explore with sample items</Text>
+          </Pressable>
           <Muted style={styles.fine}>One household, the whole family. No ads, ever.</Muted>
         </View>
       </SafeAreaView>
@@ -361,6 +384,19 @@ const styles = StyleSheet.create({
     marginTop: Spacing.three,
   },
   heroCta: { alignSelf: 'stretch', marginTop: Spacing.five },
+  demoLink: {
+    alignSelf: 'stretch',
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.one,
+  },
+  demoLinkText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: T.brassDeep,
+    textDecorationLine: 'underline',
+  },
   fine: { textAlign: 'center', marginTop: Spacing.three, fontSize: 11.5 },
 
   /* stepped chrome */
