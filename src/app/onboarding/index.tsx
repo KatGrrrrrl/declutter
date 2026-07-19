@@ -357,7 +357,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.three,
   },
-  heroCta: { alignSelf: 'stretch', marginTop: Spacing.five },
+  // Full width on phones; capped so the button doesn't stretch on desktop.
+  heroCta: { alignSelf: 'center', width: '100%', maxWidth: 380, marginTop: Spacing.five },
   fine: { textAlign: 'center', marginTop: Spacing.three, fontSize: 11.5 },
 
   /* stepped chrome */
@@ -374,7 +375,14 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: T.line },
   dotOn: { backgroundColor: T.brass },
 
-  body: { paddingHorizontal: Spacing.four, paddingBottom: Spacing.six },
+  // Capped + centered so steps (and their buttons) don't stretch on desktop.
+  body: {
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.six,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 520,
+  },
   stepTitle: { marginTop: Spacing.one },
   stepSub: { marginBottom: Spacing.two },
   stepCta: { marginTop: Spacing.five },
