@@ -11,8 +11,10 @@
 /*
  * Mobile web: 100vh includes the area hidden behind the browser's own bars,
  * which pushed the bottom tab bar (and bottom buttons) off-screen. dvh tracks
- * the *visible* viewport; the safe-area padding keeps the tab bar above the
- * iPhone home indicator when installed to the home screen.
+ * the *visible* viewport. The body safe-area padding lifts the whole shell
+ * above the iPhone home indicator — it only takes effect because
+ * app/+html.tsx declares viewport-fit=cover (without that, iOS reports the
+ * insets as 0).
  */
 @supports (height: 100dvh) {
   html,
@@ -21,6 +23,7 @@
     height: 100dvh;
   }
 }
-#root > div {
+body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  background-color: #ffffff;
 }

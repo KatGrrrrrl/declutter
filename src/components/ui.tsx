@@ -27,14 +27,24 @@ import type { Decision } from '@/lib/store';
 export const CONTENT_MAX = 460;
 
 /**
- * Width cap for the tab bar — WEB ONLY. On native the tab bar is positioned
- * absolutely and honors the device safe area; applying maxWidth/alignSelf
- * there detaches it and it disappears off-screen (notably on iPhones with a
- * home indicator). Never apply this on native.
+ * Web-only tab bar adjustments. On native the tab bar is positioned
+ * absolutely and honors the device safe area natively; applying any of this
+ * there detaches it and it disappears off-screen. On web we (a) cap width to
+ * the app column, and (b) give the bar explicit height + bottom padding so
+ * labels clear Safari's toolbar / the iPhone home indicator (the page shell
+ * additionally pads by env(safe-area-inset-bottom) — see global.css and
+ * app/+html.tsx's viewport-fit=cover).
  */
 export const TAB_BAR_WIDTH_CAP =
   Platform.OS === 'web'
-    ? ({ width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' } as const)
+    ? ({
+        width: '100%',
+        maxWidth: CONTENT_MAX,
+        alignSelf: 'center',
+        height: 62,
+        paddingBottom: 8,
+        paddingTop: 4,
+      } as const)
     : ({} as const);
 
 /* ---------- layout ---------- */
