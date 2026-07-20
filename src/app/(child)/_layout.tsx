@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
-import { TAB_BAR_WIDTH_CAP } from '@/components/ui';
+import { TAB_BAR_LABEL, TAB_BAR_WIDTH_CAP } from '@/components/ui';
 import { T } from '@/constants/theme';
 
 export default function ChildTabs() {
@@ -17,7 +17,7 @@ export default function ChildTabs() {
           borderTopColor: T.line,
           ...TAB_BAR_WIDTH_CAP,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: TAB_BAR_LABEL,
         tabBarHideOnKeyboard: Platform.OS === 'android',
       }}
     >

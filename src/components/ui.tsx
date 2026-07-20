@@ -41,11 +41,23 @@ export const TAB_BAR_WIDTH_CAP =
         width: '100%',
         maxWidth: CONTENT_MAX,
         alignSelf: 'center',
-        height: 62,
-        paddingBottom: 8,
-        paddingTop: 4,
+        // Tall enough for icon + label INCLUDING descenders (the "y" in
+        // "Family" was being clipped at 62); paddingBottom keeps the labels
+        // off the very edge.
+        height: 76,
+        paddingTop: 6,
+        paddingBottom: 12,
       } as const)
     : ({} as const);
+
+/**
+ * Tab label style. The explicit lineHeight is the fix for clipped descenders
+ * on web: without it the line box hugs the cap height and "y"/"p" get cut.
+ */
+export const TAB_BAR_LABEL =
+  Platform.OS === 'web'
+    ? ({ fontSize: 11, fontWeight: '600', lineHeight: 16, paddingBottom: 2 } as const)
+    : ({ fontSize: 11, fontWeight: '600' } as const);
 
 /* ---------- layout ---------- */
 
