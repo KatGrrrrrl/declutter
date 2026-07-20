@@ -32,6 +32,7 @@ import {
 
 import { DonateTo } from '@/components/donate-to';
 import { ItemChat } from '@/components/item-chat';
+import { ROOMS } from '@/components/child/shared';
 import { Avatar, VISIBILITY_META, formatDuration } from '@/components/parent/bits';
 import {
   Btn,
@@ -66,10 +67,54 @@ export default function ItemDetailScreen() {
   const setStory = useStore((s) => s.setStory);
   const assignHeir = useStore((s) => s.assignHeir);
   const updateItem = useStore((s) => s.updateItem);
+  const removeItem = useStore((s) => s.removeItem);
   const requestItem = useStore((s) => s.requestItem);
 
   const isOwner = role === 'owner';
   const story = item?.story;
+
+  /**
+   * Who may edit/remove this record: deciders always; the capturer while the
+   * item is still undecided (fixing their own batch mistakes). Matches the
+   * cloud RLS exactly. Deciding itself stays owner-only.
+   */
+  const canManage = Boolean(
+    item && (isOwner || (item.addedBy === userName && item.decision === 'undecided'))
+  );
+
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editRoom, setEditRoom] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  const startEdit = () => {
+    if (!item) return;
+    setEditTitle(item.title);
+    setEditRoom(item.room);
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    if (!item) return;
+    const title = editTitle.trim() || item.title;
+    updateItem(item.id, { title, room: editRoom || item.room });
+    setEditing(false);
+    // Mirror the rename to the cloud so family devices catch up on next pull.
+    const s = useStore.getState();
+    if (s.cloudHouseholdId && !s.isDemo && !item.localOnly) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) {
+          void supabase.from('items').update({ title, room: editRoom || item.room }).eq('id', item.id);
+        }
+      }).catch(() => {});
+    }
+  };
+
+  const doRemove = () => {
+    if (!item) return;
+    removeItem(item.id);
+    router.back();
+  };
 
   /** Photo-first default: any photo-less item can gain one, from any role. */
   const addPhoto = async () => {
@@ -244,7 +289,62 @@ export default function ItemDetailScreen() {
       </Row>
       {/* Donation destination — part of the decision, so only deciders edit. */}
       <DonateTo item={item} canEdit={isOwner} />
-      <Text style={styles.itemTitle}>{item.title}</Text>
+      {editing ? (
+        <View style={styles.editBox}>
+          <Label style={styles.editLabel}>Name</Label>
+          <TextInput
+            style={styles.editInput}
+            value={editTitle}
+            onChangeText={setEditTitle}
+            selectTextOnFocus
+            returnKeyType="done"
+            onSubmitEditing={saveEdit}
+          />
+          <Label>Room</Label>
+          <Row style={styles.editRooms}>
+            {ROOMS.map((r) => (
+              <Pressable
+                key={r}
+                accessibilityRole="button"
+                onPress={() => setEditRoom(r)}
+                style={[styles.editRoomChip, r === editRoom && styles.editRoomChipOn]}
+              >
+                <Text
+                  style={[styles.editRoomText, r === editRoom && styles.editRoomTextOn]}
+                >
+                  {r}
+                </Text>
+              </Pressable>
+            ))}
+          </Row>
+          <Row style={styles.editActions}>
+            <View style={styles.flexOne}>
+              <Btn label="Save changes" onPress={saveEdit} />
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setEditing(false)}
+              style={styles.editCancel}
+            >
+              <Text style={styles.editCancelText}>Cancel</Text>
+            </Pressable>
+          </Row>
+        </View>
+      ) : (
+        <Row style={styles.titleRow}>
+          <Text style={[styles.itemTitle, styles.flexOne]}>{item.title}</Text>
+          {canManage && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Edit name and room"
+              onPress={startEdit}
+              style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="pencil-outline" size={17} color={T.inkSoft} />
+            </Pressable>
+          )}
+        </Row>
+      )}
       {item.tags.length > 0 ? (
         <Row style={styles.tagRow}>
           {item.tags.map((t) => (
@@ -485,6 +585,39 @@ export default function ItemDetailScreen() {
         </>
       ) : null}
 
+      {/* ---- Remove — deciders always; the capturer while undecided ---- */}
+      {canManage && (
+        <View style={styles.removeBlock}>
+          {confirmRemove ? (
+            <>
+              <Btn label="Yes — remove this item" kind="brass" onPress={doRemove} />
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setConfirmRemove(false)}
+                style={styles.removeCancel}
+              >
+                <Text style={styles.removeCancelText}>Keep it</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setConfirmRemove(true)}
+              style={({ pressed }) => [styles.removeLink, pressed && styles.pressed]}
+            >
+              <Ionicons name="trash-outline" size={15} color={T.toss} />
+              <Text style={styles.removeText}>Remove this item</Text>
+            </Pressable>
+          )}
+          {confirmRemove && (
+            <Muted style={styles.removeNote}>
+              This removes the item, its photo, and its chat for the whole
+              household.
+            </Muted>
+          )}
+        </View>
+      )}
+
       <View style={styles.bottomSpace} />
     </Screen>
   );
@@ -709,4 +842,46 @@ const styles = StyleSheet.create({
     backgroundColor: T.brassTint,
   },
   addPhotoText: { fontSize: 14, fontWeight: '700', color: T.brassDeep },
+  flexOne: { flex: 1 },
+  titleRow: { alignItems: 'flex-start', gap: Spacing.two },
+  editBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  editBox: { marginTop: Spacing.two },
+  editLabel: { marginTop: Spacing.two },
+  editInput: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+    paddingHorizontal: Spacing.three,
+    fontSize: 17,
+    fontFamily: Fonts?.serif,
+    color: T.heading,
+  },
+  editRooms: { flexWrap: 'wrap', gap: Spacing.two },
+  editRoomChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.line,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  editRoomChipOn: { backgroundColor: T.heading, borderColor: T.heading },
+  editRoomText: { fontSize: 13, fontWeight: '600', color: T.inkSoft },
+  editRoomTextOn: { color: '#FFFFFF' },
+  editActions: { marginTop: Spacing.three, gap: Spacing.two },
+  editCancel: { minHeight: 48, justifyContent: 'center', paddingHorizontal: Spacing.three },
+  editCancelText: { fontSize: 14, fontWeight: '600', color: T.inkSoft },
+  removeBlock: { marginTop: Spacing.five },
+  removeLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+  },
+  removeText: { fontSize: 14, fontWeight: '600', color: T.toss },
+  removeCancel: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.two },
+  removeCancelText: { fontSize: 13, fontWeight: '600', color: T.inkSoft, textDecorationLine: 'underline' },
+  removeNote: { marginTop: Spacing.two, fontSize: 12.5, textAlign: 'center' },
 });

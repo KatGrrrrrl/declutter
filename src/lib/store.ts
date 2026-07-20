@@ -196,6 +196,12 @@ interface AppState {
       Partial<Item>
   ) => { ok: boolean; reason?: 'limit' };
   updateItem: (id: string, patch: Partial<Item>) => void;
+  /**
+   * Remove an item (and its chat). UI gates this to: deciders always; the
+   * capturer while the item is still undecided. Cloud delete rides along
+   * when linked (RLS enforces the same rule server-side).
+   */
+  removeItem: (id: string) => void;
   setStory: (id: string, story: Story) => void;
   assignHeir: (id: string, personId: string | undefined, visibility: HeirVisibility) => void;
   requestItem: (id: string, byName: string) => void;
@@ -577,6 +583,26 @@ export const useStore = create<AppState>()(
         set((s) => ({
           items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
         })),
+
+      removeItem: (id) => {
+        const s = get();
+        set({
+          items: s.items.filter((it) => it.id !== id),
+          messages: s.messages.filter((m) => m.itemId !== id),
+        });
+        if (s.cloudHouseholdId && !s.isDemo) {
+          void (async () => {
+            try {
+              const { supabase } = await import('@/lib/supabase');
+              const { data: auth } = await supabase.auth.getUser();
+              if (!auth?.user) return;
+              await supabase.from('items').delete().eq('id', id);
+            } catch {
+              /* offline — the row stays in cloud until a future cleanup */
+            }
+          })();
+        }
+      },
 
       setStory: (id, story) =>
         set((s) => ({

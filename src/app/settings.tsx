@@ -27,7 +27,17 @@ import { UPGRADE_ROUTE } from '@/components/settings/routes';
 import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { refreshPlan, verifyCheckout } from '@/lib/billing';
+import { getNotifyPref, setNotifyPref } from '@/lib/notifications';
 import { selectEntitlement, useStore } from '@/lib/store';
+
+import type { NotifyMode } from '@/lib/notifications';
+
+/** The three email choices, in the order they read best. */
+const EMAIL_OPTIONS: { mode: NotifyMode; title: string; meta: string }[] = [
+  { mode: 'off', title: 'Off', meta: 'Check the app when you like' },
+  { mode: 'instant', title: 'Instantly', meta: 'When family adds something new' },
+  { mode: 'daily', title: 'Daily summary', meta: 'One email each evening' },
+];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -50,6 +60,32 @@ export default function SettingsScreen() {
   const [checkoutState, setCheckoutState] = useState<'idle' | 'verifying' | 'success' | 'failed'>(
     'idle'
   );
+
+  // Email updates: null = unavailable (signed out / household not backed up).
+  const [emailPref, setEmailPref] = useState<NotifyMode | null>(null);
+  const [emailPrefLoaded, setEmailPrefLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    getNotifyPref().then((p) => {
+      if (alive) {
+        setEmailPref(p);
+        setEmailPrefLoaded(true);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Optimistic select: flip the radio immediately, revert if the save fails.
+  const chooseEmailPref = (mode: NotifyMode) => {
+    if (emailPref === null || mode === emailPref) return;
+    const prev = emailPref;
+    setEmailPref(mode);
+    setNotifyPref(mode).then((res) => {
+      if (!res.ok) setEmailPref(prev);
+    });
+  };
 
   // On mount: mirror the cloud plan locally, and — if we just came back from
   // Stripe — verify that checkout session so the entitlement flips server-side.
@@ -350,6 +386,44 @@ export default function SettingsScreen() {
           </Card>
         )}
 
+        {/* ---------- email updates ---------- */}
+        <Label>Email updates</Label>
+        <Card>
+          {EMAIL_OPTIONS.map((o) => {
+            const active = emailPref === o.mode;
+            const disabled = emailPref === null;
+            return (
+              <Pressable
+                key={o.mode}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: active, disabled }}
+                disabled={disabled}
+                onPress={() => chooseEmailPref(o.mode)}
+                style={({ pressed }) => [
+                  styles.rowItem,
+                  disabled && styles.rowDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name={active ? 'radio-button-on' : 'radio-button-off'}
+                  size={20}
+                  color={active ? T.brass : T.inkFaint}
+                />
+                <View style={styles.cardMain}>
+                  <Text style={styles.rowTitle}>{o.title}</Text>
+                  <Muted style={styles.rowMeta}>{o.meta}</Muted>
+                </View>
+              </Pressable>
+            );
+          })}
+          {emailPrefLoaded && emailPref === null && (
+            <Muted style={styles.emailNote}>
+              Sign in and back up your household to turn on email updates.
+            </Muted>
+          )}
+        </Card>
+
         {/* ---------- account & cloud backup ---------- */}
         <AccountSync />
 
@@ -484,6 +558,8 @@ const styles = StyleSheet.create({
   },
   rowTitle: { flex: 1, fontSize: 15.5, fontWeight: '600', color: T.ink },
   rowMeta: { fontSize: 12.5, marginTop: 2 },
+  rowDisabled: { opacity: 0.45 },
+  emailNote: { marginTop: Spacing.two, fontSize: 13, lineHeight: 18 },
   rowValue: { fontSize: 15 },
   proTag: {
     borderRadius: Radius.pill,

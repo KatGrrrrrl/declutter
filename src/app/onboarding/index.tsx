@@ -18,7 +18,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -35,6 +35,8 @@ import { Avatar } from '@/components/child/shared';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Row, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { useStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
+import { pushHousehold } from '@/lib/sync';
 
 type Step = 'welcome' | 'role' | 'household' | 'deciders' | 'passkey' | 'invite';
 
@@ -71,6 +73,57 @@ export default function OnboardingScreen() {
   const [inviteEmail, setInviteEmail] = useState('');
   /** Emails for the auto-invited deciders, keyed by name. */
   const [deciderEmails, setDeciderEmails] = useState<Record<string, string>>({});
+
+  /* Real sign-in during onboarding (email six-digit code). */
+  const [authEmail, setAuthEmail] = useState('');
+  const [authCode, setAuthCode] = useState('');
+  const [authStage, setAuthStage] = useState<'email' | 'code'>('email');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authedEmail, setAuthedEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthedEmail(data.session?.user.email ?? null);
+    });
+  }, []);
+
+  const sendAuthCode = async () => {
+    const addr = authEmail.trim().toLowerCase();
+    if (!looksLikeEmail(addr)) {
+      setAuthError('That address doesn’t look complete.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthError('');
+    const { error } = await supabase.auth.signInWithOtp({
+      email: addr,
+      options: { shouldCreateUser: true },
+    });
+    setAuthBusy(false);
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+    setAuthStage('code');
+  };
+
+  const verifyAuthCode = async () => {
+    setAuthBusy(true);
+    setAuthError('');
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: authEmail.trim().toLowerCase(),
+      token: authCode.trim(),
+      type: 'email',
+    });
+    setAuthBusy(false);
+    if (error) {
+      setAuthError('That code didn’t work — double-check the six digits.');
+      return;
+    }
+    setAuthedEmail(data.session?.user.email ?? authEmail.trim().toLowerCase());
+    setAuthCode('');
+  };
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -149,6 +202,31 @@ export default function OnboardingScreen() {
       invites,
       deciderEmails,
     });
+    // Signed in during onboarding → link the new household to the cloud right
+    // away, so invitations and backups work from minute one.
+    if (authedEmail) {
+      void (async () => {
+        const s = useStore.getState();
+        const h = s.households.find((x) => x.id === s.activeHouseholdId);
+        const res = await pushHousehold({
+          cloudHouseholdId: s.cloudHouseholdId,
+          activeHouseholdId: s.activeHouseholdId,
+          householdName: s.householdName,
+          items: s.items,
+          people: s.people,
+          messages: s.messages,
+          members: s.members,
+          deciderNames: h?.deciderNames ?? [s.ownerName],
+          userName: s.userName,
+        });
+        if (res.ok) {
+          s.setCloudMeta({
+            cloudHouseholdId: res.cloudHouseholdId,
+            lastBackupAt: new Date().toISOString(),
+          });
+        }
+      })();
+    }
     router.replace('/');
   };
 
@@ -388,28 +466,87 @@ export default function OnboardingScreen() {
               <Label>
                 Step {stepIndex + 1} of {STEPS.length}
               </Label>
-              <Title style={styles.stepTitle}>Your key is your face</Title>
+              <Title style={styles.stepTitle}>Sign in to keep it safe</Title>
+              <Muted style={styles.stepSub}>
+                Your account backs the household up and lets the family join.
+                No password — we email you a six-digit code.
+              </Muted>
 
-              <View style={styles.glyphWrap}>
-                <View style={styles.glyph}>
-                  <Ionicons name="scan-outline" size={54} color={T.brassDeep} />
-                  <View style={styles.glyphInner}>
-                    <Ionicons name="happy-outline" size={26} color={T.brassDeep} />
+              {authedEmail ? (
+                <View style={styles.glyphWrap}>
+                  <View style={styles.glyph}>
+                    <Ionicons name="checkmark-circle-outline" size={54} color={T.keep} />
+                  </View>
+                  <Heading style={styles.glyphHeading}>Signed in</Heading>
+                  <Body style={styles.glyphBody}>{authedEmail}</Body>
+                  <View style={styles.stepCta}>
+                    <Btn label="Continue" big onPress={() => setStep('invite')} />
                   </View>
                 </View>
-                <Heading style={styles.glyphHeading}>No passwords to remember</Heading>
-                <Body style={styles.glyphBody}>
-                  Sign in the same way you unlock your phone — a glance or a fingertip.
-                  Nothing to write on a sticky note, nothing to forget.
-                </Body>
-              </View>
-
-              <View style={styles.stepCta}>
-                <Btn label="Continue" big onPress={() => setStep('invite')} />
-              </View>
-              <Muted style={styles.fine}>
-                Prefer a code? A six-digit backup works on shared iPads.
-              </Muted>
+              ) : authStage === 'email' ? (
+                <>
+                  <Label>Your email</Label>
+                  <TextInput
+                    style={styles.input}
+                    value={authEmail}
+                    onChangeText={setAuthEmail}
+                    placeholder="you@example.com"
+                    placeholderTextColor={T.inkFaint}
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    returnKeyType="done"
+                    onSubmitEditing={sendAuthCode}
+                  />
+                  <View style={styles.stepCta}>
+                    <Btn
+                      label={authBusy ? 'Sending…' : 'Email me a code'}
+                      big
+                      onPress={sendAuthCode}
+                      disabled={authBusy}
+                    />
+                  </View>
+                  {authError ? <Muted style={styles.authErr}>{authError}</Muted> : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setStep('invite')}
+                    style={styles.skipLink}
+                  >
+                    <Text style={styles.skipText}>Skip for now — sign in later in Settings</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Label>The six digits we emailed to {authEmail.trim()}</Label>
+                  <TextInput
+                    style={[styles.input, styles.codeInput]}
+                    value={authCode}
+                    onChangeText={setAuthCode}
+                    placeholder="123456"
+                    placeholderTextColor={T.inkFaint}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    returnKeyType="done"
+                    onSubmitEditing={verifyAuthCode}
+                  />
+                  <View style={styles.stepCta}>
+                    <Btn
+                      label={authBusy ? 'Checking…' : 'Sign in'}
+                      big
+                      onPress={verifyAuthCode}
+                      disabled={authBusy}
+                    />
+                  </View>
+                  {authError ? <Muted style={styles.authErr}>{authError}</Muted> : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setAuthStage('email')}
+                    style={styles.skipLink}
+                  >
+                    <Text style={styles.skipText}>Different email</Text>
+                  </Pressable>
+                </>
+              )}
             </>
           )}
 
@@ -702,6 +839,10 @@ const styles = StyleSheet.create({
   inviteAddRow: { marginTop: Spacing.three },
   deciderEmailInput: { marginTop: Spacing.two },
   inviteErr: { marginTop: Spacing.two, color: T.toss },
+  authErr: { marginTop: Spacing.two, color: T.toss, textAlign: 'center' },
+  codeInput: { letterSpacing: 8, fontSize: 22, textAlign: 'center' },
+  skipLink: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.three },
+  skipText: { fontSize: 13, fontWeight: '600', color: T.inkSoft, textDecorationLine: 'underline' },
   note: { marginTop: Spacing.three },
   noteRow: { alignItems: 'flex-start', gap: Spacing.two },
 

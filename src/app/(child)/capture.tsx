@@ -25,6 +25,7 @@ import { notify, ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { useEntitlement, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -136,6 +137,7 @@ function NativeCapture() {
     // and a session exists. Failures stay silent here — uploadPendingPhotos
     // retries anything that didn't make it.
     const s = useStore.getState();
+    pingItemAdded(s.items[0]); // fire-and-forget instant-email ping (guards inside)
     if (s.cloudHouseholdId) {
       const added = s.items[0]; // addItem prepends, so newest is first
       if (added?.photoUri === pendingUri && !added.localOnly) {
@@ -255,6 +257,7 @@ function WebCapture() {
   const [room, setRoom] = useState<string>(ROOMS[0]);
   const [title, setTitle] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [noPhoto, setNoPhoto] = useState(false);
   const [added, setAdded] = useState(0);
 
   const choosePhoto = async () => {
@@ -279,6 +282,7 @@ function WebCapture() {
       );
       return;
     }
+    pingItemAdded(useStore.getState().items[0]); // fire-and-forget instant-email ping (guards inside)
     // Same fire-and-forget upload as native capture, when cloud-linked.
     if (!withoutPhoto && photoUri) {
       void (async () => {
@@ -290,6 +294,7 @@ function WebCapture() {
     }
     setTitle('');
     setPhotoUri(null);
+    setNoPhoto(false); // photo-first again for the next item
     setAdded((n) => n + 1);
   };
 
@@ -324,28 +329,44 @@ function WebCapture() {
 
       <Label>Add an item</Label>
 
-      {/* Photo first — the default path. */}
+      {/* Photo first — the default path; the checkbox opts a single item out. */}
+      {!noPhoto && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={photoUri ? 'Change photo' : 'Choose a photo'}
+          onPress={choosePhoto}
+          style={[styles.dropZone, photoUri != null && styles.dropZoneFilled]}
+        >
+          {photoUri ? (
+            <>
+              <Image source={{ uri: photoUri }} style={styles.dropPreview} contentFit="cover" />
+              <View style={styles.dropChange}>
+                <Ionicons name="swap-horizontal-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.dropChangeText}>Change</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <Ionicons name="camera-outline" size={30} color={T.brassDeep} />
+              <Text style={styles.dropText}>Choose a photo</Text>
+              <Muted style={styles.dropHint}>From your files — drag-worthy shots welcome</Muted>
+            </>
+          )}
+        </Pressable>
+      )}
+
       <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={photoUri ? 'Change photo' : 'Choose a photo'}
-        onPress={choosePhoto}
-        style={[styles.dropZone, photoUri != null && styles.dropZoneFilled]}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: noPhoto }}
+        onPress={() => setNoPhoto((v) => !v)}
+        style={styles.noPhotoRow}
       >
-        {photoUri ? (
-          <>
-            <Image source={{ uri: photoUri }} style={styles.dropPreview} contentFit="cover" />
-            <View style={styles.dropChange}>
-              <Ionicons name="swap-horizontal-outline" size={14} color="#FFFFFF" />
-              <Text style={styles.dropChangeText}>Change</Text>
-            </View>
-          </>
-        ) : (
-          <>
-            <Ionicons name="camera-outline" size={30} color={T.brassDeep} />
-            <Text style={styles.dropText}>Choose a photo</Text>
-            <Muted style={styles.dropHint}>From your files — drag-worthy shots welcome</Muted>
-          </>
-        )}
+        <Ionicons
+          name={noPhoto ? 'checkbox' : 'square-outline'}
+          size={20}
+          color={noPhoto ? T.brass : T.inkFaint}
+        />
+        <Text style={styles.noPhotoRowText}>This item has no photo</Text>
       </Pressable>
       <View style={styles.webChips}>
         {ROOMS.map((r) => (
@@ -370,14 +391,11 @@ function WebCapture() {
           onSubmitEditing={() => add()}
         />
       </Well>
-      <Btn label={photoUri ? 'Add to inventory' : 'Choose a photo first'} big onPress={photoUri ? () => add() : choosePhoto} />
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => add(true)}
-        style={styles.noPhotoLink}
-      >
-        <Text style={styles.noPhotoText}>Add without a photo</Text>
-      </Pressable>
+      <Btn
+        label={noPhoto || photoUri ? 'Add to inventory' : 'Choose a photo first'}
+        big
+        onPress={noPhoto ? () => add(true) : photoUri ? () => add() : choosePhoto}
+      />
       {added > 0 && (
         <Muted style={styles.webAdded}>
           Added ✓ · {added} this session · find them in Inventory
@@ -577,6 +595,12 @@ const styles = StyleSheet.create({
   dropChangeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   dropText: { fontSize: 15, fontWeight: '700', color: T.brassDeep },
   dropHint: { fontSize: 12 },
-  noPhotoLink: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.two },
-  noPhotoText: { fontSize: 13, fontWeight: '600', color: T.inkSoft, textDecorationLine: 'underline' },
+  noPhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 44,
+    marginBottom: Spacing.two,
+  },
+  noPhotoRowText: { fontSize: 14, fontWeight: '600', color: T.inkSoft },
 });

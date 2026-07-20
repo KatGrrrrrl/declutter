@@ -7,3 +7,20 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+/*
+ * Mobile web: 100vh includes the area hidden behind the browser's own bars,
+ * which pushed the bottom tab bar (and bottom buttons) off-screen. dvh tracks
+ * the *visible* viewport; the safe-area padding keeps the tab bar above the
+ * iPhone home indicator when installed to the home screen.
+ */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+#root > div {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
