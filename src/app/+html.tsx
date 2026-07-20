@@ -18,6 +18,14 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
         <meta name="theme-color" content="#FFFFFF" />
+        {/* Static fallback title: per-route titles are set on navigation by
+            use-document-title, but the served HTML needs one for the first
+            paint, link previews, and search engines. */}
+        <title>Inventory Our Home</title>
+        <meta
+          name="description"
+          content="Inventory your home together — photograph what's there, decide what to keep, and record the stories behind the things that matter."
+        />
         <ScrollViewStyleReset />
       </head>
       <body>{children}</body>
