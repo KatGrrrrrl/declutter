@@ -47,12 +47,20 @@ import {
 } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
-import { useStore } from '@/lib/store';
+import { useCanDecide, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { HeirVisibility } from '@/lib/store';
 
 const VISIBILITY_ORDER: HeirVisibility[] = ['owner_only', 'after_death', 'revealed'];
+
+/** Decision control on the detail screen — deciders may change their mind. */
+const DECISION_CHOICES = [
+  { key: 'keep', label: 'Keep', color: T.keep, tint: T.keepTint },
+  { key: 'donate', label: 'Donate', color: T.donate, tint: T.donateTint },
+  { key: 'toss', label: 'Let go', color: T.toss, tint: T.tossTint },
+  { key: 'undecided', label: 'Undecided', color: T.inkSoft, tint: T.sunken },
+] as const;
 const CAN_RECORD = Platform.OS !== 'web';
 
 export default function ItemDetailScreen() {
@@ -69,6 +77,10 @@ export default function ItemDetailScreen() {
   const updateItem = useStore((s) => s.updateItem);
   const removeItem = useStore((s) => s.removeItem);
   const requestItem = useStore((s) => s.requestItem);
+  const decide = useStore((s) => s.decide);
+  const undoDecision = useStore((s) => s.undoDecision);
+  const setArchived = useStore((s) => s.setArchived);
+  const canDecide = useCanDecide();
 
   const isOwner = role === 'owner';
   const story = item?.story;
@@ -287,6 +299,32 @@ export default function ItemDetailScreen() {
           <Text style={styles.roomText}>{item.room}</Text>
         </View>
       </Row>
+      {/* Change your mind, right here — deciders only (the authority model). */}
+      {canDecide && (
+        <View style={styles.decideRow}>
+          {DECISION_CHOICES.map((c) => {
+            const on = item.decision === c.key;
+            return (
+              <Pressable
+                key={c.key}
+                accessibilityRole="button"
+                accessibilityLabel={c.label}
+                accessibilityState={{ selected: on }}
+                onPress={() =>
+                  c.key === 'undecided' ? undoDecision(item.id) : decide(item.id, c.key)
+                }
+                style={({ pressed }) => [
+                  styles.decideBtn,
+                  on && { backgroundColor: c.tint, borderColor: c.color },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.decideText, on && { color: c.color }]}>{c.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
       {/* Donation destination — part of the decision, so only deciders edit. */}
       <DonateTo item={item} canEdit={isOwner} />
       {editing ? (
@@ -585,6 +623,32 @@ export default function ItemDetailScreen() {
         </>
       ) : null}
 
+      {/* ---- Archive — the gentle alternative to removing (deciders) ---- */}
+      {canDecide && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: !!item.archived }}
+          onPress={() => setArchived(item.id, !item.archived)}
+          style={({ pressed }) => [styles.archiveBtn, pressed && styles.pressed]}
+        >
+          <Ionicons
+            name={item.archived ? 'arrow-undo-outline' : 'archive-outline'}
+            size={17}
+            color={T.inkSoft}
+          />
+          <Text style={styles.archiveText}>
+            {item.archived ? 'Put back on the list' : 'Archive this item'}
+          </Text>
+        </Pressable>
+      )}
+      {canDecide && (
+        <Muted style={styles.archiveNote}>
+          {item.archived
+            ? 'Archived — kept in your record and exports, out of the working list.'
+            : 'Archiving keeps it in your record and exports, just out of the way.'}
+        </Muted>
+      )}
+
       {/* ---- Remove — deciders always; the capturer while undecided ---- */}
       {canManage && (
         <View style={styles.removeBlock}>
@@ -872,6 +936,41 @@ const styles = StyleSheet.create({
   editActions: { marginTop: Spacing.three, gap: Spacing.two },
   editCancel: { minHeight: 48, justifyContent: 'center', paddingHorizontal: Spacing.three },
   editCancelText: { fontSize: 14, fontWeight: '600', color: T.inkSoft },
+  decideRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+  },
+  decideBtn: {
+    flexGrow: 1,
+    minWidth: 88,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+    paddingHorizontal: Spacing.two,
+  },
+  decideText: { fontSize: 15, fontWeight: '700', color: T.inkSoft },
+
+  archiveBtn: {
+    marginTop: Spacing.four,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+  },
+  archiveText: { fontSize: 15, fontWeight: '600', color: T.inkSoft },
+  archiveNote: { marginTop: Spacing.two, fontSize: 13, textAlign: 'center' },
+
   removeBlock: { marginTop: Spacing.five },
   removeLink: {
     flexDirection: 'row',

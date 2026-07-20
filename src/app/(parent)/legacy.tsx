@@ -67,7 +67,7 @@ export default function LegacyScreen() {
         </Row>
       </Card>
 
-      <Label>How unlock works</Label>
+      <Label asHeading>How unlock works</Label>
       <View>
         {STEPS.map((step, i) => (
           <Row key={step.title} style={styles.step}>

@@ -5,6 +5,9 @@
  */
 
 import { Image } from 'expo-image';
+import { useIsFocused } from 'expo-router';
+import { BottomTabBar } from 'expo-router/build/react-navigation/bottom-tabs/views/BottomTabBar';
+import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs/types';
 import { PropsWithChildren } from 'react';
 import {
   Platform,
@@ -59,6 +62,33 @@ export const TAB_BAR_LABEL =
     ? ({ fontSize: 11, fontWeight: '600', lineHeight: 16, paddingBottom: 2 } as const)
     : ({ fontSize: 11, fontWeight: '600' } as const);
 
+/**
+ * Renders the stock bottom tab bar inside a `navigation` landmark.
+ *
+ * React Navigation's tab bar exposes `role="tablist"` but no landmark, so on
+ * web there is no way to jump to the app's primary navigation. The navigator's
+ * `tabBar` prop is the only supported seam, and it hands us the exact props the
+ * default bar takes — so we render the real `BottomTabBar` (no visual change)
+ * and only add the wrapper element around it. RNW maps `role="navigation"` to a
+ * real `<nav>`; the accessible name distinguishes the parent and child bars.
+ *
+ * The import is a deep path because expo-router vendors React Navigation and
+ * re-exports the navigators but not the tab bar itself.
+ *
+ * Must be RENDERED as an element (`tabBar={(p) => <NavigationTabBar {...p} />}`),
+ * never returned from a factory: React Compiler is enabled in this project and
+ * rewrites anything component-shaped to use hooks, but React Navigation invokes
+ * the `tabBar` prop as a plain function call — which makes those injected hooks
+ * an "Invalid hook call". Going through an element keeps the render legitimate.
+ */
+export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { label: string }) {
+  return (
+    <View role="navigation" aria-label={label}>
+      <BottomTabBar {...props} />
+    </View>
+  );
+}
+
 /* ---------- layout ---------- */
 
 /**
@@ -72,8 +102,26 @@ export function Screen({
   padded = true,
 }: PropsWithChildren<{ scroll?: boolean; padded?: boolean }>) {
   const inner = padded ? styles.padded : undefined;
+
+  // React Navigation keeps every visited tab screen mounted. On native that is
+  // invisible (react-native-screens detaches them); on web `screensEnabled()`
+  // is false, so the fallback is a plain View and blurred screens stay in the
+  // DOM — fully exposed to assistive tech. Reading /export would also read
+  // Decide's queue. Hiding the blurred screen removes it from the a11y tree
+  // and from `innerText` while preserving its component state (unmounting
+  // would throw away scroll position and in-flight form state).
+  const focused = useIsFocused();
+  const blurredOnWeb = Platform.OS === 'web' && !focused;
+
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView
+      style={[styles.screen, blurredOnWeb && styles.hiddenScreen]}
+      edges={['top']}
+      // Exactly one `main` landmark at a time — the focused screen's.
+      role={blurredOnWeb ? undefined : 'main'}
+      aria-hidden={blurredOnWeb || undefined}
+      importantForAccessibility={blurredOnWeb ? 'no-hide-descendants' : 'auto'}
+    >
       {scroll ? (
         <ScrollView
           style={styles.flex}
@@ -93,21 +141,64 @@ export function Row({ style, ...rest }: ViewProps) {
   return <View style={[styles.row, style]} {...rest} />;
 }
 
+/**
+ * Wraps a purely decorative icon so it never reaches assistive tech.
+ *
+ * Ionicons are an icon FONT: each glyph is a real character in the Unicode
+ * private-use area, so a screen reader reading an unguarded icon announces
+ * garbage (or, in the tab bar, the glyph twice before the label). The label
+ * next to the icon always carries the meaning, so hide the glyph outright.
+ */
+export function DecorativeIcon({ children, style }: PropsWithChildren<{ style?: ViewProps['style'] }>) {
+  return (
+    <View
+      style={[{ pointerEvents: 'none' }, style]}
+      aria-hidden
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      {children}
+    </View>
+  );
+}
+
 /* ---------- typography ---------- */
 
-/** Big navy serif screen title. */
+/**
+ * Big navy serif screen title — the screen's level-1 heading.
+ *
+ * react-native-web turns `role="heading"` + `aria-level` into a real `<hN>`
+ * element (see AccessibilityUtil/propsToAccessibilityComponent), so this is a
+ * genuine `<h1>` in the DOM, not just an ARIA override. Purely semantic: the
+ * kit's own font sizing is unchanged, and RNW's reset strips UA heading margins.
+ */
 export function Title({ style, ...rest }: TextProps) {
-  return <Text style={[styles.title, style]} {...rest} />;
+  return <Text role="heading" aria-level={1} style={[styles.title, style]} {...rest} />;
 }
 
-/** Navy serif for card/item names. */
+/** Navy serif for card/item names — level-2 heading. */
 export function Heading({ style, ...rest }: TextProps) {
-  return <Text style={[styles.heading, style]} {...rest} />;
+  return <Text role="heading" aria-level={2} style={[styles.heading, style]} {...rest} />;
 }
 
-/** Brass uppercase section label. */
-export function Label({ style, ...rest }: TextProps) {
-  return <Text style={[styles.label, style]} {...rest} />;
+/**
+ * Brass uppercase section label. Opt into `asHeading` where the label actually
+ * introduces a section (level 3) rather than captioning a single value —
+ * defaults to plain text so existing uses keep their current semantics.
+ */
+export function Label({
+  style,
+  asHeading = false,
+  ...rest
+}: TextProps & { asHeading?: boolean }) {
+  return (
+    <Text
+      role={asHeading ? 'heading' : undefined}
+      aria-level={asHeading ? 3 : undefined}
+      style={[styles.label, style]}
+      {...rest}
+    />
+  );
 }
 
 export function Body({ style, ...rest }: TextProps) {
@@ -252,6 +343,8 @@ export function PhotoBox({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: T.ground },
+  // Web-only: a blurred-but-still-mounted tab screen (see Screen).
+  hiddenScreen: { display: 'none' },
   flex: { flex: 1 },
   // Centered, phone-width column — caps the layout on desktop, no-op on phones.
   column: { width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' },

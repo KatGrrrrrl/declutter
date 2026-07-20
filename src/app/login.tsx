@@ -9,7 +9,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Btn, CONTENT_MAX, Muted, Row } from '@/components/ui';
+import { Btn, CONTENT_MAX, DecorativeIcon, Muted, Row } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -49,6 +49,12 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmErase, setConfirmErase] = useState(false);
+
+  // This screen does not use the `Screen` kit component, so it carries its own
+  // `main` landmark. Gated on focus so it can never coexist with the landmark
+  // of a tab screen the root stack still has mounted.
+  const isFocused = useIsFocused();
+  const mainRole = isFocused ? ('main' as const) : undefined;
 
   /** Signed in — open the app (unlocking the device if it was locked). */
   const finish = () => {
@@ -140,12 +146,14 @@ export default function LoginScreen() {
   /* ---------- logged-out confirmation (once, straight after logging out) ---------- */
   if (showLoggedOut) {
     return (
-      <SafeAreaView style={styles.screen}>
+      <SafeAreaView style={styles.screen} role={mainRole}>
         <View style={styles.body}>
-          <View style={[styles.glyph, styles.glyphOk]}>
+          <DecorativeIcon style={[styles.glyph, styles.glyphOk]}>
             <Ionicons name="checkmark" size={32} color={T.keep} />
-          </View>
-          <Text style={styles.title}>You&rsquo;re logged out</Text>
+          </DecorativeIcon>
+          <Text role="heading" aria-level={1} style={styles.title}>
+            You&rsquo;re logged out
+          </Text>
           <Muted style={styles.sub}>
             {householdName
               ? `“${householdName}” is safe on this device and backed up to your account. Nothing was deleted.`
@@ -160,7 +168,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} role={mainRole}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -170,7 +178,9 @@ export default function LoginScreen() {
 
           {mode === 'code-sent' ? (
             <>
-              <Text style={styles.title}>Check your email</Text>
+              <Text role="heading" aria-level={1} style={styles.title}>
+                Check your email
+              </Text>
               <Muted style={styles.sub}>We sent six digits to {email.trim()}.</Muted>
               <TextInput
                 style={[styles.input, styles.codeInput]}
@@ -178,6 +188,7 @@ export default function LoginScreen() {
                 onChangeText={setCode}
                 placeholder="123456"
                 placeholderTextColor={T.inkFaint}
+                aria-label="Six-digit code"
                 keyboardType="number-pad"
                 maxLength={6}
                 autoFocus
@@ -197,7 +208,7 @@ export default function LoginScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.title}>
+              <Text role="heading" aria-level={1} style={styles.title}>
                 {mode === 'signup' ? 'Create your account' : 'Sign in'}
               </Text>
               <Muted style={styles.sub}>
@@ -213,6 +224,7 @@ export default function LoginScreen() {
                 onChangeText={setEmail}
                 placeholder="you@example.com"
                 placeholderTextColor={T.inkFaint}
+                aria-label="Email"
                 autoCapitalize="none"
                 autoComplete="email"
                 keyboardType="email-address"
@@ -228,6 +240,7 @@ export default function LoginScreen() {
                     onChangeText={setPassword}
                     placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'}
                     placeholderTextColor={T.inkFaint}
+                    aria-label="Password"
                     secureTextEntry
                     autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                     returnKeyType="done"
@@ -288,7 +301,9 @@ export default function LoginScreen() {
                     onPress={googleSignIn}
                     style={styles.oauthBtn}
                   >
-                    <Ionicons name="logo-google" size={18} color={T.ink} />
+                    <DecorativeIcon>
+                      <Ionicons name="logo-google" size={18} color={T.ink} />
+                    </DecorativeIcon>
                     <Text style={styles.oauthText}>Continue with Google</Text>
                   </Pressable>
                 </>

@@ -58,6 +58,12 @@ export interface Item {
    * family views. Kept in the model now so the sync layer honors it later.
    */
   localOnly?: boolean;
+  /**
+   * Archived items stay in the record (and in exports/history) but drop out
+   * of the working inventory — the gentle alternative to deleting something
+   * a family may want back.
+   */
+  archived?: boolean;
   createdAt: string;
 }
 
@@ -212,6 +218,12 @@ interface AppState {
    * when linked (RLS enforces the same rule server-side).
    */
   removeItem: (id: string) => void;
+  /** Archive/restore — reversible, unlike removeItem. */
+  setArchived: (id: string, archived: boolean) => void;
+  /** Bulk helpers for the inventory's multi-select mode. */
+  bulkDecide: (ids: string[], decision: Decision) => void;
+  bulkSetRoom: (ids: string[], room: string) => void;
+  bulkArchive: (ids: string[], archived: boolean) => void;
   setStory: (id: string, story: Story) => void;
   assignHeir: (id: string, personId: string | undefined, visibility: HeirVisibility) => void;
   requestItem: (id: string, byName: string) => void;
@@ -594,6 +606,40 @@ export const useStore = create<AppState>()(
           items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
         })),
 
+      setArchived: (id, archived) =>
+        set((s) => ({
+          items: s.items.map((it) => (it.id === id ? { ...it, archived } : it)),
+        })),
+
+      bulkDecide: (ids, decision) =>
+        set((s) => {
+          const at = new Date().toISOString();
+          const set_ = new Set(ids);
+          return {
+            items: s.items.map((it) =>
+              set_.has(it.id)
+                ? {
+                    ...it,
+                    decision,
+                    decidedAt: decision === 'undecided' ? undefined : at,
+                  }
+                : it
+            ),
+          };
+        }),
+
+      bulkSetRoom: (ids, room) =>
+        set((s) => {
+          const set_ = new Set(ids);
+          return { items: s.items.map((it) => (set_.has(it.id) ? { ...it, room } : it)) };
+        }),
+
+      bulkArchive: (ids, archived) =>
+        set((s) => {
+          const set_ = new Set(ids);
+          return { items: s.items.map((it) => (set_.has(it.id) ? { ...it, archived } : it)) };
+        }),
+
       removeItem: (id) => {
         const s = get();
         set({
@@ -814,6 +860,28 @@ export const useCanDecide = () => useStore(selectCanDecide);
 
 /** Full roster (stable reference). Filter by status at the call site. */
 export const useMembers = () => useStore(useShallow((s: AppState) => s.members));
+
+/** Normalized title used for duplicate detection. */
+const dupKey = (i: Item) => i.title.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Ids of items whose title matches another item's (case/space-insensitive) —
+ * the "did we photograph this twice?" signal for batch capture.
+ */
+export const useDuplicateIds = () =>
+  useStore(
+    useShallow((s: AppState) => {
+      const counts = new Map<string, number>();
+      s.items.forEach((i) => {
+        if (i.archived) return;
+        const k = dupKey(i);
+        counts.set(k, (counts.get(k) ?? 0) + 1);
+      });
+      return s.items
+        .filter((i) => !i.archived && (counts.get(dupKey(i)) ?? 0) > 1)
+        .map((i) => i.id);
+    })
+  );
 
 /**
  * Hook form of selectEntitlement. selectEntitlement builds a NEW object every

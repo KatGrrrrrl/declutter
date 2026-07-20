@@ -149,7 +149,7 @@ export default function FamilyScreen() {
       {/* pending invitations — deciders approve, everyone else sees status */}
       {invited.length > 0 && (
         <>
-          <Label>Waiting to join</Label>
+          <Label asHeading>Waiting to join</Label>
           {invited.map((m) => (
             <Card key={m.id} style={styles.pendingCard}>
               <Row style={styles.contactRow}>
@@ -215,13 +215,16 @@ export default function FamilyScreen() {
       {/* invite form */}
       {inviteOpen ? (
         <Card style={styles.inviteCard}>
-          <Label style={styles.inviteLabel}>Invite a family member</Label>
+          <Label asHeading style={styles.inviteLabel}>
+            Invite a family member
+          </Label>
           <TextInput
             style={styles.input}
             value={inviteName}
             onChangeText={setInviteName}
             placeholder="Name — e.g. Noor"
             placeholderTextColor={T.inkFaint}
+            aria-label="Name"
             autoFocus
             returnKeyType="next"
           />
@@ -231,6 +234,7 @@ export default function FamilyScreen() {
             onChangeText={setInviteEmail}
             placeholder="Their email — where the invite is sent"
             placeholderTextColor={T.inkFaint}
+            aria-label="Their email"
             autoCapitalize="none"
             keyboardType="email-address"
             returnKeyType="next"
@@ -241,6 +245,7 @@ export default function FamilyScreen() {
             onChangeText={setInviteRel}
             placeholder="Relationship (optional)"
             placeholderTextColor={T.inkFaint}
+            aria-label="Relationship (optional)"
             returnKeyType="done"
             onSubmitEditing={sendInvite}
           />

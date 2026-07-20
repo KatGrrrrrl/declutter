@@ -23,7 +23,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { notify, ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
-import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
+import {
+  Body,
+  Btn,
+  Card,
+  CONTENT_MAX,
+  DecorativeIcon,
+  Heading,
+  Label,
+  Muted,
+  Screen,
+  Title,
+  Well,
+} from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
@@ -196,6 +208,7 @@ function NativeCapture() {
                 style={styles.nameInput}
                 value={title}
                 onChangeText={setTitle}
+                aria-label={`Name this item, in ${room}`}
                 selectTextOnFocus
                 autoFocus
                 returnKeyType="done"
@@ -317,9 +330,9 @@ function WebCapture() {
       {ent.nearItemLimit && <ItemQuotaMeter style={styles.webQuota} />}
 
       <Card style={styles.webCard}>
-        <View style={styles.permGlyph}>
+        <DecorativeIcon style={styles.permGlyph}>
           <Ionicons name="phone-portrait-outline" size={28} color={T.brassDeep} />
-        </View>
+        </DecorativeIcon>
         <Heading style={styles.permHeading}>Every item starts with a photo</Heading>
         <Body style={styles.permBody}>
           Add one from your computer below — or open Inventory Our Home on your phone to
@@ -327,7 +340,7 @@ function WebCapture() {
         </Body>
       </Card>
 
-      <Label>Add an item</Label>
+      <Label asHeading>Add an item</Label>
 
       {/* Photo first — the default path; the checkbox opts a single item out. */}
       {!noPhoto && (
@@ -387,6 +400,7 @@ function WebCapture() {
           onChangeText={setTitle}
           placeholder="What is it? e.g. Mantel clock"
           placeholderTextColor={T.inkFaint}
+          aria-label="What is it?"
           returnKeyType="done"
           onSubmitEditing={() => add()}
         />
