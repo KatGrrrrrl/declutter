@@ -187,6 +187,11 @@ export default function OnboardingScreen() {
             style={({ pressed }) => [styles.demoLink, pressed && styles.pressed]}
           >
             <Text style={styles.demoLinkText}>Explore with sample items</Text>
+            <Text style={styles.demoLinkHint}>
+              You&rsquo;ll see it as Rose — the parent with the final say, so her
+              view includes Decide, Heirs, and Export. Helpers see a simpler
+              capture-focused app.
+            </Text>
           </Pressable>
           <Muted style={styles.fine}>One household, the whole family. No ads, ever.</Muted>
         </View>
@@ -581,6 +586,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: T.brassDeep,
     textDecorationLine: 'underline',
+  },
+  demoLinkHint: {
+    marginTop: Spacing.one,
+    fontSize: 12,
+    lineHeight: 17,
+    color: T.inkSoft,
+    textAlign: 'center',
+    maxWidth: 340,
   },
   fine: { textAlign: 'center', marginTop: Spacing.three, fontSize: 11.5 },
 
