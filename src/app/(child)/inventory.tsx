@@ -15,7 +15,7 @@ import { Heading, Label, Muted, PhotoBox, Screen, DecisionPill, Title } from '@/
 import { Radius, Spacing, T } from '@/constants/theme';
 import { Decision, useMessageCount, useStore } from '@/lib/store';
 
-type Filter = 'all' | Decision;
+type Filter = 'all' | Decision | 'mine-waiting';
 
 /** Chat count on a row — its own component so the hook runs per item. */
 function ChatBadge({ itemId }: { itemId: string }) {
@@ -42,9 +42,18 @@ export default function InventoryScreen() {
   const { room: roomParam } = useLocalSearchParams<{ room?: string }>();
   const items = useStore((s) => s.items);
   const people = useStore((s) => s.people);
+  const userName = useStore((s) => s.userName);
+  const ownerName = useStore((s) => s.ownerName);
+  const role = useStore((s) => s.role);
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+
+  // A helper's own captures still waiting on the decider — the "did they get
+  // to my stuff yet?" view.
+  const mineWaiting = items.filter(
+    (it) => it.addedBy === userName && it.decision === 'undecided'
+  );
 
   // The ?room= param is the single source of truth for the room filter;
   // clearing the chip clears the param in place via router.setParams.
@@ -52,7 +61,9 @@ export default function InventoryScreen() {
 
   const q = query.trim().toLowerCase();
   const shown = items.filter((it) => {
-    if (filter !== 'all' && it.decision !== filter) return false;
+    if (filter === 'mine-waiting') {
+      if (it.addedBy !== userName || it.decision !== 'undecided') return false;
+    } else if (filter !== 'all' && it.decision !== filter) return false;
     if (room && it.room !== room) return false;
     if (
       q &&
@@ -74,6 +85,23 @@ export default function InventoryScreen() {
 
       {/* free-plan usage; renders nothing on Pro */}
       <ItemQuotaMeter style={styles.quota} />
+
+      {/* Helper's pending-review summary: your captures, awaiting the decider. */}
+      {role === 'contributor' && mineWaiting.length > 0 && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setFilter(filter === 'mine-waiting' ? 'all' : 'mine-waiting')}
+          style={[styles.waitingCard, filter === 'mine-waiting' && styles.waitingCardOn]}
+        >
+          <Ionicons name="hourglass-outline" size={16} color={T.brassDeep} />
+          <Text style={styles.waitingText}>
+            {mineWaiting.length} of yours waiting for {ownerName} to decide
+          </Text>
+          <Text style={styles.waitingAction}>
+            {filter === 'mine-waiting' ? 'Show all' : 'View'}
+          </Text>
+        </Pressable>
+      )}
 
       {/* search well */}
       <View style={styles.search}>
@@ -193,6 +221,21 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
 
   quota: { marginTop: Spacing.one, marginBottom: Spacing.two },
+  waitingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: T.brass,
+    backgroundColor: T.brassTint,
+    paddingHorizontal: Spacing.three,
+    marginBottom: Spacing.two,
+  },
+  waitingCardOn: { backgroundColor: T.brass, borderColor: T.brass },
+  waitingText: { flex: 1, fontSize: 13.5, fontWeight: '600', color: T.ink },
+  waitingAction: { fontSize: 12.5, fontWeight: '700', color: T.brassDeep, textDecorationLine: 'underline' },
 
   search: {
     flexDirection: 'row',
