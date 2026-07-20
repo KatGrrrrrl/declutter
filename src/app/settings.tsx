@@ -150,13 +150,17 @@ export default function SettingsScreen() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  /** Log out of the account only — device data and cloud backups both stay. */
+  /**
+   * Log out: the account disconnects AND the app locks — an inventory of
+   * valuables must not stay browsable on a logged-out phone. Device data and
+   * cloud backups both survive; signing back in reopens everything.
+   */
+  const lockOut = state.lockOut;
   const doLogOut = async () => {
+    const email = sessionEmail ?? '';
     await supabase.auth.signOut();
-    notify(
-      'Logged out',
-      'Your things stay on this device, and your backups stay in your account for next time.'
-    );
+    lockOut(email);
+    router.replace('/locked');
   };
 
   return (

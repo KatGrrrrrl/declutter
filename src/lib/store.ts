@@ -137,6 +137,16 @@ interface AppState {
   /** Cloud backup linkage (set after the first successful backup). */
   cloudHouseholdId?: string;
   lastBackupAt?: string;
+  /**
+   * Set when the user logs out of their account: the app locks (data stays on
+   * device, but re-entry requires signing back in — an inventory of valuables
+   * must not stay browsable on a logged-out phone). lastAccountEmail is who
+   * may unlock.
+   */
+  lockedOut?: boolean;
+  lastAccountEmail?: string;
+  lockOut: (accountEmail: string) => void;
+  unlock: () => void;
   setCloudMeta: (meta: { cloudHouseholdId?: string; lastBackupAt?: string }) => void;
   /** Replace local state wholesale from a cloud restore snapshot. */
   restoreSnapshot: (snap: {
@@ -625,6 +635,11 @@ export const useStore = create<AppState>()(
         set((s) => ({ people: [...s.people, { ...p, id: uid() }] })),
 
       setCloudMeta: (meta) => set(meta),
+
+      lockOut: (accountEmail) =>
+        set({ lockedOut: true, lastAccountEmail: accountEmail.toLowerCase() }),
+
+      unlock: () => set({ lockedOut: false }),
 
       restoreSnapshot: (snap) =>
         set((s) => {

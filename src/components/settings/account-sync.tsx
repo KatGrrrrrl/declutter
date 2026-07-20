@@ -162,9 +162,12 @@ export function AccountSync() {
     notify('Restored', `“${res.snapshot.householdName}” is back — ${res.snapshot.items.length} items.`);
   };
 
+  /** Same contract as the Settings-top Log out: disconnect AND lock. */
   const signOutAccount = async () => {
+    const email = session?.user.email ?? '';
     await supabase.auth.signOut();
-    notify('Signed out', 'Your things stay on this device; backups stay in your account.');
+    useStore.getState().lockOut(email);
+    router.replace('/locked');
   };
 
   return (
