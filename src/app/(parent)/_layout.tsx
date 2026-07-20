@@ -2,12 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
-import {
-  DecorativeIcon,
-  NavigationTabBar,
-  TAB_BAR_LABEL,
-  TAB_BAR_WIDTH_CAP,
-} from '@/components/ui';
+import { DecorativeIcon, NavigationTabBar, useTabBarLayout } from '@/components/ui';
 import { T } from '@/constants/theme';
 
 /**
@@ -17,6 +12,7 @@ import { T } from '@/constants/theme';
  * pins each tab's accessible name to the plain word.
  */
 export default function ParentTabs() {
+  const bar = useTabBarLayout();
   return (
     <Tabs
       tabBar={(props) => <NavigationTabBar {...props} label="Main" />}
@@ -24,12 +20,10 @@ export default function ParentTabs() {
         headerShown: false,
         tabBarActiveTintColor: T.heading,
         tabBarInactiveTintColor: T.inkFaint,
-        tabBarStyle: {
-          backgroundColor: T.surface,
-          borderTopColor: T.line,
-          ...TAB_BAR_WIDTH_CAP,
-        },
-        tabBarLabelStyle: TAB_BAR_LABEL,
+        tabBarPosition: bar.tabBarPosition,
+        tabBarStyle: bar.tabBarStyle,
+        tabBarLabelStyle: bar.tabBarLabelStyle,
+        tabBarItemStyle: bar.tabBarItemStyle,
         tabBarHideOnKeyboard: Platform.OS === 'android',
         freezeOnBlur: true,
       }}

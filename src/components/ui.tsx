@@ -16,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextProps,
+  useWindowDimensions,
   View,
   ViewProps,
 } from 'react-native';
@@ -26,8 +27,22 @@ import { useSignedPhotoUrl } from '@/lib/photo-sync';
 
 import type { Decision } from '@/lib/store';
 
-/** Max width of the app column — roughly a large phone. */
+/** Max width of the app column on phones — roughly a large phone. */
 export const CONTENT_MAX = 460;
+/** Wider content column on desktop, so the app fills the screen instead of
+ *  sitting phone-width in the middle of a monitor. */
+export const DESKTOP_CONTENT_MAX = 1080;
+/** Width of the left navigation rail on desktop. */
+export const SIDEBAR_WIDTH = 232;
+/** At or above this viewport width (web only) we switch to the desktop layout:
+ *  a left nav rail + wide content. */
+export const DESKTOP_BREAKPOINT = 900;
+
+/** True when we should render the expanded desktop layout. */
+export function useIsDesktop() {
+  const { width } = useWindowDimensions();
+  return Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT;
+}
 
 /**
  * Web-only tab bar adjustments. On native the tab bar is positioned
@@ -63,6 +78,48 @@ export const TAB_BAR_LABEL =
     : ({ fontSize: 11, fontWeight: '600' } as const);
 
 /**
+ * Responsive tab-bar config. On desktop the bar moves to a fixed left rail
+ * (sidebar) with larger labels; on phones it stays the bottom bar. Spread the
+ * returned `tabBarStyle`/`tabBarLabelStyle` and pass `tabBarPosition`.
+ */
+export function useTabBarLayout() {
+  const isDesktop = useIsDesktop();
+  if (isDesktop) {
+    return {
+      tabBarPosition: 'left' as const,
+      tabBarStyle: {
+        backgroundColor: T.surface,
+        borderRightColor: T.line,
+        borderRightWidth: 1,
+        borderTopWidth: 0,
+        // The side bar defaults to minWidth = 25% of the frame (react-navigation
+        // getDefaultSidebarWidth); pin both bounds to hold a tidy rail width.
+        width: SIDEBAR_WIDTH,
+        minWidth: SIDEBAR_WIDTH,
+        maxWidth: SIDEBAR_WIDTH,
+        paddingTop: 24,
+        paddingHorizontal: 12,
+      },
+      tabBarLabelStyle: { fontSize: 14, fontWeight: '600' as const },
+      tabBarItemStyle: {
+        flexDirection: 'row' as const,
+        justifyContent: 'flex-start' as const,
+        gap: 12,
+        height: 52,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+      },
+    };
+  }
+  return {
+    tabBarPosition: 'bottom' as const,
+    tabBarStyle: { backgroundColor: T.surface, borderTopColor: T.line, ...TAB_BAR_WIDTH_CAP },
+    tabBarLabelStyle: TAB_BAR_LABEL,
+    tabBarItemStyle: undefined,
+  };
+}
+
+/**
  * Renders the stock bottom tab bar inside a `navigation` landmark.
  *
  * React Navigation's tab bar exposes `role="tablist"` but no landmark, so on
@@ -82,8 +139,11 @@ export const TAB_BAR_LABEL =
  * an "Invalid hook call". Going through an element keeps the render legitimate.
  */
 export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { label: string }) {
+  // On desktop the rail is a full-height left column; the landmark wrapper must
+  // stretch so it doesn't collapse the sidebar.
+  const isDesktop = useIsDesktop();
   return (
-    <View role="navigation" aria-label={label}>
+    <View role="navigation" aria-label={label} style={isDesktop ? { alignSelf: 'stretch' } : undefined}>
       <BottomTabBar {...props} />
     </View>
   );
@@ -92,9 +152,10 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
 /* ---------- layout ---------- */
 
 /**
- * Every screen renders inside a centered column capped at CONTENT_MAX. On
- * phones that's a no-op (viewport is narrower); on desktop it keeps the
- * app phone-shaped instead of stretching across the monitor.
+ * Every screen renders inside a centered content column. On phones it's capped
+ * near a large phone width; on desktop it widens to DESKTOP_CONTENT_MAX so the
+ * app fills the space beside the left nav rail instead of sitting phone-width
+ * in the middle of the monitor.
  */
 export function Screen({
   children,
@@ -102,6 +163,9 @@ export function Screen({
   padded = true,
 }: PropsWithChildren<{ scroll?: boolean; padded?: boolean }>) {
   const inner = padded ? styles.padded : undefined;
+  const isDesktop = useIsDesktop();
+  const widthCap = { maxWidth: isDesktop ? DESKTOP_CONTENT_MAX : CONTENT_MAX };
+  const desktopPad = isDesktop ? styles.desktopPad : null;
 
   // React Navigation keeps every visited tab screen mounted. On native that is
   // invisible (react-native-screens detaches them); on web `screensEnabled()`
@@ -125,13 +189,13 @@ export function Screen({
       {scroll ? (
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.column, inner, styles.scrollContent]}
+          contentContainerStyle={[styles.column, widthCap, inner, desktopPad, styles.scrollContent]}
           showsVerticalScrollIndicator={false}
         >
           {children}
         </ScrollView>
       ) : (
-        <View style={[styles.flex, styles.columnFill, inner]}>{children}</View>
+        <View style={[styles.flex, styles.columnFill, widthCap, inner, desktopPad]}>{children}</View>
       )}
     </SafeAreaView>
   );
@@ -347,9 +411,12 @@ const styles = StyleSheet.create({
   hiddenScreen: { display: 'none' },
   flex: { flex: 1 },
   // Centered, phone-width column — caps the layout on desktop, no-op on phones.
-  column: { width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' },
-  columnFill: { width: '100%', maxWidth: CONTENT_MAX, alignSelf: 'center' },
+  // maxWidth is applied inline (responsive); keep width/centering here.
+  column: { width: '100%', alignSelf: 'center' },
+  columnFill: { width: '100%', alignSelf: 'center' },
   padded: { paddingHorizontal: Spacing.three },
+  // A touch more breathing room around the wider desktop column.
+  desktopPad: { paddingHorizontal: Spacing.five, paddingTop: Spacing.two },
   scrollContent: { paddingBottom: Spacing.six },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
 

@@ -21,7 +21,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 
 import { ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter } from '@/components/limit-banner';
-import { DecisionPill, Heading, Label, Muted, PhotoBox, Screen, Title } from '@/components/ui';
+import { DecisionPill, Heading, Label, Muted, PhotoBox, Screen, Title, useIsDesktop } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
 import {
   Decision,
@@ -84,6 +84,7 @@ export function InventoryView() {
   const bulkSetRoom = useStore((s) => s.bulkSetRoom);
   const bulkArchive = useStore((s) => s.bulkArchive);
   const canDecide = useCanDecide();
+  const isDesktop = useIsDesktop();
   const duplicateIds = useDuplicateIds();
 
   const [query, setQuery] = useState('');
@@ -421,8 +422,13 @@ export function InventoryView() {
         </View>
       )}
 
-      {/* rows */}
-      <ScrollView style={styles.flex} showsVerticalScrollIndicator={false}>
+      {/* rows — a single column on phones, a wrapped 2-up grid on desktop so
+          the wide content area doesn't leave items stranded in one thin column */}
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={isDesktop ? styles.gridContent : undefined}
+        showsVerticalScrollIndicator={false}
+      >
         {shown.map((it) => {
           const heirPerson = it.heirPersonId
             ? people.find((p) => p.id === it.heirPersonId)
@@ -447,6 +453,7 @@ export function InventoryView() {
               }
               style={({ pressed }) => [
                 styles.row,
+                isDesktop && styles.rowGrid,
                 isSelected && styles.rowSelected,
                 pressed && styles.pressed,
               ]}
@@ -756,6 +763,17 @@ const styles = StyleSheet.create({
   },
   rowSelected: { backgroundColor: T.brassTint },
   pressed: { opacity: 0.7 },
+  // Desktop grid: two cards per row with a hairline card frame instead of the
+  // single-column list divider.
+  gridContent: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, paddingTop: Spacing.two },
+  rowGrid: {
+    width: '49%',
+    borderBottomWidth: 0,
+    borderWidth: 1,
+    borderColor: T.line,
+    borderRadius: 14,
+    paddingHorizontal: Spacing.three,
+  },
   thumb: { width: 56 },
   main: { flex: 1, minWidth: 0 },
   rowTitle: { fontSize: 16 },
