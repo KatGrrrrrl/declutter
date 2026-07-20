@@ -25,7 +25,7 @@ import { notify, ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
-import { uploadItemPhoto } from '@/lib/photo-sync';
+import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { useEntitlement, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -254,12 +254,20 @@ function WebCapture() {
 
   const [room, setRoom] = useState<string>(ROOMS[0]);
   const [title, setTitle] = useState('');
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [added, setAdded] = useState(0);
 
-  const add = () => {
+  const choosePhoto = async () => {
+    const uri = await pickPhoto();
+    if (uri) setPhotoUri(uri);
+  };
+
+  /** Default path carries the photo; withoutPhoto is the demoted fallback. */
+  const add = (withoutPhoto = false) => {
     const res = addItem({
       title: title.trim() || 'New item',
       room,
+      photoUri: !withoutPhoto && photoUri ? photoUri : undefined,
       addedBy: userName,
       tags: [],
     });
@@ -271,7 +279,17 @@ function WebCapture() {
       );
       return;
     }
+    // Same fire-and-forget upload as native capture, when cloud-linked.
+    if (!withoutPhoto && photoUri) {
+      void (async () => {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session || !useStore.getState().cloudHouseholdId) return;
+        const fresh = useStore.getState().items[0];
+        if (fresh?.photoUri === photoUri) void uploadItemPhoto(fresh);
+      })();
+    }
     setTitle('');
+    setPhotoUri(null);
     setAdded((n) => n + 1);
   };
 
@@ -297,14 +315,38 @@ function WebCapture() {
         <View style={styles.permGlyph}>
           <Ionicons name="phone-portrait-outline" size={28} color={T.brassDeep} />
         </View>
-        <Heading style={styles.permHeading}>Camera works on your phone</Heading>
+        <Heading style={styles.permHeading}>Every item starts with a photo</Heading>
         <Body style={styles.permBody}>
-          Open Declutter in Expo Go to batch-photograph a room in minutes. On the web
-          you can still add items by hand below.
+          Add one from your computer below — or open Declutter on your phone to
+          batch-photograph a whole room in minutes.
         </Body>
       </Card>
 
-      <Label>Add item without photo</Label>
+      <Label>Add an item</Label>
+
+      {/* Photo first — the default path. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={photoUri ? 'Change photo' : 'Choose a photo'}
+        onPress={choosePhoto}
+        style={[styles.dropZone, photoUri != null && styles.dropZoneFilled]}
+      >
+        {photoUri ? (
+          <>
+            <Image source={{ uri: photoUri }} style={styles.dropPreview} contentFit="cover" />
+            <View style={styles.dropChange}>
+              <Ionicons name="swap-horizontal-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.dropChangeText}>Change</Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <Ionicons name="camera-outline" size={30} color={T.brassDeep} />
+            <Text style={styles.dropText}>Choose a photo</Text>
+            <Muted style={styles.dropHint}>From your files — drag-worthy shots welcome</Muted>
+          </>
+        )}
+      </Pressable>
       <View style={styles.webChips}>
         {ROOMS.map((r) => (
           <Pressable
@@ -325,10 +367,17 @@ function WebCapture() {
           placeholder="What is it? e.g. Mantel clock"
           placeholderTextColor={T.inkFaint}
           returnKeyType="done"
-          onSubmitEditing={add}
+          onSubmitEditing={() => add()}
         />
       </Well>
-      <Btn label="Add item" big onPress={add} />
+      <Btn label={photoUri ? 'Add to inventory' : 'Choose a photo first'} big onPress={photoUri ? () => add() : choosePhoto} />
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => add(true)}
+        style={styles.noPhotoLink}
+      >
+        <Text style={styles.noPhotoText}>Add without a photo</Text>
+      </Pressable>
       {added > 0 && (
         <Muted style={styles.webAdded}>
           Added ✓ · {added} this session · find them in Inventory
@@ -498,4 +547,36 @@ const styles = StyleSheet.create({
   webWell: { marginBottom: Spacing.three, paddingVertical: 4 },
   webInput: { fontSize: 15, color: T.ink, paddingVertical: 10 },
   webAdded: { marginTop: Spacing.three, textAlign: 'center' },
+  dropZone: {
+    minHeight: 170,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: T.line,
+    backgroundColor: T.sunken,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: Spacing.three,
+    overflow: 'hidden',
+  },
+  dropZoneFilled: { borderStyle: 'solid', borderColor: T.brass, padding: 0 },
+  dropPreview: { width: '100%', height: 220 },
+  dropChange: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(27,24,21,0.72)',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  dropChangeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  dropText: { fontSize: 15, fontWeight: '700', color: T.brassDeep },
+  dropHint: { fontSize: 12 },
+  noPhotoLink: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.two },
+  noPhotoText: { fontSize: 13, fontWeight: '600', color: T.inkSoft, textDecorationLine: 'underline' },
 });

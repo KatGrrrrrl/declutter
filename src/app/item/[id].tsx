@@ -45,7 +45,9 @@ import {
   Well,
 } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
+import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { useStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 import type { HeirVisibility } from '@/lib/store';
 
@@ -68,6 +70,27 @@ export default function ItemDetailScreen() {
 
   const isOwner = role === 'owner';
   const story = item?.story;
+
+  /** Photo-first default: any photo-less item can gain one, from any role. */
+  const addPhoto = async () => {
+    if (!item) return;
+    const uri = await pickPhoto();
+    if (!uri) return;
+    updateItem(item.id, { photoUri: uri });
+    // Same fire-and-forget cloud upload as capture, when linked.
+    const s = useStore.getState();
+    if (s.cloudHouseholdId && !item.localOnly) {
+      supabase.auth
+        .getSession()
+        .then(({ data }) => {
+          if (data.session) {
+            const fresh = useStore.getState().items.find((i) => i.id === item.id);
+            if (fresh?.photoUri === uri) return uploadItemPhoto(fresh);
+          }
+        })
+        .catch(() => {});
+    }
+  };
 
   /* ---- playback ---- */
   const player = useAudioPlayer(null);
@@ -201,6 +224,17 @@ export default function ItemDetailScreen() {
         height={210}
         radius={20}
       />
+      {/* Items default to having a photo — offer the fix wherever one's missing. */}
+      {!item.photoUri && !item.remotePhotoPath && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={addPhoto}
+          style={({ pressed }) => [styles.addPhotoBtn, pressed && styles.pressed]}
+        >
+          <Ionicons name="camera-outline" size={17} color={T.brassDeep} />
+          <Text style={styles.addPhotoText}>Add a photo</Text>
+        </Pressable>
+      )}
 
       <Row style={styles.stateRow}>
         <DecisionPill decision={item.decision} />
@@ -661,4 +695,18 @@ const styles = StyleSheet.create({
 
   bottomSpace: { height: Spacing.five },
   pressed: { opacity: 0.7 },
+  addPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    marginTop: Spacing.two,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: T.brass,
+    backgroundColor: T.brassTint,
+  },
+  addPhotoText: { fontSize: 14, fontWeight: '700', color: T.brassDeep },
 });

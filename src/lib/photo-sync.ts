@@ -23,6 +23,23 @@ const SIGNED_URL_TTL = 3600;
 /** Re-sign when a cached URL has less than this long left (ms). */
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
+/* ---------------- picking a photo (web file dialog / native library) ------- */
+
+/**
+ * Open the platform photo picker and return a local uri, or null if the user
+ * cancelled. One place for the options so every "add a photo" flow matches.
+ */
+export async function pickPhoto(): Promise<string | null> {
+  const ImagePicker = await import('expo-image-picker');
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    quality: 0.7,
+    allowsMultipleSelection: false,
+  });
+  if (res.canceled || !res.assets?.length) return null;
+  return res.assets[0].uri;
+}
+
 /* ---------------- reading the local photo as base64 ---------------- */
 
 async function readAsBase64(uri: string): Promise<string> {
