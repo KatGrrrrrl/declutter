@@ -6,7 +6,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,11 +20,15 @@ const looksLikeEmail = (v: string) => v.includes('@') && v.includes('.');
 
 export default function LockedScreen() {
   const router = useRouter();
+  // ?loggedOut=1 means we just arrived from tapping Log out — confirm it
+  // plainly before asking anyone to sign in again.
+  const { loggedOut } = useLocalSearchParams<{ loggedOut?: string }>();
   const householdName = useStore((s) => s.householdName);
   const lastAccountEmail = useStore((s) => s.lastAccountEmail);
   const unlock = useStore((s) => s.unlock);
   const signOut = useStore((s) => s.signOut);
 
+  const [showConfirm, setShowConfirm] = useState(loggedOut === '1');
   const [email, setEmail] = useState(lastAccountEmail ?? '');
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'email' | 'code'>('email');
@@ -78,6 +82,40 @@ export default function LockedScreen() {
     signOut(); // wipes device state back to the welcome screen
     router.replace('/');
   };
+
+  // ---- Logged-out confirmation (shown once, right after logging out) ----
+  if (showConfirm) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.body}>
+          <View style={[styles.glyph, styles.glyphOk]}>
+            <Ionicons name="checkmark" size={32} color={T.keep} />
+          </View>
+          <Text style={styles.title}>You&rsquo;re logged out</Text>
+          <Muted style={styles.sub}>
+            {householdName
+              ? `“${householdName}” is safe on this device and backed up to your account. Nothing was deleted.`
+              : 'Everything is safe on this device and backed up to your account.'}
+          </Muted>
+
+          <View style={styles.cta}>
+            <Btn label="Log back in" big onPress={() => setShowConfirm(false)} />
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setConfirmErase(true);
+              setShowConfirm(false);
+            }}
+            style={styles.link}
+          >
+            <Text style={styles.linkText}>Not your household? Start fresh</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -204,6 +242,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: Spacing.three,
   },
+  glyphOk: { backgroundColor: T.keepTint },
   title: {
     fontFamily: Fonts?.serif,
     fontSize: 26,

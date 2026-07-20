@@ -167,7 +167,7 @@ export function AccountSync() {
     const email = session?.user.email ?? '';
     await supabase.auth.signOut();
     useStore.getState().lockOut(email);
-    router.replace('/locked');
+    router.replace('/locked?loggedOut=1');
   };
 
   return (
