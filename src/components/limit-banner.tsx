@@ -73,7 +73,7 @@ export function LimitReachedCard({ style }: { style?: object }) {
       <Muted style={styles.cardBody}>
         The free plan holds {ent.itemLimit} items in one household. Everything you&apos;ve
         already added stays exactly where it is — decisions, stories and all. To keep
-        photographing the rest of the house, move to Declutter Pro for unlimited items.
+        photographing the rest of the house, move to Inventory Our Home Pro for unlimited items.
       </Muted>
       <View style={styles.cardCta}>
         <Btn label="See Pro" big onPress={() => router.push('/upgrade')} />

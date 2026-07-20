@@ -249,7 +249,7 @@ export default function OnboardingScreen() {
         <View style={styles.hero}>
           <Text style={styles.kicker}>Household Legacy</Text>
           <Text style={styles.wordmark}>
-            Declutter
+            Inventory Our Home
             <Text style={styles.wordmarkDot}>.</Text>
           </Text>
           <Text style={styles.lede}>
@@ -696,9 +696,13 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     fontFamily: Fonts?.serif,
-    fontSize: 46,
+    // Three words, so smaller than a one-word mark would be — sized to sit on
+    // two lines at most on a narrow phone.
+    fontSize: 34,
+    lineHeight: 40,
     fontWeight: '600',
     color: T.heading,
+    textAlign: 'center',
   },
   wordmarkDot: { color: T.brass },
   lede: {

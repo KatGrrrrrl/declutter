@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Declutter",
+    "name": "Inventory Our Home",
     "slug": "declutter",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,8 +12,8 @@
       "bundleIdentifier": "com.kavita.declutter",
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "Declutter uses the camera to photograph household items you want to catalog.",
-        "NSMicrophoneUsageDescription": "Declutter uses the microphone to record the stories behind your keepsakes.",
+        "NSCameraUsageDescription": "Inventory Our Home uses the camera to photograph household items you want to catalog.",
+        "NSMicrophoneUsageDescription": "Inventory Our Home uses the microphone to record the stories behind your keepsakes.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -46,8 +46,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Declutter uses the camera to photograph household items you want to catalog.",
-          "microphonePermission": "Declutter uses the microphone to record the stories behind your keepsakes."
+          "cameraPermission": "Inventory Our Home uses the camera to photograph household items you want to catalog.",
+          "microphonePermission": "Inventory Our Home uses the microphone to record the stories behind your keepsakes."
         }
       ]
     ],

@@ -1,5 +1,5 @@
 /**
- * Declutter UI kit — small shared primitives matching the mockup's design
+ * Inventory Our Home UI kit — small shared primitives matching the mockup's design
  * language: white ground, navy serif headings, brass labels, tinted decision
  * pills, hairline-bordered cards. Screens compose these; keep them dumb.
  */

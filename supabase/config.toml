@@ -17,5 +17,5 @@ otp_length = 6
 otp_expiry = 3600
 
 [auth.email.template.magic_link]
-subject = "Your Declutter sign-in code"
+subject = "Your Inventory Our Home sign-in code"
 content_path = "./supabase/templates/magic_link.html"

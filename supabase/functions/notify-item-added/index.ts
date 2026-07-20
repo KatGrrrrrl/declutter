@@ -21,7 +21,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const RESEND_URL = 'https://api.resend.com/emails';
-const FROM = 'Declutter <onboarding@resend.dev>'; // Resend sandbox sender (see header note)
+const FROM = 'Inventory Our Home <onboarding@resend.dev>'; // Resend sandbox sender (see header note)
 const APP_URL = 'https://inventoryourhouse.com';
 
 const cors = {
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: prefsError.message }, { status: 500, headers: cors });
     }
 
-    const subject = `${who} added "${title}" to ${householdName}`;
+    const subject = `Inventory Our Home · ${who} added "${title}" to ${householdName}`;
     const html = `
       <div style="font-family: Georgia, 'Times New Roman', serif; color: #2b2620; max-width: 520px; margin: 0 auto; padding: 24px;">
         <p style="font-size: 17px; line-height: 1.55;">
@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
           Every item tells a little of the family story — take a peek when you have a moment.
         </p>
         <p style="font-size: 15px;">
-          <a href="${APP_URL}" style="color: #8a6d2f;">Open Declutter</a>
+          <a href="${APP_URL}" style="color: #8a6d2f;">Open Inventory Our Home</a>
         </p>
         <p style="font-size: 12.5px; color: #9a9082; line-height: 1.5;">
           You chose instant updates for this household. You can switch to a daily

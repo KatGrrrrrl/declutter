@@ -1,5 +1,5 @@
 /**
- * create-checkout — starts a Stripe Checkout session for Declutter Pro.
+ * create-checkout — starts a Stripe Checkout session for Inventory Our Home Pro.
  *
  * Auth: verify_jwt is on (default), so only signed-in app users can call this.
  * Input: { cycle: 'monthly' | 'yearly', householdId: string }
@@ -29,7 +29,7 @@ const PRICES = {
   yearly: { lookupKey: 'declutter_pro_yearly', unitAmount: 4999, interval: 'year' as const },
 };
 
-const PRODUCT_NAME = 'Declutter Pro';
+const PRODUCT_NAME = 'Inventory Our Home Pro';
 const SUCCESS_URL = 'https://inventoryourhouse.com/settings?session_id={CHECKOUT_SESSION_ID}';
 const CANCEL_URL = 'https://inventoryourhouse.com/upgrade';
 

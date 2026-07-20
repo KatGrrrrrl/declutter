@@ -221,7 +221,7 @@ export default function SettingsScreen() {
                 </Heading>
                 <Body style={styles.cardBody}>
                   Your payment went through and this household is on Pro: unlimited
-                  items, and room for a second home. Thank you for funding Declutter
+                  items, and room for a second home. Thank you for funding Inventory Our Home
                   directly.
                 </Body>
               </View>

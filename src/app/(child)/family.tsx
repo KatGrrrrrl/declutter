@@ -86,7 +86,7 @@ export default function FamilyScreen() {
       notify(
         'Invitation sent',
         res.alreadyRegistered
-          ? `${m.name} already has a Declutter account — signing in will show them the invitation to join.`
+          ? `${m.name} already has an Inventory Our Home account — signing in will show them the invitation to join.`
           : `${m.name} will get an email at ${m.email}. Once they sign in, "${householdName}" will be waiting for them to join.`
       );
     } else if (res.ok) {

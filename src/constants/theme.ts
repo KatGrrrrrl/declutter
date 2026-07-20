@@ -1,5 +1,5 @@
 /**
- * Declutter design tokens — translated from docs/mockup/declutter-mockup.html.
+ * Inventory Our Home design tokens — translated from docs/mockup/declutter-mockup.html.
  * Single light theme by design decision (white ground, navy headings, brass
  * accents). A dark theme may return later as an explicit user option.
  */

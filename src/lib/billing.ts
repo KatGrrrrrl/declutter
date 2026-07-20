@@ -1,5 +1,5 @@
 /**
- * Billing — the client side of Stripe Checkout for Declutter Pro (web).
+ * Billing — the client side of Stripe Checkout for Inventory Our Home Pro (web).
  *
  * Flow: Upgrade screen → startCheckout() → redirect to the Stripe-hosted page
  * → Stripe returns to /settings?session_id=… → verifyCheckout() confirms the

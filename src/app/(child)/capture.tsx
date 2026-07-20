@@ -81,7 +81,7 @@ function NativeCapture() {
           </View>
           <Heading style={styles.permHeading}>Point, shoot, done</Heading>
           <Body style={styles.permBody}>
-            Walk a room and photograph everything — Declutter needs the camera to
+            Walk a room and photograph everything — Inventory Our Home needs the camera to
             build the family inventory. Photos stay private to your household.
           </Body>
           <View style={styles.permCta}>
@@ -89,7 +89,7 @@ function NativeCapture() {
           </View>
           {!permission.canAskAgain && (
             <Muted style={styles.permNote}>
-              Camera access was declined — enable it for Declutter in your phone&apos;s
+              Camera access was declined — enable it for Inventory Our Home in your phone&apos;s
               Settings.
             </Muted>
           )}
@@ -124,7 +124,7 @@ function NativeCapture() {
     if (!res.ok) {
       notify(
         'Free plan is full',
-        `You've catalogued ${ent.itemLimit} items. Upgrade to Declutter Pro to keep adding — nothing already saved is affected.`
+        `You've catalogued ${ent.itemLimit} items. Upgrade to Inventory Our Home Pro to keep adding — nothing already saved is affected.`
       );
       return;
     }
@@ -278,7 +278,7 @@ function WebCapture() {
     if (!res.ok) {
       notify(
         'Free plan is full',
-        `You've catalogued ${ent.itemLimit} items. Upgrade to Declutter Pro to keep adding — nothing already saved is affected.`
+        `You've catalogued ${ent.itemLimit} items. Upgrade to Inventory Our Home Pro to keep adding — nothing already saved is affected.`
       );
       return;
     }
@@ -322,7 +322,7 @@ function WebCapture() {
         </View>
         <Heading style={styles.permHeading}>Every item starts with a photo</Heading>
         <Body style={styles.permBody}>
-          Add one from your computer below — or open Declutter on your phone to
+          Add one from your computer below — or open Inventory Our Home on your phone to
           batch-photograph a whole room in minutes.
         </Body>
       </Card>

@@ -1,5 +1,5 @@
 /**
- * Declutter Pro — the upgrade screen.
+ * Inventory Our Home Pro — the upgrade screen.
  *
  * Reached from the quota meter, the limit-reached card, or a blocked
  * add-household action. Honest-by-design: no countdowns, no scarcity, no
@@ -60,7 +60,7 @@ const PLANS: {
 
 const REASSURANCES = [
   'No ads, ever.',
-  'We never sell your data — subscriptions are how Declutter is funded.',
+  'We never sell your data — subscriptions are how Inventory Our Home is funded.',
   'Your inventory, photos and stories stay yours.',
   'Cancel anytime; your first household and its items keep working.',
 ];
@@ -110,7 +110,7 @@ export default function UpgradeScreen() {
     return (
       <Screen>
         <BackRow onPress={back} />
-        <Label>Declutter Pro</Label>
+        <Label>Inventory Our Home Pro</Label>
         <Title>{justUpgraded ? "You're all set" : "You're on Pro"}</Title>
         <Card style={styles.proCard}>
           <View style={styles.proGlyph}>
@@ -119,7 +119,7 @@ export default function UpgradeScreen() {
           <Heading style={styles.proHeading}>Unlimited items, unlimited homes</Heading>
           <Body style={styles.proBody}>
             Photograph as much of the house as you like, and keep a separate inventory
-            for every home in the family. Thank you for funding Declutter directly —
+            for every home in the family. Thank you for funding Inventory Our Home directly —
             it&apos;s why there are no ads and nothing to sell.
           </Body>
         </Card>
@@ -152,7 +152,7 @@ export default function UpgradeScreen() {
   return (
     <Screen>
       <BackRow onPress={back} />
-      <Label>Declutter Pro</Label>
+      <Label>Inventory Our Home Pro</Label>
       <Title>Room for the whole house</Title>
       <Body style={styles.lede}>
         You&apos;ve used {ent.itemsUsed} of your {FREE_ITEM_LIMIT} free items. Pro lifts

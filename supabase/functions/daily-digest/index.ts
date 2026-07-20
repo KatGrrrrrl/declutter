@@ -22,7 +22,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const RESEND_URL = 'https://api.resend.com/emails';
-const FROM = 'Declutter <onboarding@resend.dev>'; // Resend sandbox sender (see header note)
+const FROM = 'Inventory Our Home <onboarding@resend.dev>'; // Resend sandbox sender (see header note)
 const APP_URL = 'https://inventoryourhouse.com';
 
 const cors = {
@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
         .join('');
 
       const count = items.length;
-      const subject = `${householdName}: ${count} new ${count === 1 ? 'item' : 'items'} today`;
+      const subject = `Inventory Our Home · ${householdName}: ${count} new ${count === 1 ? "item" : "items"} today`;
       const html = `
         <div style="font-family: Georgia, 'Times New Roman', serif; color: #2b2620; max-width: 520px; margin: 0 auto; padding: 24px;">
           <p style="font-size: 17px; line-height: 1.55;">
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
           </p>
           <ul style="padding-left: 20px; margin: 12px 0;">${rows}</ul>
           <p style="font-size: 15px;">
-            <a href="${APP_URL}" style="color: #8a6d2f;">Open Declutter to take a look</a>
+            <a href="${APP_URL}" style="color: #8a6d2f;">Open Inventory Our Home to take a look</a>
           </p>
           <p style="font-size: 12.5px; color: #9a9082; line-height: 1.5;">
             You chose a daily summary for this household. Switch to instant
