@@ -23,14 +23,14 @@ const theme = {
 
 /**
  * Global lock gate: when the account has logged out, every route except the
- * lock screen (and onboarding, which has no data to protect) redirects to
- * /locked — deep links included. The redirect-on-index alone is bypassable.
+ * login page (and onboarding, which has no data to protect) redirects to
+ * /login — deep links included. The redirect-on-index alone is bypassable.
  */
 function LockGate() {
   const lockedOut = useStore((s) => s.lockedOut);
   const pathname = usePathname();
-  if (lockedOut && pathname !== '/locked' && !pathname.startsWith('/onboarding')) {
-    return <Redirect href="/locked" />;
+  if (lockedOut && pathname !== '/login' && !pathname.startsWith('/onboarding')) {
+    return <Redirect href="/login" />;
   }
   return null;
 }
@@ -44,7 +44,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: T.ground } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" />
-          <Stack.Screen name="locked" />
+          <Stack.Screen name="login" />
           <Stack.Screen name="(parent)" />
           <Stack.Screen name="(child)" />
           <Stack.Screen

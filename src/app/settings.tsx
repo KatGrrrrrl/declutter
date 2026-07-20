@@ -160,7 +160,7 @@ export default function SettingsScreen() {
     const email = sessionEmail ?? '';
     await supabase.auth.signOut();
     lockOut(email);
-    router.replace('/locked?loggedOut=1');
+    router.replace('/login?loggedOut=1');
   };
 
   return (
