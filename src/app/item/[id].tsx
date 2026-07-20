@@ -194,7 +194,13 @@ export default function ItemDetailScreen() {
         <Text style={styles.backText}>Back</Text>
       </Pressable>
 
-      <PhotoBox title={item.title} photoUri={item.photoUri} height={210} radius={20} />
+      <PhotoBox
+        title={item.title}
+        photoUri={item.photoUri}
+        remotePath={item.remotePhotoPath}
+        height={210}
+        radius={20}
+      />
 
       <Row style={styles.stateRow}>
         <DecisionPill decision={item.decision} />

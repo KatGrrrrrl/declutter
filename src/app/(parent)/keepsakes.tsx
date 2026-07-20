@@ -68,7 +68,13 @@ export default function KeepsakesScreen() {
               }
               style={({ pressed }) => [styles.card, pressed && styles.pressed]}
             >
-              <PhotoBox title={item.title} photoUri={item.photoUri} height={150} radius={0} />
+              <PhotoBox
+                title={item.title}
+                photoUri={item.photoUri}
+                remotePath={item.remotePhotoPath}
+                height={150}
+                radius={0}
+              />
               <View style={styles.cardBody}>
                 <Heading style={styles.cardTitle}>{item.title}</Heading>
                 <Row style={styles.metaRow}>

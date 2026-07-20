@@ -8,23 +8,28 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@supabase/supabase-js';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { notify } from '@/components/child/shared';
-import { Btn, Card, Label, Muted, Row } from '@/components/ui';
+import { Btn, Card, Heading, Label, Muted, Row } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
+import { acceptInvite, listPendingInvites, PendingInvite } from '@/lib/join';
+import { uploadPendingPhotos } from '@/lib/photo-sync';
 import { useActiveHousehold, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { backupHousehold, restoreHousehold } from '@/lib/sync';
 
 export function AccountSync() {
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'email' | 'code'>('email');
   const [busy, setBusy] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [invites, setInvites] = useState<PendingInvite[]>([]);
 
   const state = useStore();
   const household = useActiveHousehold();
@@ -34,6 +39,32 @@ export function AccountSync() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Signed in → check whether any household is waiting for this person.
+  // (Async fetch only; the signed-out case renders no invites anyway.)
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    listPendingInvites().then((list) => {
+      if (!cancelled) setInvites(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  const joinHousehold = async (inv: PendingInvite) => {
+    setBusy(true);
+    const res = await acceptInvite(inv.householdId);
+    setBusy(false);
+    if (!res.ok) {
+      notify('Couldn’t join yet', res.error ?? 'Try again in a moment.');
+      return;
+    }
+    setInvites((v) => v.filter((x) => x.householdId !== inv.householdId));
+    notify('Welcome in', `You’ve joined “${res.householdName}”.`);
+    router.replace('/');
+  };
 
   /** OAuth sign-in (web). Buttons work once the provider is configured in
    *  Supabase; until then they explain themselves instead of failing. */
@@ -89,6 +120,7 @@ export function AccountSync() {
     setBusy(true);
     const res = await backupHousehold({
       cloudHouseholdId: state.cloudHouseholdId,
+      activeHouseholdId: state.activeHouseholdId,
       householdName: state.householdName,
       items: state.items,
       people: state.people,
@@ -106,10 +138,15 @@ export function AccountSync() {
       cloudHouseholdId: res.cloudHouseholdId,
       lastBackupAt: new Date().toISOString(),
     });
+    // Catalog is up; now sweep any photos that haven't uploaded yet.
+    const photos = await uploadPendingPhotos();
     const skipped = res.skippedLocalOnly
       ? ` ${res.skippedLocalOnly} device-only item${res.skippedLocalOnly === 1 ? '' : 's'} stayed private, as promised.`
       : '';
-    notify('Backed up', `${res.itemsBackedUp} items are safe in your account.${skipped}`);
+    const photoNote = photos.uploaded
+      ? ` ${photos.uploaded} photo${photos.uploaded === 1 ? '' : 's'} uploaded.`
+      : '';
+    notify('Backed up', `${res.itemsPushed} items are safe in your account.${photoNote}${skipped}`);
   };
 
   const runRestore = async () => {
@@ -213,6 +250,26 @@ export function AccountSync() {
               <View style={styles.dot} />
               <Muted style={styles.flex}>Signed in as {session.user.email}</Muted>
             </Row>
+            {invites.map((inv) => (
+              <View key={inv.householdId} style={styles.inviteWell}>
+                <Heading style={styles.inviteHeading}>
+                  You&rsquo;re invited to &ldquo;{inv.householdName}&rdquo;
+                </Heading>
+                <Muted style={styles.inviteSub}>
+                  Joining loads the family&rsquo;s shared inventory onto this
+                  device. Your own current data here stays untouched in your
+                  account backups.
+                </Muted>
+                <View style={styles.cta}>
+                  <Btn
+                    label={busy ? 'Joining…' : 'Join the household'}
+                    kind="brass"
+                    onPress={() => joinHousehold(inv)}
+                    disabled={busy}
+                  />
+                </View>
+              </View>
+            ))}
             <Muted style={styles.lede}>
               {state.lastBackupAt
                 ? `Last backup ${new Date(state.lastBackupAt).toLocaleString()}.`
@@ -284,6 +341,14 @@ const styles = StyleSheet.create({
   },
   signedRow: { marginBottom: Spacing.two },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: T.keep },
+  inviteWell: {
+    backgroundColor: T.brassTint,
+    borderRadius: Radius.control,
+    padding: Spacing.three,
+    marginBottom: Spacing.three,
+  },
+  inviteHeading: { fontSize: 17 },
+  inviteSub: { marginTop: Spacing.one, fontSize: 13 },
   orRow: { marginTop: Spacing.three, gap: Spacing.two, alignItems: 'center' },
   orLine: { flex: 1, height: 1, backgroundColor: T.lineSoft },
   orText: { fontSize: 12 },

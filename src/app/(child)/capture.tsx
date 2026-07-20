@@ -25,7 +25,9 @@ import { notify, ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { uploadItemPhoto } from '@/lib/photo-sync';
 import { useEntitlement, useStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 export default function CaptureScreen() {
   if (Platform.OS === 'web') return <WebCapture />;
@@ -129,6 +131,22 @@ function NativeCapture() {
     setCount((n) => n + 1);
     setPendingUri(null);
     setTitle('New item');
+
+    // Fire-and-forget cloud photo upload when this household is cloud-linked
+    // and a session exists. Failures stay silent here — uploadPendingPhotos
+    // retries anything that didn't make it.
+    const s = useStore.getState();
+    if (s.cloudHouseholdId) {
+      const added = s.items[0]; // addItem prepends, so newest is first
+      if (added?.photoUri === pendingUri && !added.localOnly) {
+        supabase.auth
+          .getSession()
+          .then(({ data }) => {
+            if (data.session) return uploadItemPhoto(added);
+          })
+          .catch(() => {});
+      }
+    }
   };
 
   return (

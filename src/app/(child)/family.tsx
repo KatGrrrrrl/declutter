@@ -20,6 +20,7 @@ import { SETTINGS_ROUTE } from '@/components/settings/routes';
 import { Btn, Card, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
 import { sendInviteEmail } from '@/lib/invites';
+import { createCloudInvite } from '@/lib/join';
 import { Member, useActiveHousehold, useCanDecide, useMembers, useStore } from '@/lib/store';
 
 export default function FamilyScreen() {
@@ -66,7 +67,10 @@ export default function FamilyScreen() {
     setInviteOpen(false);
   };
 
-  /** Approve → membership flips locally, then the invitation email goes out. */
+  /**
+   * Approve → membership flips locally, a real cloud membership invitation is
+   * created (so joining actually works), then the invitation email goes out.
+   */
   const approveAndSend = async (m: Member) => {
     approveMember(m.id);
     if (!m.email) {
@@ -76,13 +80,19 @@ export default function FamilyScreen() {
       );
       return;
     }
+    const cloud = await createCloudInvite(m);
     const res = await sendInviteEmail(m, householdName, userName);
-    if (res.ok) {
+    if (res.ok && cloud.ok) {
       notify(
         'Invitation sent',
         res.alreadyRegistered
-          ? `${m.name} already has a Declutter account — we let them know they're in.`
-          : `${m.name} will get an email at ${m.email} with a link to join.`
+          ? `${m.name} already has a Declutter account — signing in will show them the invitation to join.`
+          : `${m.name} will get an email at ${m.email}. Once they sign in, "${householdName}" will be waiting for them to join.`
+      );
+    } else if (res.ok) {
+      notify(
+        'Email sent — one more step needed',
+        cloud.error ?? 'The cloud invitation could not be created; try approving again after backing up.'
       );
     } else {
       notify('Approved, but the email didn’t send', res.error ?? 'Try again from this screen.');

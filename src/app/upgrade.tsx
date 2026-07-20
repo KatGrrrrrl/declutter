@@ -5,25 +5,30 @@
  * add-household action. Honest-by-design: no countdowns, no scarcity, no
  * shaming; the free tier is described as a real plan that keeps working.
  *
- * PAYMENTS ARE NOT WIRED YET. There is no RevenueCat (or other) SDK in the
- * app, so:
- *   - PRICES BELOW ARE PLACEHOLDERS. Real prices come from the store product
- *     catalog via RevenueCat offerings once payments land; do not treat
- *     $4.99 / $49.99 as final.
- *   - "Start free trial" just calls setPlan('pro') locally.
- *   - The <DevNote/> row at the bottom tells testers this. DELETE <DevNote/>
- *     (and this caveat) when real purchases ship.
+ * PAYMENTS — split by platform:
+ *   - WEB: real Stripe Checkout via src/lib/billing.ts (create-checkout edge
+ *     function → Stripe-hosted page → back to /settings?session_id=… where the
+ *     payment is verified). Until STRIPE_SECRET_KEY is set in Supabase secrets
+ *     the function answers 'payments_not_configured' and we say so honestly.
+ *   - NATIVE: still a local preview — App Store / Google Play purchases arrive
+ *     with the store release. <DevNote/> labels this for testers; delete it
+ *     when store billing ships.
+ *   - PRICES ARE PLACEHOLDERS ($4.99 / $49.99) and must stay in sync with the
+ *     create-checkout function's catalog (declutter_pro_monthly / _yearly).
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { notify } from '@/components/child/shared';
 import { Body, Btn, Card, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { refreshPlan, startCheckout } from '@/lib/billing';
 import { FREE_HOUSEHOLD_LIMIT, FREE_ITEM_LIMIT, useEntitlement, useStore } from '@/lib/store';
+
+const IS_WEB = Platform.OS === 'web';
 
 type PlanKey = 'monthly' | 'yearly';
 
@@ -67,8 +72,38 @@ export default function UpgradeScreen() {
 
   const [selected, setSelected] = useState<PlanKey>('yearly');
   const [justUpgraded, setJustUpgraded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [checkoutNote, setCheckoutNote] = useState<string | null>(null);
 
   const back = () => router.back();
+
+  /** Web: hand off to the Stripe-hosted checkout page. */
+  const doWebCheckout = async () => {
+    setBusy(true);
+    setCheckoutNote(null);
+    const res = await startCheckout(selected);
+    if (res.ok) {
+      // Leave `busy` on — the browser is navigating away.
+      window.location.assign(res.url);
+      return;
+    }
+    setBusy(false);
+    setCheckoutNote(
+      res.reason === 'payments_not_configured'
+        ? 'Payments are almost ready — check back soon.'
+        : res.reason === 'needs_account'
+          ? 'Sign in first under Settings → Account & sync, so Pro follows your account.'
+          : res.reason === 'needs_backup'
+            ? 'Back up your household first (Settings → Account & sync) so Pro attaches to it.'
+            : (res.error ?? 'Something went wrong starting checkout — please try again.')
+    );
+  };
+
+  /** Native: local preview only until App Store / Play billing ships. */
+  const doNativePreview = () => {
+    setPlan('pro');
+    setJustUpgraded(true);
+  };
 
   /* ---------- already Pro ---------- */
   if (ent.pro) {
@@ -92,21 +127,23 @@ export default function UpgradeScreen() {
         <Label>What&apos;s included</Label>
         <BenefitList />
 
-        <View style={styles.devNoteWrap}>
-          <DevNote />
-          {/* Demo-only escape hatch so testers can see the free tier again. */}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setPlan('free');
-              setJustUpgraded(false);
-            }}
-            hitSlop={10}
-            style={({ pressed }) => [styles.quietRow, pressed && styles.pressed]}
-          >
-            <Text style={styles.quietText}>Switch back to Free (demo)</Text>
-          </Pressable>
-        </View>
+        {!IS_WEB && (
+          <View style={styles.devNoteWrap}>
+            <DevNote />
+            {/* Preview-only escape hatch so testers can see the free tier again. */}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setPlan('free');
+                setJustUpgraded(false);
+              }}
+              hitSlop={10}
+              style={({ pressed }) => [styles.quietRow, pressed && styles.pressed]}
+            >
+              <Text style={styles.quietText}>Switch back to Free (preview)</Text>
+            </Pressable>
+          </View>
+        )}
       </Screen>
     );
   }
@@ -159,19 +196,27 @@ export default function UpgradeScreen() {
 
       <View style={styles.cta}>
         <Btn
-          label="Start free trial"
+          label={
+            IS_WEB
+              ? busy
+                ? 'Opening secure checkout…'
+                : 'Continue to secure checkout'
+              : 'Start free trial'
+          }
           big
-          onPress={() => {
-            // No payment SDK yet — grant the entitlement locally.
-            setPlan('pro');
-            setJustUpgraded(true);
-          }}
+          disabled={busy}
+          onPress={IS_WEB ? doWebCheckout : doNativePreview}
         />
       </View>
+      {checkoutNote && <Muted style={styles.checkoutNote}>{checkoutNote}</Muted>}
       <Muted style={styles.ctaNote}>
-        {selected === 'yearly'
-          ? 'Yearly · billed once a year after your trial.'
-          : 'Monthly · billed each month after your trial.'}
+        {IS_WEB
+          ? selected === 'yearly'
+            ? 'Yearly · $49.99 billed once a year. Secure payment by Stripe.'
+            : 'Monthly · $4.99 billed each month. Secure payment by Stripe.'
+          : selected === 'yearly'
+            ? 'Yearly · billed once a year after your trial.'
+            : 'Monthly · billed each month after your trial.'}
       </Muted>
 
       <Label>What you get</Label>
@@ -195,16 +240,26 @@ export default function UpgradeScreen() {
 
       <Pressable
         accessibilityRole="button"
-        onPress={() => notify('Restore purchases', 'Restore will work once payments are live')}
+        onPress={async () => {
+          if (IS_WEB) {
+            // Web "restore" = re-read the entitlement from the cloud.
+            await refreshPlan();
+            notify('Plan checked', 'If this household has an active subscription, Pro is now on.');
+          } else {
+            notify('Restore purchases', 'Restore will work once App Store purchases are live.');
+          }
+        }}
         hitSlop={10}
         style={({ pressed }) => [styles.quietRow, pressed && styles.pressed]}
       >
         <Text style={styles.quietText}>Restore purchases</Text>
       </Pressable>
 
-      <View style={styles.devNoteWrap}>
-        <DevNote />
-      </View>
+      {!IS_WEB && (
+        <View style={styles.devNoteWrap}>
+          <DevNote />
+        </View>
+      )}
     </Screen>
   );
 }
@@ -262,9 +317,14 @@ function BenefitList() {
   );
 }
 
-/** DEV-ONLY honesty row for testers — delete when real payments ship. */
+/** NATIVE-ONLY honesty row for testers — delete when store billing ships. */
 function DevNote() {
-  return <Muted style={styles.devNote}>Demo: no payment is processed yet.</Muted>;
+  return (
+    <Muted style={styles.devNote}>
+      Preview: App Store purchases arrive with the store release — no payment is
+      processed here yet.
+    </Muted>
+  );
 }
 
 /* ---------- styles ---------- */
@@ -314,6 +374,13 @@ const styles = StyleSheet.create({
 
   cta: { marginTop: Spacing.three },
   ctaNote: { textAlign: 'center', marginTop: Spacing.two, fontSize: 12.5 },
+  checkoutNote: {
+    textAlign: 'center',
+    marginTop: Spacing.two,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: T.brassDeep,
+  },
 
   benefits: { gap: Spacing.three },
   benefitRow: { flexDirection: 'row', gap: Spacing.three, alignItems: 'flex-start' },

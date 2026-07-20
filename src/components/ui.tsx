@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { useSignedPhotoUrl } from '@/lib/photo-sync';
 
 import type { Decision } from '@/lib/store';
 
@@ -187,22 +188,31 @@ export function Tag({ children }: { children: string }) {
 /**
  * Renders the item photo when present, else a clean neutral placeholder with
  * the item's initial in serif — matching the mockup's quiet gray photo boxes.
+ *
+ * Photo source order: the local camera uri, then a cloud photo (`remotePath`,
+ * a private-bucket storage path resolved to a short-lived signed URL). The
+ * placeholder shows while the signed URL resolves or when neither exists.
  */
 export function PhotoBox({
   title,
   photoUri,
+  remotePath,
   height = 180,
   radius = 16,
 }: {
   title: string;
   photoUri?: string;
+  remotePath?: string;
   height?: number;
   radius?: number;
 }) {
-  if (photoUri) {
+  // Only resolve the remote photo when there is no local one to show.
+  const remoteUrl = useSignedPhotoUrl(photoUri ? undefined : remotePath);
+  const uri = photoUri ?? remoteUrl ?? undefined;
+  if (uri) {
     return (
       <Image
-        source={{ uri: photoUri }}
+        source={{ uri }}
         style={{ height, borderRadius: radius, backgroundColor: T.sunken }}
         contentFit="cover"
         accessibilityLabel={title}

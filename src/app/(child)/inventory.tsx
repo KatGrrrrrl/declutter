@@ -136,7 +136,13 @@ export default function InventoryScreen() {
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             >
               <View style={styles.thumb}>
-                <PhotoBox title={it.title} photoUri={it.photoUri} height={56} radius={12} />
+                <PhotoBox
+                  title={it.title}
+                  photoUri={it.photoUri}
+                  remotePath={it.remotePhotoPath}
+                  height={56}
+                  radius={12}
+                />
               </View>
               <View style={styles.main}>
                 <Heading style={styles.rowTitle} numberOfLines={1}>

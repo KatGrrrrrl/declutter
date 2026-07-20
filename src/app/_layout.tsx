@@ -2,6 +2,7 @@ import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { CloudBridge } from '@/components/cloud-bridge';
 import { T } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -23,6 +24,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={theme}>
+        <CloudBridge />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: T.ground } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" />

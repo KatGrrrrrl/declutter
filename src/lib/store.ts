@@ -37,6 +37,8 @@ export interface Item {
   decidedAt?: string;
   tags: string[];
   photoUri?: string; // local uri from camera; placeholder rendered when absent
+  /** Cloud storage path (private bucket) once the photo is uploaded/synced. */
+  remotePhotoPath?: string;
   addedBy: string; // display name of the contributor/owner who captured it
   marketValue?: number; // dollars
   isSentimental: boolean;
@@ -146,7 +148,14 @@ interface AppState {
     people: Person[];
     messages: ItemMessage[];
     members: Member[];
+    /** View to land in: contributors join as helpers. */
+    role?: Role;
+    /** The joining user's own display name (kept if provided). */
+    userName?: string;
   }) => void;
+  /** Merge one realtime row from another family member's device. */
+  applyRemoteMessage: (m: ItemMessage) => void;
+  applyRemoteItem: (i: Item) => void;
 
   // actions
   completeOnboarding: (opts: {
@@ -194,39 +203,54 @@ interface AppState {
   resetAll: () => void;
 }
 
-const uid = () => Math.random().toString(36).slice(2, 10);
+/**
+ * ids are UUIDs so local rows and cloud rows are the SAME row — sync upserts
+ * by id instead of wipe-and-rewrite, which is what lets several family
+ * members' devices merge without clobbering each other.
+ */
+const uid = (): string => {
+  const g = globalThis as { crypto?: { randomUUID?: () => string } };
+  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
+
+/** True for ids minted before the UUID switch (and demo seed ids). */
+const isLegacyId = (id: string) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 const seedPeople: Person[] = [
-  { id: 'p-maya', displayName: 'Maya', relationship: 'daughter' },
-  { id: 'p-sam', displayName: 'Sam', relationship: 'son' },
-  { id: 'p-noor', displayName: 'Noor', relationship: 'granddaughter' },
+  { id: '00000000-0000-4000-8000-0000000000a1', displayName: 'Maya', relationship: 'daughter' },
+  { id: '00000000-0000-4000-8000-0000000000a2', displayName: 'Sam', relationship: 'son' },
+  { id: '00000000-0000-4000-8000-0000000000a3', displayName: 'Noor', relationship: 'granddaughter' },
 ];
 
 const seedItems: Item[] = [
   {
-    id: 'i-teapot', title: 'Blue china teapot', room: 'Kitchen', decision: 'undecided',
+    id: '00000000-0000-4000-8000-0000000000b1', title: 'Blue china teapot', room: 'Kitchen', decision: 'undecided',
     tags: ['china'], addedBy: 'Sam', isSentimental: true, heirVisibility: 'owner_only',
     createdAt: '2026-07-01T10:00:00Z',
   },
   {
-    id: 'i-clock', title: 'Mantel clock', room: 'Living room', decision: 'undecided',
+    id: '00000000-0000-4000-8000-0000000000b2', title: 'Mantel clock', room: 'Living room', decision: 'undecided',
     tags: ['heirloom'], addedBy: 'Sam', isSentimental: true, heirVisibility: 'owner_only',
     createdAt: '2026-07-01T10:05:00Z',
   },
   {
-    id: 'i-drill', title: 'Cordless drill', room: 'Garage', decision: 'undecided',
+    id: '00000000-0000-4000-8000-0000000000b3', title: 'Cordless drill', room: 'Garage', decision: 'undecided',
     tags: ['tools'], addedBy: 'Maya', isSentimental: false, heirVisibility: 'owner_only',
     createdAt: '2026-07-01T10:10:00Z',
   },
   {
-    id: 'i-atlas', title: 'World atlas, 1968', room: 'Study', decision: 'undecided',
+    id: '00000000-0000-4000-8000-0000000000b4', title: 'World atlas, 1968', room: 'Study', decision: 'undecided',
     tags: ['books'], addedBy: 'Maya', isSentimental: false, heirVisibility: 'owner_only',
     createdAt: '2026-07-01T10:15:00Z',
   },
   {
-    id: 'i-ring', title: 'Opal ring', room: 'Bedroom', decision: 'keep',
+    id: '00000000-0000-4000-8000-0000000000b5', title: 'Opal ring', room: 'Bedroom', decision: 'keep',
     decidedAt: '2026-06-28T15:00:00Z', tags: ['jewelry'], addedBy: 'Sam',
-    marketValue: 1400, isSentimental: true, heirPersonId: 'p-sam',
+    marketValue: 1400, isSentimental: true, heirPersonId: '00000000-0000-4000-8000-0000000000a2',
     heirVisibility: 'owner_only',
     story: {
       transcript: 'Your father gave me this the year we opened the shop. I wore it every market day for luck.',
@@ -235,9 +259,9 @@ const seedItems: Item[] = [
     createdAt: '2026-06-27T09:00:00Z',
   },
   {
-    id: 'i-quilt', title: 'Wedding quilt', room: 'Bedroom', decision: 'keep',
+    id: '00000000-0000-4000-8000-0000000000b6', title: 'Wedding quilt', room: 'Bedroom', decision: 'keep',
     decidedAt: '2026-06-28T15:10:00Z', tags: ['textiles'], addedBy: 'Maya',
-    isSentimental: true, heirPersonId: 'p-maya', heirVisibility: 'revealed',
+    isSentimental: true, heirPersonId: '00000000-0000-4000-8000-0000000000a1', heirVisibility: 'revealed',
     story: {
       transcript: 'My mother and her sisters made this in the winter of 1949. Every square is a dress one of them wore.',
       durationSec: 51, createdAt: '2026-06-28T15:12:00Z',
@@ -245,13 +269,13 @@ const seedItems: Item[] = [
     createdAt: '2026-06-27T09:05:00Z',
   },
   {
-    id: 'i-china-set', title: 'Delft dinner service', room: 'Kitchen', decision: 'keep',
+    id: '00000000-0000-4000-8000-0000000000b7', title: 'Delft dinner service', room: 'Kitchen', decision: 'keep',
     decidedAt: '2026-06-28T15:20:00Z', tags: ['china'], addedBy: 'Sam',
     marketValue: 120, isSentimental: true, heirVisibility: 'owner_only',
     createdAt: '2026-06-27T09:10:00Z',
   },
   {
-    id: 'i-mower', title: 'Push mower', room: 'Garage', decision: 'donate',
+    id: '00000000-0000-4000-8000-0000000000b8', title: 'Push mower', room: 'Garage', decision: 'donate',
     decidedAt: '2026-06-28T15:30:00Z', tags: ['tools'], addedBy: 'Maya',
     isSentimental: false, heirVisibility: 'owner_only',
     donateTo: 'Habitat ReStore', donateToKind: 'charity',
@@ -259,41 +283,41 @@ const seedItems: Item[] = [
   },
 ];
 
-const DEMO_HOUSEHOLD_ID = 'h-demo';
+const DEMO_HOUSEHOLD_ID = '00000000-0000-4000-8000-0000000000e1';
 
 const seedMembers: Member[] = [
   {
-    id: 'mem-rose', name: 'Rose', relationship: 'Mum', status: 'active',
+    id: '00000000-0000-4000-8000-0000000000c1', name: 'Rose', relationship: 'Mum', status: 'active',
     invitedBy: 'Sam', invitedAt: '2026-06-27T09:00:00Z',
   },
   {
-    id: 'mem-sam', name: 'Sam', relationship: 'Son', status: 'active',
+    id: '00000000-0000-4000-8000-0000000000c2', name: 'Sam', relationship: 'Son', status: 'active',
     invitedBy: 'Sam', invitedAt: '2026-06-27T09:00:00Z',
   },
   {
-    id: 'mem-maya', name: 'Maya', relationship: 'Daughter', status: 'active',
+    id: '00000000-0000-4000-8000-0000000000c3', name: 'Maya', relationship: 'Daughter', status: 'active',
     invitedBy: 'Sam', invitedAt: '2026-06-27T09:30:00Z',
   },
   // Pending invitation — demos the decider approval flow on Family.
   {
-    id: 'mem-noor', name: 'Noor', relationship: 'Granddaughter', status: 'invited',
+    id: '00000000-0000-4000-8000-0000000000c4', name: 'Noor', relationship: 'Granddaughter', status: 'invited',
     invitedBy: 'Maya', invitedAt: '2026-07-15T12:00:00Z',
   },
 ];
 
 const seedMessages: ItemMessage[] = [
   {
-    id: 'm-1', itemId: 'i-teapot', author: 'Sam',
+    id: '00000000-0000-4000-8000-0000000000d1', itemId: '00000000-0000-4000-8000-0000000000b1', author: 'Sam',
     text: 'Is this the one you brought back from Delft? The glaze looks right.',
     createdAt: '2026-07-01T18:20:00Z',
   },
   {
-    id: 'm-2', itemId: 'i-teapot', author: 'Rose',
+    id: '00000000-0000-4000-8000-0000000000d2', itemId: '00000000-0000-4000-8000-0000000000b1', author: 'Rose',
     text: 'It is — from our honeymoon. Your father haggled terribly for it.',
     createdAt: '2026-07-01T19:02:00Z',
   },
   {
-    id: 'm-3', itemId: 'i-quilt', author: 'Maya',
+    id: '00000000-0000-4000-8000-0000000000d3', itemId: '00000000-0000-4000-8000-0000000000b6', author: 'Maya',
     text: 'Noor asked about this quilt last Christmas — she loved the stories in the squares.',
     createdAt: '2026-06-29T10:15:00Z',
   },
@@ -472,18 +496,35 @@ export const useStore = create<AppState>()(
         const s = get();
         const trimmed = text.trim();
         if (!trimmed) return;
-        set({
-          messages: [
-            ...s.messages,
-            {
-              id: uid(),
-              itemId,
-              author: s.userName,
-              text: trimmed,
-              createdAt: new Date().toISOString(),
-            },
-          ],
-        });
+        const msg = {
+          id: uid(),
+          itemId,
+          author: s.userName,
+          text: trimmed,
+          createdAt: new Date().toISOString(),
+        };
+        set({ messages: [...s.messages, msg] });
+        // Fire-and-forget cloud push so family sees it live; realtime echoes
+        // are deduped by id in applyRemoteMessage. Never blocks the UI.
+        if (s.cloudHouseholdId && !s.isDemo) {
+          void (async () => {
+            try {
+              const { supabase } = await import('@/lib/supabase');
+              const { data: auth } = await supabase.auth.getUser();
+              if (!auth?.user) return;
+              await supabase.from('item_messages').insert({
+                id: msg.id,
+                item_id: msg.itemId,
+                author: auth.user.id,
+                author_name: msg.author,
+                body: msg.text,
+                created_at: msg.createdAt,
+              });
+            } catch {
+              /* offline or unsynced item — the next Back up covers it */
+            }
+          })();
+        }
       },
 
       switchHousehold: (id) =>
@@ -560,11 +601,14 @@ export const useStore = create<AppState>()(
       setCloudMeta: (meta) => set(meta),
 
       restoreSnapshot: (snap) =>
-        set(() => {
-          const id = uid();
+        set((s) => {
+          // Local household id mirrors the cloud id (they're the same row).
+          const id = snap.cloudHouseholdId;
           return {
             onboarded: true,
             isDemo: false,
+            role: snap.role ?? s.role,
+            userName: snap.userName ?? s.userName,
             householdName: snap.householdName,
             households: [
               {
@@ -585,15 +629,32 @@ export const useStore = create<AppState>()(
           };
         }),
 
+      applyRemoteMessage: (m) =>
+        set((s) =>
+          s.messages.some((x) => x.id === m.id)
+            ? {}
+            : { messages: [...s.messages, m] }
+        ),
+
+      applyRemoteItem: (i) =>
+        set((s) =>
+          s.items.some((x) => x.id === i.id)
+            ? { items: s.items.map((x) => (x.id === i.id ? { ...x, ...i, photoUri: x.photoUri ?? i.photoUri } : x)) }
+            : { items: [i, ...s.items] }
+        ),
+
       resetAll: () => set({ ...initial, onboarded: false }),
     }),
     {
       name: 'declutter-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 3,
+      version: 4,
       /**
        * v1 → v2: chat messages + per-household deciders/creator.
        * v2 → v3: member roster (backfilled from deciders + current user).
+       * v3 → v4: ALL ids become UUIDs (and cross-references are remapped) so
+       *          local rows and cloud rows share identity — the basis of
+       *          multi-device upsert sync.
        */
       migrate: (persisted) => {
         const s = persisted as Partial<AppState>;
@@ -611,7 +672,7 @@ export const useStore = create<AppState>()(
             if (!name || names.has(name.toLowerCase())) return;
             names.add(name.toLowerCase());
             members!.push({
-              id: Math.random().toString(36).slice(2, 10),
+              id: uid(),
               name,
               status,
               invitedBy: s.userName ?? name,
@@ -621,7 +682,40 @@ export const useStore = create<AppState>()(
           push(s.userName, 'active');
           households.forEach((h) => h.deciderNames.forEach((d) => push(d, 'active')));
         }
-        return { ...s, messages: s.messages ?? [], households, members } as AppState;
+
+        // v4: remap legacy short ids → UUIDs, preserving references.
+        const idMap = new Map<string, string>();
+        const remap = (id: string) => {
+          if (!isLegacyId(id)) return id;
+          if (!idMap.has(id)) idMap.set(id, uid());
+          return idMap.get(id)!;
+        };
+        const people = (s.people ?? []).map((p) => ({ ...p, id: remap(p.id) }));
+        const items = (s.items ?? []).map((i) => ({
+          ...i,
+          id: remap(i.id),
+          heirPersonId: i.heirPersonId ? remap(i.heirPersonId) : undefined,
+        }));
+        const messages = (s.messages ?? []).map((m) => ({
+          ...m,
+          id: remap(m.id),
+          itemId: remap(m.itemId),
+        }));
+        const members4 = members.map((m) => ({ ...m, id: remap(m.id) }));
+        const households4 = households.map((h) => ({ ...h, id: remap(h.id) }));
+        const activeHouseholdId = s.activeHouseholdId
+          ? remap(s.activeHouseholdId)
+          : households4[0]?.id;
+
+        return {
+          ...s,
+          messages,
+          people,
+          items,
+          members: members4,
+          households: households4,
+          activeHouseholdId,
+        } as AppState;
       },
     }
   )

@@ -9,8 +9,8 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -26,10 +26,13 @@ import { AccountSync } from '@/components/settings/account-sync';
 import { UPGRADE_ROUTE } from '@/components/settings/routes';
 import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { refreshPlan, verifyCheckout } from '@/lib/billing';
 import { selectEntitlement, useStore } from '@/lib/store';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  // Stripe Checkout returns here as /settings?session_id=… (see lib/billing).
+  const { session_id } = useLocalSearchParams<{ session_id?: string }>();
 
   // Whole-state read: selectEntitlement builds a fresh object each call, so
   // passing it to useStore as a selector would break reference equality.
@@ -44,6 +47,24 @@ export default function SettingsScreen() {
   const [freshName, setFreshName] = useState(householdName);
   const [confirmFresh, setConfirmFresh] = useState(false);
   const [confirmErase, setConfirmErase] = useState(false);
+  const [checkoutState, setCheckoutState] = useState<'idle' | 'verifying' | 'success' | 'failed'>(
+    'idle'
+  );
+
+  // On mount: mirror the cloud plan locally, and — if we just came back from
+  // Stripe — verify that checkout session so the entitlement flips server-side.
+  const verifiedSession = useRef<string | null>(null);
+  useEffect(() => {
+    refreshPlan();
+    const sid = typeof session_id === 'string' ? session_id : undefined;
+    if (sid && verifiedSession.current !== sid) {
+      verifiedSession.current = sid;
+      setCheckoutState('verifying');
+      verifyCheckout(sid).then((res) => {
+        setCheckoutState(res.ok && res.plan === 'pro' ? 'success' : 'failed');
+      });
+    }
+  }, [session_id]);
 
   const version = Constants.expoConfig?.version ?? '—';
   const meterPct = ent.pro
@@ -98,6 +119,36 @@ export default function SettingsScreen() {
 
         <Title style={styles.title}>Settings</Title>
         <Muted style={styles.sub}>Your household, your plan, and your data.</Muted>
+
+        {/* ---------- back from Stripe checkout ---------- */}
+        {checkoutState === 'verifying' && (
+          <Muted style={styles.checkoutNote}>Confirming your payment…</Muted>
+        )}
+        {checkoutState === 'success' && (
+          <Card style={styles.checkoutCard}>
+            <Row style={styles.cardTop}>
+              <View style={styles.icon}>
+                <Ionicons name="ribbon-outline" size={20} color={T.brassDeep} />
+              </View>
+              <View style={styles.cardMain}>
+                <Heading style={styles.cardTitle}>
+                  Welcome to Pro — the whole house fits now
+                </Heading>
+                <Body style={styles.cardBody}>
+                  Your payment went through and this household is on Pro: unlimited
+                  items, and room for a second home. Thank you for funding Declutter
+                  directly.
+                </Body>
+              </View>
+            </Row>
+          </Card>
+        )}
+        {checkoutState === 'failed' && (
+          <Muted style={styles.checkoutNote}>
+            We couldn&rsquo;t confirm that payment just yet. If you completed checkout,
+            your plan below will catch up shortly — nothing is lost.
+          </Muted>
+        )}
 
         {/* ---------- demo data ---------- */}
         {isDemo && (
@@ -412,6 +463,12 @@ const styles = StyleSheet.create({
     borderColor: T.brass,
     backgroundColor: T.brassTint,
   },
+  checkoutCard: {
+    marginTop: Spacing.four,
+    borderColor: T.brass,
+    backgroundColor: T.brassTint,
+  },
+  checkoutNote: { marginTop: Spacing.three, fontSize: 13.5, lineHeight: 19 },
   confirmNote: { marginTop: Spacing.two, textAlign: 'center' },
 
   /* rows */
