@@ -28,6 +28,7 @@ import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { refreshPlan, verifyCheckout } from '@/lib/billing';
 import { getNotifyPref, setNotifyPref } from '@/lib/notifications';
+import { supabase } from '@/lib/supabase';
 import { selectEntitlement, useStore } from '@/lib/store';
 
 import type { NotifyMode } from '@/lib/notifications';
@@ -137,6 +138,27 @@ export default function SettingsScreen() {
     router.replace('/');
   };
 
+  // Account session for the top-level log-out bar.
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSessionEmail(data.session?.user.email ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) =>
+      setSessionEmail(s?.user.email ?? null)
+    );
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  /** Log out of the account only — device data and cloud backups both stay. */
+  const doLogOut = async () => {
+    await supabase.auth.signOut();
+    notify(
+      'Logged out',
+      'Your things stay on this device, and your backups stay in your account for next time.'
+    );
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -155,6 +177,29 @@ export default function SettingsScreen() {
 
         <Title style={styles.title}>Settings</Title>
         <Muted style={styles.sub}>Your household, your plan, and your data.</Muted>
+
+        {/* ---------- account, front and center (logging out is routine) ---------- */}
+        {sessionEmail && (
+          <Card style={styles.accountBar}>
+            <Row style={styles.accountRow}>
+              <View style={styles.accountDot} />
+              <View style={styles.cardMain}>
+                <Text style={styles.accountEmail}>{sessionEmail}</Text>
+                <Muted style={styles.accountMeta}>
+                  Signed in — backups and invitations are on
+                </Muted>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={doLogOut}
+                style={({ pressed }) => [styles.logoutBtn, pressed && styles.pressed]}
+              >
+                <Ionicons name="log-out-outline" size={16} color={T.ink} />
+                <Text style={styles.logoutText}>Log out</Text>
+              </Pressable>
+            </Row>
+          </Card>
+        )}
 
         {/* ---------- back from Stripe checkout ---------- */}
         {checkoutState === 'verifying' && (
@@ -503,6 +548,23 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
 
+  accountBar: { marginBottom: Spacing.two, backgroundColor: T.sunken, borderColor: T.line },
+  accountRow: { gap: Spacing.two },
+  accountDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: T.keep },
+  accountEmail: { fontSize: 14.5, fontWeight: '700', color: T.ink },
+  accountMeta: { fontSize: 12, marginTop: 1 },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 44,
+    borderRadius: Radius.control,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+    paddingHorizontal: 13,
+  },
+  logoutText: { fontSize: 13.5, fontWeight: '700', color: T.ink },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
