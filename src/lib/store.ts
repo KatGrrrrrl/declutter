@@ -157,6 +157,11 @@ interface AppState {
   lockOut: (accountEmail: string) => void;
   unlock: () => void;
   clearLogoutNotice: () => void;
+  /**
+   * Lock without the "you logged out" notice — for when a session lapses or
+   * is missing on load rather than the user tapping Log out.
+   */
+  requireSignIn: () => void;
   setCloudMeta: (meta: { cloudHouseholdId?: string; lastBackupAt?: string }) => void;
   /** Replace local state wholesale from a cloud restore snapshot. */
   restoreSnapshot: (snap: {
@@ -696,6 +701,8 @@ export const useStore = create<AppState>()(
       unlock: () => set({ lockedOut: false, pendingLogoutNotice: false }),
 
       clearLogoutNotice: () => set({ pendingLogoutNotice: false }),
+
+      requireSignIn: () => set({ lockedOut: true, pendingLogoutNotice: false }),
 
       restoreSnapshot: (snap) =>
         set((s) => {
