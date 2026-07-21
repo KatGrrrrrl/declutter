@@ -95,9 +95,18 @@ export interface Member {
   invitedAt: string;
 }
 
-/** Free tier limits — see PLAN_LIMITS. Paid removes both. */
-export const FREE_ITEM_LIMIT = 50;
-export const FREE_HOUSEHOLD_LIMIT = 1;
+/**
+ * Pricing model: the local inventory is free and UNLIMITED — items and
+ * households cost nothing to store on the device, and decluttering is
+ * episodic, so we don't wall it. The paywall is at the CLOUD: backup,
+ * cross-device family sharing, and (later) the memorandum export — the
+ * features that carry an ongoing server cost. `Pro` unlocks the cloud.
+ *
+ * These constants are kept (Infinity) only so existing call sites that guard
+ * on them never refuse a local action.
+ */
+export const FREE_ITEM_LIMIT = Infinity;
+export const FREE_HOUSEHOLD_LIMIT = Infinity;
 
 export type Plan = 'free' | 'pro';
 
@@ -913,18 +922,19 @@ export const useEntitlement = () => useStore(useShallow(selectEntitlement));
 /** Plan limits + usage, for meters and upgrade prompts. */
 export const selectEntitlement = (s: AppState) => {
   const pro = s.plan === 'pro';
-  const itemsUsed = s.items.length;
-  const householdsUsed = s.households.length;
   return {
     pro,
-    itemsUsed,
-    itemLimit: pro ? Infinity : FREE_ITEM_LIMIT,
-    itemsLeft: pro ? Infinity : Math.max(0, FREE_ITEM_LIMIT - itemsUsed),
-    atItemLimit: !pro && itemsUsed >= FREE_ITEM_LIMIT,
-    /** Warn as they approach the cap so the wall is never a surprise. */
-    nearItemLimit: !pro && itemsUsed >= FREE_ITEM_LIMIT - 10 && itemsUsed < FREE_ITEM_LIMIT,
-    householdsUsed,
-    householdLimit: pro ? Infinity : FREE_HOUSEHOLD_LIMIT,
-    canAddHousehold: pro || householdsUsed < FREE_HOUSEHOLD_LIMIT,
+    /** Cloud backup, family sharing, multi-device — the paid tier. */
+    cloudEnabled: pro,
+    itemsUsed: s.items.length,
+    householdsUsed: s.households.length,
+    // Local use is unlimited and free; nothing is ever "at a limit" now. These
+    // stay so older call sites keep type-checking and never block a local add.
+    itemLimit: Infinity,
+    itemsLeft: Infinity,
+    atItemLimit: false,
+    nearItemLimit: false,
+    householdLimit: Infinity,
+    canAddHousehold: true,
   };
 };

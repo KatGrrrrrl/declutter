@@ -25,8 +25,10 @@ const cors = {
 };
 
 const PRICES = {
+  // Stripe prices are immutable — a new amount needs a new lookup_key, so the
+  // yearly key is bumped to _v2 for the $39 price ($49.99 → $39).
   monthly: { lookupKey: 'declutter_pro_monthly', unitAmount: 499, interval: 'month' as const },
-  yearly: { lookupKey: 'declutter_pro_yearly', unitAmount: 4999, interval: 'year' as const },
+  yearly: { lookupKey: 'declutter_pro_yearly_v2', unitAmount: 3900, interval: 'year' as const },
 };
 
 const PRODUCT_NAME = 'Inventory Our Home Pro';

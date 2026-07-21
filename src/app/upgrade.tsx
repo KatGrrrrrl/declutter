@@ -26,7 +26,7 @@ import { notify } from '@/components/child/shared';
 import { Body, Btn, Card, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { refreshPlan, startCheckout } from '@/lib/billing';
-import { FREE_HOUSEHOLD_LIMIT, FREE_ITEM_LIMIT, useEntitlement, useStore } from '@/lib/store';
+import { useEntitlement, useStore } from '@/lib/store';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -51,9 +51,9 @@ const PLANS: {
   {
     key: 'yearly',
     name: 'Yearly',
-    price: '$49.99',
+    price: '$39',
     cadence: 'per year',
-    note: 'Works out to $4.17 a month — two months free.',
+    note: 'Works out to $3.25 a month.',
     best: true,
   },
 ];
@@ -62,7 +62,7 @@ const REASSURANCES = [
   'No ads, ever.',
   'We never sell your data — subscriptions are how Inventory Our Home is funded.',
   'Your inventory, photos and stories stay yours.',
-  'Cancel anytime; your first household and its items keep working.',
+  'Cancel anytime; your inventory keeps working free on this device.',
 ];
 
 export default function UpgradeScreen() {
@@ -153,12 +153,12 @@ export default function UpgradeScreen() {
     <Screen>
       <BackRow onPress={back} />
       <Label>Inventory Our Home Pro</Label>
-      <Title>Room for the whole house</Title>
+      <Title>Keep it safe, together</Title>
       <Body style={styles.lede}>
-        You&apos;ve used {ent.itemsUsed} of your {FREE_ITEM_LIMIT} free items. Pro lifts
-        the cap, so a full home — the attic, the garage, the good china — fits in one
-        catalog. And you can keep a second household: Mum&apos;s house and the cottage,
-        each with its own rooms, decisions and stories.
+        Your inventory is free and unlimited on this device. Pro adds the cloud:
+        your home is backed up — so a lost or broken phone never means a lost
+        inventory — and your family can join from their own devices to add
+        photos, tell the stories, and see what&apos;s been decided.
       </Body>
 
       <Label>Choose a plan</Label>
@@ -212,7 +212,7 @@ export default function UpgradeScreen() {
       <Muted style={styles.ctaNote}>
         {IS_WEB
           ? selected === 'yearly'
-            ? 'Yearly · $49.99 billed once a year. Secure payment by Stripe.'
+            ? 'Yearly · $39 billed once a year. Secure payment by Stripe.'
             : 'Monthly · $4.99 billed each month. Secure payment by Stripe.'
           : selected === 'yearly'
             ? 'Yearly · billed once a year after your trial.'
@@ -233,9 +233,8 @@ export default function UpgradeScreen() {
       </Well>
 
       <Muted style={styles.freeNote}>
-        Not ready? The free plan keeps working — {FREE_ITEM_LIMIT} items in{' '}
-        {FREE_HOUSEHOLD_LIMIT === 1 ? 'one household' : `${FREE_HOUSEHOLD_LIMIT} households`}
-        , with every feature above it.
+        Not ready? The free plan keeps working — unlimited items and homes on
+        this device, with every feature above except cloud backup and sharing.
       </Muted>
 
       <Pressable
@@ -283,19 +282,19 @@ function BackRow({ onPress }: { onPress: () => void }) {
 
 const BENEFITS: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string }[] = [
   {
-    icon: 'infinite-outline',
-    title: 'Unlimited items',
-    body: 'Every drawer, every shelf — no counting as you go.',
-  },
-  {
-    icon: 'home-outline',
-    title: 'More than one household',
-    body: 'Mum’s house and the cottage, kept separately.',
+    icon: 'cloud-done-outline',
+    title: 'Cloud backup',
+    body: 'A lost or broken phone never loses the inventory — restore it on any device.',
   },
   {
     icon: 'people-outline',
-    title: 'Everything you already rely on',
-    body: 'Swipe decisions, voice stories, heirs and rooms — all unchanged.',
+    title: 'Family sharing',
+    body: 'Invite family to join from their own phones; changes and chat sync live.',
+  },
+  {
+    icon: 'home-outline',
+    title: 'More than one home, in the cloud',
+    body: 'Mum’s house and the cottage, backed up and shared separately.',
   },
 ];
 

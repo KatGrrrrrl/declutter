@@ -104,9 +104,6 @@ export default function SettingsScreen() {
   }, [session_id]);
 
   const version = Constants.expoConfig?.version ?? '—';
-  const meterPct = ent.pro
-    ? 100
-    : Math.min(100, Math.round((ent.itemsUsed / Math.max(1, ent.itemLimit)) * 100));
 
   const goUpgrade = () => router.push(UPGRADE_ROUTE);
 
@@ -321,9 +318,8 @@ export default function SettingsScreen() {
             );
           })}
 
-          {ent.canAddHousehold ? (
-            addingHousehold ? (
-              <View style={styles.addBox}>
+          {addingHousehold ? (
+            <View style={styles.addBox}>
                 <TextInput
                   style={styles.input}
                   value={newHouseholdName}
@@ -358,31 +354,15 @@ export default function SettingsScreen() {
                     }}
                   />
                 </View>
-              </View>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setAddingHousehold(true)}
-                style={({ pressed }) => [styles.rowItem, pressed && styles.pressed]}
-              >
-                <Ionicons name="add-circle-outline" size={20} color={T.brass} />
-                <Text style={styles.rowTitle}>Add a household</Text>
-              </Pressable>
-            )
+            </View>
           ) : (
             <Pressable
               accessibilityRole="button"
-              onPress={goUpgrade}
+              onPress={() => setAddingHousehold(true)}
               style={({ pressed }) => [styles.rowItem, pressed && styles.pressed]}
             >
-              <Ionicons name="lock-closed-outline" size={20} color={T.inkFaint} />
-              <View style={styles.cardMain}>
-                <Text style={styles.rowTitle}>Additional households</Text>
-                <Muted style={styles.rowMeta}>A second home, a cottage, a parent&rsquo;s place</Muted>
-              </View>
-              <View style={styles.proTag}>
-                <Text style={styles.proTagText}>Pro</Text>
-              </View>
+              <Ionicons name="add-circle-outline" size={20} color={T.brass} />
+              <Text style={styles.rowTitle}>Add a household</Text>
             </Pressable>
           )}
         </View>
@@ -397,9 +377,13 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.cardMain}>
                 <Heading style={styles.cardTitle}>Pro</Heading>
-                <Body style={styles.cardBody}>Unlimited items and households.</Body>
+                <Body style={styles.cardBody}>
+                  Your home is backed up to the cloud, and family can join across
+                  their own devices.
+                </Body>
                 <Muted style={styles.cardMeta}>
-                  Manage your subscription in the App Store or Google Play.
+                  Manage your subscription in the App Store, Google Play, or on the
+                  web.
                 </Muted>
               </View>
             </Row>
@@ -407,29 +391,14 @@ export default function SettingsScreen() {
         ) : (
           <Card>
             <Heading style={styles.cardTitle}>Free</Heading>
-            <Muted style={styles.cardMeta}>
-              {ent.itemsUsed} of {ent.itemLimit} items
-            </Muted>
-            <View
-              style={styles.meterTrack}
-              accessibilityRole="progressbar"
-              accessibilityLabel={`${ent.itemsUsed} of ${ent.itemLimit} items used`}
-            >
-              <View
-                style={[
-                  styles.meterFill,
-                  { width: `${meterPct}%` },
-                  ent.atItemLimit && styles.meterFull,
-                ]}
-              />
-            </View>
             <Body style={styles.cardBody}>
-              {ent.atItemLimit
-                ? "You've filled the free plan. Pro lifts the limit."
-                : `Room for ${ent.itemsLeft} more before you'd need Pro.`}
+              Your inventory is unlimited and free on this device —
+              {' '}{ent.itemsUsed} item{ent.itemsUsed === 1 ? '' : 's'} so far.
+              Pro adds cloud backup and family sharing, so a lost phone never
+              means a lost inventory and everyone can pitch in.
             </Body>
             <View style={styles.cta}>
-              <Btn label="Upgrade to Pro" big onPress={goUpgrade} />
+              <Btn label="See Pro — backup & sharing" big onPress={goUpgrade} />
             </View>
           </Card>
         )}
@@ -626,19 +595,6 @@ const styles = StyleSheet.create({
   rowDisabled: { opacity: 0.45 },
   emailNote: { marginTop: Spacing.two, fontSize: 13, lineHeight: 18 },
   rowValue: { fontSize: 15 },
-  proTag: {
-    borderRadius: Radius.pill,
-    backgroundColor: T.brassTint,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  proTagText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: T.brassDeep,
-  },
 
   addBox: { paddingVertical: Spacing.two },
   deciderHint: { fontSize: 12.5, marginTop: Spacing.two },
@@ -657,15 +613,6 @@ const styles = StyleSheet.create({
   ctaGap: { height: Spacing.two },
 
   /* plan meter */
-  meterTrack: {
-    height: 10,
-    borderRadius: Radius.pill,
-    backgroundColor: T.sunken,
-    marginTop: Spacing.two,
-    overflow: 'hidden',
-  },
-  meterFill: { height: '100%', borderRadius: Radius.pill, backgroundColor: T.brass },
-  meterFull: { backgroundColor: T.toss },
 
   /* danger */
   dangerWell: { marginTop: Spacing.three, backgroundColor: T.tossTint },
