@@ -151,8 +151,12 @@ interface AppState {
    */
   lockedOut?: boolean;
   lastAccountEmail?: string;
+  /** True immediately after logging out, so the login screen can confirm it
+   *  even though the lock redirect drops any URL params. Consumed once. */
+  pendingLogoutNotice?: boolean;
   lockOut: (accountEmail: string) => void;
   unlock: () => void;
+  clearLogoutNotice: () => void;
   setCloudMeta: (meta: { cloudHouseholdId?: string; lastBackupAt?: string }) => void;
   /** Replace local state wholesale from a cloud restore snapshot. */
   restoreSnapshot: (snap: {
@@ -683,9 +687,15 @@ export const useStore = create<AppState>()(
       setCloudMeta: (meta) => set(meta),
 
       lockOut: (accountEmail) =>
-        set({ lockedOut: true, lastAccountEmail: accountEmail.toLowerCase() }),
+        set({
+          lockedOut: true,
+          lastAccountEmail: accountEmail.toLowerCase(),
+          pendingLogoutNotice: true,
+        }),
 
-      unlock: () => set({ lockedOut: false }),
+      unlock: () => set({ lockedOut: false, pendingLogoutNotice: false }),
+
+      clearLogoutNotice: () => set({ pendingLogoutNotice: false }),
 
       restoreSnapshot: (snap) =>
         set((s) => {

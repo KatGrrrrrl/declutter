@@ -9,7 +9,7 @@ import { Image } from 'expo-image';
 import { useIsFocused, useRouter } from 'expo-router';
 import { BottomTabBar } from 'expo-router/build/react-navigation/bottom-tabs/views/BottomTabBar';
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs/types';
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, useEffect, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -25,6 +25,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { useSignedPhotoUrl } from '@/lib/photo-sync';
+import { useStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 import type { Decision } from '@/lib/store';
 
@@ -153,10 +155,30 @@ export function useTabBarLayout() {
 export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { label: string }) {
   // On desktop the rail is a full-height left column; the landmark wrapper must
   // stretch so it doesn't collapse the sidebar. It also carries a header with
-  // the wordmark and an always-visible account/settings link — otherwise the
-  // only way to reach Settings (and sign in/out) is buried inside a screen.
+  // the wordmark, an account/settings link, and — when signed in — a Log out
+  // link, so account actions are reachable from the main menu itself.
   const isDesktop = useIsDesktop();
   const router = useRouter();
+
+  // Hooks must run unconditionally, so track the session before the mobile
+  // early-return below.
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSessionEmail(data.session?.user.email ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) =>
+      setSessionEmail(s?.user.email ?? null)
+    );
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const logOut = async () => {
+    const email = sessionEmail ?? '';
+    await supabase.auth.signOut();
+    // lockOut flips `lockedOut`, which the root LockGate turns into a redirect
+    // to /login — no explicit navigation (a second nav races the confirmation).
+    useStore.getState().lockOut(email);
+  };
+
   if (!isDesktop) {
     return (
       <View role="navigation" aria-label={label}>
@@ -178,6 +200,19 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
           </DecorativeIcon>
           <Text style={styles.railSettingsText}>Account & settings</Text>
         </Pressable>
+        {sessionEmail && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            onPress={logOut}
+            style={({ pressed }) => [styles.railSettings, pressed && styles.pressed]}
+          >
+            <DecorativeIcon>
+              <Ionicons name="log-out-outline" size={18} color={T.inkSoft} />
+            </DecorativeIcon>
+            <Text style={styles.railSettingsText}>Log out</Text>
+          </Pressable>
+        )}
       </View>
       <BottomTabBar {...props} />
     </View>

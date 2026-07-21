@@ -40,8 +40,16 @@ export default function LoginScreen() {
   const lastAccountEmail = useStore((s) => s.lastAccountEmail);
   const unlock = useStore((s) => s.unlock);
   const signOut = useStore((s) => s.signOut);
+  const clearLogoutNotice = useStore((s) => s.clearLogoutNotice);
 
-  const [showLoggedOut, setShowLoggedOut] = useState(loggedOut === '1');
+  // Show the "logged out" confirmation from either signal: the URL param (when
+  // navigation preserved it) or the store flag (survives the lock redirect,
+  // which drops params). The flag is cleared on dismissal or sign-in, not on
+  // mount — the lock gate can mount this screen more than once and clearing on
+  // mount would race the confirmation away.
+  const [showLoggedOut, setShowLoggedOut] = useState(
+    () => loggedOut === '1' || Boolean(useStore.getState().pendingLogoutNotice)
+  );
   const [mode, setMode] = useState<Mode>('password');
   const [email, setEmail] = useState(lastAccountEmail ?? '');
   const [password, setPassword] = useState('');
@@ -209,7 +217,14 @@ export default function LoginScreen() {
               : 'Everything is safe on this device. Nothing was deleted.'}
           </Muted>
           <View style={styles.cta}>
-            <Btn label="Go to sign in" big onPress={() => setShowLoggedOut(false)} />
+            <Btn
+              label="Go to sign in"
+              big
+              onPress={() => {
+                clearLogoutNotice();
+                setShowLoggedOut(false);
+              }}
+            />
           </View>
         </View>
       </SafeAreaView>
