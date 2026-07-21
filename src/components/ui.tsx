@@ -190,6 +190,11 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
     <View role="navigation" aria-label={label} style={styles.rail}>
       <View style={styles.railHeader}>
         <Text style={styles.railWordmark}>Inventory Our Home</Text>
+      </View>
+      <BottomTabBar {...props} />
+      {/* Account actions live at the bottom of the rail, away from the primary
+          sections. marginTop:auto pushes this block to the foot of the column. */}
+      <View style={styles.railFooter}>
         <Pressable
           accessibilityRole="link"
           onPress={() => router.push('/settings')}
@@ -214,7 +219,6 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
           </Pressable>
         )}
       </View>
-      <BottomTabBar {...props} />
     </View>
   );
 }
@@ -482,8 +486,16 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   // Centered, phone-width column — caps the layout on desktop, no-op on phones.
   // Desktop nav rail header (wordmark + account/settings link above the tabs).
-  rail: { alignSelf: 'stretch', height: '100%' },
-  railHeader: { paddingHorizontal: 14, paddingTop: 22, paddingBottom: 10, gap: 12 },
+  rail: { alignSelf: 'stretch', height: '100%', flexDirection: 'column' },
+  railHeader: { paddingHorizontal: 14, paddingTop: 22, paddingBottom: 14 },
+  railFooter: {
+    marginTop: 'auto',
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: T.lineSoft,
+  },
   railWordmark: {
     fontFamily: Fonts?.serif,
     fontSize: 17,
