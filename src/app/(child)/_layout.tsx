@@ -18,8 +18,10 @@ export default function ChildTabs() {
       tabBar={(props) => <NavigationTabBar {...props} label="Sections" />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: T.heading,
-        tabBarInactiveTintColor: T.inkFaint,
+        tabBarActiveTintColor: bar.tabBarActiveTintColor,
+        tabBarActiveBackgroundColor: bar.tabBarActiveBackgroundColor,
+        tabBarInactiveTintColor: bar.tabBarInactiveTintColor,
+        tabBarInactiveBackgroundColor: bar.tabBarInactiveBackgroundColor,
         tabBarPosition: bar.tabBarPosition,
         tabBarStyle: bar.tabBarStyle,
         tabBarLabelStyle: bar.tabBarLabelStyle,

@@ -4,8 +4,9 @@
  * pills, hairline-bordered cards. Screens compose these; keep them dumb.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { BottomTabBar } from 'expo-router/build/react-navigation/bottom-tabs/views/BottomTabBar';
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs/types';
 import { PropsWithChildren } from 'react';
@@ -87,6 +88,13 @@ export function useTabBarLayout() {
   if (isDesktop) {
     return {
       tabBarPosition: 'left' as const,
+      // Active item is a light brass pill with navy text/icon. The side bar
+      // uses the active TINT as the pill fill, so without an explicit active
+      // background the pill would be navy — invisible under navy text.
+      tabBarActiveTintColor: T.heading,
+      tabBarActiveBackgroundColor: T.brassTint,
+      tabBarInactiveTintColor: T.inkSoft,
+      tabBarInactiveBackgroundColor: 'transparent',
       tabBarStyle: {
         backgroundColor: T.surface,
         borderRightColor: T.line,
@@ -97,7 +105,7 @@ export function useTabBarLayout() {
         width: SIDEBAR_WIDTH,
         minWidth: SIDEBAR_WIDTH,
         maxWidth: SIDEBAR_WIDTH,
-        paddingTop: 24,
+        paddingTop: 12,
         paddingHorizontal: 12,
       },
       tabBarLabelStyle: { fontSize: 14, fontWeight: '600' as const },
@@ -113,6 +121,10 @@ export function useTabBarLayout() {
   }
   return {
     tabBarPosition: 'bottom' as const,
+    tabBarActiveTintColor: T.heading,
+    tabBarActiveBackgroundColor: undefined,
+    tabBarInactiveTintColor: T.inkFaint,
+    tabBarInactiveBackgroundColor: undefined,
     tabBarStyle: { backgroundColor: T.surface, borderTopColor: T.line, ...TAB_BAR_WIDTH_CAP },
     tabBarLabelStyle: TAB_BAR_LABEL,
     tabBarItemStyle: undefined,
@@ -140,10 +152,33 @@ export function useTabBarLayout() {
  */
 export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { label: string }) {
   // On desktop the rail is a full-height left column; the landmark wrapper must
-  // stretch so it doesn't collapse the sidebar.
+  // stretch so it doesn't collapse the sidebar. It also carries a header with
+  // the wordmark and an always-visible account/settings link — otherwise the
+  // only way to reach Settings (and sign in/out) is buried inside a screen.
   const isDesktop = useIsDesktop();
+  const router = useRouter();
+  if (!isDesktop) {
+    return (
+      <View role="navigation" aria-label={label}>
+        <BottomTabBar {...props} />
+      </View>
+    );
+  }
   return (
-    <View role="navigation" aria-label={label} style={isDesktop ? { alignSelf: 'stretch' } : undefined}>
+    <View role="navigation" aria-label={label} style={styles.rail}>
+      <View style={styles.railHeader}>
+        <Text style={styles.railWordmark}>Inventory Our Home</Text>
+        <Pressable
+          accessibilityRole="link"
+          onPress={() => router.push('/settings')}
+          style={({ pressed }) => [styles.railSettings, pressed && styles.pressed]}
+        >
+          <DecorativeIcon>
+            <Ionicons name="settings-outline" size={18} color={T.inkSoft} />
+          </DecorativeIcon>
+          <Text style={styles.railSettingsText}>Account & settings</Text>
+        </Pressable>
+      </View>
       <BottomTabBar {...props} />
     </View>
   );
@@ -411,6 +446,25 @@ const styles = StyleSheet.create({
   hiddenScreen: { display: 'none' },
   flex: { flex: 1 },
   // Centered, phone-width column — caps the layout on desktop, no-op on phones.
+  // Desktop nav rail header (wordmark + account/settings link above the tabs).
+  rail: { alignSelf: 'stretch', height: '100%' },
+  railHeader: { paddingHorizontal: 14, paddingTop: 22, paddingBottom: 10, gap: 12 },
+  railWordmark: {
+    fontFamily: Fonts?.serif,
+    fontSize: 17,
+    fontWeight: '600',
+    color: T.heading,
+  },
+  railSettings: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 40,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+  },
+  railSettingsText: { fontSize: 13.5, fontWeight: '600', color: T.inkSoft },
+
   // maxWidth is applied inline (responsive); keep width/centering here.
   column: { width: '100%', alignSelf: 'center' },
   columnFill: { width: '100%', alignSelf: 'center' },
