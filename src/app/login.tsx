@@ -10,7 +10,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -47,7 +47,16 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  // Seed from any OAuth error the redirect brought back, so a failed Google
+  // sign-in explains itself instead of dumping the user on a blank form.
+  const [error, setError] = useState(() => {
+    if (Platform.OS !== 'web') return '';
+    const p = new URLSearchParams(
+      window.location.search || window.location.hash.replace(/^#/, '')
+    );
+    const e = p.get('error_description') || p.get('error');
+    return e ? decodeURIComponent(e).replace(/\+/g, ' ') : '';
+  });
   const [confirmErase, setConfirmErase] = useState(false);
 
   // This screen does not use the `Screen` kit component, so it carries its own
@@ -61,6 +70,42 @@ export default function LoginScreen() {
     unlock();
     router.replace('/');
   };
+
+  /**
+   * OAuth (Google) returns by redirecting the browser back here. Two things
+   * must happen that the click handler can't do, because it navigated away:
+   *  - if it FAILED, Google appends ?error=…/#error=… — surface it, don't
+   *    silently dump the user back on the login form with no explanation;
+   *  - if it SUCCEEDED, a session now exists — unlock and go to the app
+   *    (otherwise the lock gate just bounces straight back to /login).
+   */
+  // Strip auth params from the address bar once (side-effect only, no setState).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const url = window.location.search + window.location.hash;
+    if (/error|access_token|[?&#]code=/.test(url)) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    let handled = false;
+    const proceed = () => {
+      if (handled) return;
+      handled = true;
+      finish();
+    };
+    // Catch a session already present (redirect completed before mount)…
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) proceed();
+    });
+    // …and one that arrives just after (detectSessionInUrl parses the hash).
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && event === 'SIGNED_IN') proceed();
+    });
+    return () => sub.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const signInWithPassword = async () => {
     const addr = email.trim().toLowerCase();
@@ -136,11 +181,15 @@ export default function LoginScreen() {
   };
 
   const googleSignIn = async () => {
+    setError('');
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: typeof location !== 'undefined' ? location.origin : undefined },
+      // Return to /login so the effects above can show an error or proceed.
+      options: {
+        redirectTo: typeof location !== 'undefined' ? `${location.origin}/login` : undefined,
+      },
     });
-    if (err) setError('Google sign-in isn’t available right now — try a password or a code.');
+    if (err) setError('Google sign-in couldn’t start — try a password or a code instead.');
   };
 
   /* ---------- logged-out confirmation (once, straight after logging out) ---------- */

@@ -6,7 +6,12 @@ project_id = "declutter"
 
 [auth]
 site_url = "https://inventoryourhouse.com"
-additional_redirect_urls = ["https://inventoryourhouse.com", "declutter://"]
+additional_redirect_urls = [
+  "https://inventoryourhouse.com",
+  "https://inventoryourhouse.com/**",
+  "http://localhost:8081/**",
+  "declutter://",
+]
 
 [auth.email]
 enable_signup = true
