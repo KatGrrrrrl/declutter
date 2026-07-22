@@ -45,6 +45,12 @@ export default function FamilyScreen() {
   const deciders = household?.deciderNames ?? [ownerName];
   const createdBy = household?.createdBy ?? ownerName;
 
+  // Membership (who is IN the household) is managed by the organizer who set
+  // it up — separate from item decisions, which belong to the deciders. This
+  // matters because the deciders are often invitees who haven't joined yet, so
+  // gating approvals on them alone deadlocks: nobody could ever be let in.
+  const canManageMembers = canDecide || userName === createdBy;
+
   const active = members.filter((m) => m.status === 'active');
   const invited = members.filter((m) => m.status === 'invited');
   const pending = items.filter((i) => i.requestedBy);
@@ -161,7 +167,7 @@ export default function FamilyScreen() {
                     {m.email ? ` · ${m.email}` : ' · no email yet'}
                   </Muted>
                 </View>
-                {canDecide ? (
+                {canManageMembers ? (
                   <Row style={styles.approveRow}>
                     <Pressable
                       accessibilityRole="button"
@@ -183,7 +189,7 @@ export default function FamilyScreen() {
                 ) : (
                   <View style={[styles.badge, styles.badgeInvited]}>
                     <Text style={[styles.badgeText, styles.badgeInvitedText]}>
-                      Awaiting {deciders[0]}
+                      Awaiting approval
                     </Text>
                   </View>
                 )}
@@ -250,9 +256,9 @@ export default function FamilyScreen() {
             onSubmitEditing={sendInvite}
           />
           <Muted style={styles.inviteNote}>
-            {canDecide
-              ? 'You hold the final say — the email goes out the moment you approve.'
-              : `They'll wait for ${deciders.join(' or ')} to approve; the email is sent on approval.`}
+            {canManageMembers
+              ? 'They join once you approve them here — the email goes out the moment you do.'
+              : 'A household organizer approves new members; the email is sent on approval.'}
           </Muted>
           <Row style={styles.inviteActions}>
             <View style={styles.flex}>
