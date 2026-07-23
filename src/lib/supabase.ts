@@ -10,7 +10,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
-const SUPABASE_URL = 'https://xkzuoogmcfrxicmoybzp.supabase.co';
+// Custom auth domain (fronts the Supabase project xkzuoogmcfrxicmoybzp).
+// Using our own domain means the Google sign-in screen reads "continue to
+// auth.inventoryourhouse.com" instead of the raw project domain.
+const SUPABASE_URL = 'https://auth.inventoryourhouse.com';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_jvgjfZky19YKaFVrH29OWw_6srBfiP1';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -18,6 +21,9 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     // On native, persist the session in AsyncStorage; on web the default
     // (localStorage) is correct and AsyncStorage would be a no-op shim.
     ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
+    // Stable storage key so switching the URL to the custom domain doesn't
+    // orphan existing sessions under a different auto-derived key.
+    storageKey: 'sb-inventoryourhome-auth',
     autoRefreshToken: true,
     persistSession: true,
     // Web must read the session from the URL after an OAuth (Google) redirect;
