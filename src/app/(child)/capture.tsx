@@ -39,7 +39,7 @@ import {
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
-import { useEntitlement, useStore } from '@/lib/store';
+import { useCanDecide, useEntitlement, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 export default function CaptureScreen() {
@@ -54,6 +54,8 @@ function NativeCapture() {
   const addItem = useStore((s) => s.addItem);
   const userName = useStore((s) => s.userName);
   const ent = useEntitlement();
+  // A parent cataloguing their own things is deciding as they go: mark it Keep.
+  const canDecide = useCanDecide();
 
   const cameraRef = useRef<CameraView>(null);
   const [room, setRoom] = useState<string>(ROOMS[0]);
@@ -131,6 +133,7 @@ function NativeCapture() {
       photoUri: pendingUri,
       addedBy: userName,
       tags: [],
+      ...(canDecide ? { decision: 'keep' as const, decidedAt: new Date().toISOString() } : null),
     });
     // Never fail silently: the shot they just took wasn't saved.
     if (!res.ok) {
@@ -253,8 +256,8 @@ function NativeCapture() {
       {ent.nearItemLimit && <ItemQuotaMeter style={styles.quota} />}
 
       <Text style={styles.batchNote}>
-        <Text style={styles.batchNoteStrong}>Batch mode</Text> · keep shooting, decide
-        later.
+        <Text style={styles.batchNoteStrong}>Batch mode</Text> ·{' '}
+        {canDecide ? 'saved as keepsakes as you go.' : 'keep shooting, decide later.'}
       </Text>
     </SafeAreaView>
   );
@@ -266,6 +269,8 @@ function WebCapture() {
   const addItem = useStore((s) => s.addItem);
   const userName = useStore((s) => s.userName);
   const ent = useEntitlement();
+  // A parent cataloguing their own things is deciding as they go: mark it Keep.
+  const canDecide = useCanDecide();
 
   const [room, setRoom] = useState<string>(ROOMS[0]);
   const [title, setTitle] = useState('');
@@ -286,6 +291,7 @@ function WebCapture() {
       photoUri: !withoutPhoto && photoUri ? photoUri : undefined,
       addedBy: userName,
       tags: [],
+      ...(canDecide ? { decision: 'keep' as const, decidedAt: new Date().toISOString() } : null),
     });
     // Refused at the free cap — say so rather than clearing the field silently.
     if (!res.ok) {
@@ -412,7 +418,8 @@ function WebCapture() {
       />
       {added > 0 && (
         <Muted style={styles.webAdded}>
-          Added ✓ · {added} this session · find them in Inventory
+          {canDecide ? 'Kept ✓' : 'Added ✓'} · {added} this session · find{' '}
+          {canDecide ? 'them in Keepsakes' : 'them in Inventory'}
         </Muted>
       )}
     </Screen>

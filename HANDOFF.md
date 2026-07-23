@@ -227,6 +227,13 @@ Shipped, in order:
    - **"Protected & backed up" status card** in the desktop rail (Pro shows a
      relative timestamp; free shows an "On this device · add cloud backup" nudge).
 
+8. **Parents can catalogue their own things** — a decider now has an "Add item"
+   entry on the Decide screen (header pill + the "all decided" empty state) that
+   opens the same capture flow helpers use, at `(parent)/capture.tsx` (a
+   `href:null` route — kept off the 5-slot bottom bar). Items a **decider**
+   captures are auto-marked **Keep** (`useCanDecide()` in `capture.tsx` adds
+   `decision:'keep'` + `decidedAt`); contributor captures stay `undecided`.
+
 **Deliberately NOT adopted from the mockup:** the "Assign" decision (conflates
 keeping with heir-assignment), the marketing hero (our header is already compact),
 and the "Keepsake" brand.

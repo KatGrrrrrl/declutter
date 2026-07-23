@@ -129,11 +129,22 @@ export default function DecideScreen() {
     <Screen scroll={false}>
       <Row style={styles.headRow}>
         <Title style={styles.title}>Decide</Title>
-        {current ? (
-          <Text style={styles.togo}>
-            <Text style={styles.togoNum}>{queue.length}</Text> to go
-          </Text>
-        ) : null}
+        <Row style={styles.headRight}>
+          {current ? (
+            <Text style={styles.togo}>
+              <Text style={styles.togoNum}>{queue.length}</Text> to go
+            </Text>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add your own item"
+            onPress={() => router.push('/(parent)/capture')}
+            style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
+          >
+            <Ionicons name="add" size={17} color={T.brassDeep} />
+            <Text style={styles.addBtnText}>Add</Text>
+          </Pressable>
+        </Row>
       </Row>
       <Row style={styles.dotsRow}>
         {[0, 1, 2, 3, 4].map((i) => (
@@ -163,6 +174,12 @@ export default function DecideScreen() {
               Anything new your family adds will wait for you right here — in
               your own time.
             </Muted>
+            <View style={styles.allCaughtCta}>
+              <Btn
+                label="Add your own items"
+                onPress={() => router.push('/(parent)/capture')}
+              />
+            </View>
           </View>
         )}
 
@@ -243,10 +260,24 @@ export default function DecideScreen() {
 }
 
 const styles = StyleSheet.create({
-  headRow: { justifyContent: 'space-between', alignItems: 'baseline' },
+  headRow: { justifyContent: 'space-between', alignItems: 'center' },
+  headRight: { alignItems: 'center', gap: Spacing.three },
   title: { marginBottom: 0 },
   togo: { fontSize: 15, color: T.inkSoft, fontWeight: '600' },
   togoNum: { color: T.ink, fontWeight: '700' },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderWidth: 1,
+    borderColor: T.brass,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: T.brassTint,
+  },
+  addBtnText: { fontSize: 13.5, fontWeight: '700', color: T.brassDeep },
+  allCaughtCta: { alignSelf: 'stretch', marginTop: Spacing.three, paddingHorizontal: Spacing.four },
   dotsRow: { gap: 7, marginTop: Spacing.two, marginBottom: Spacing.two },
   dot: {
     width: 9,

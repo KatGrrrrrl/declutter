@@ -3,7 +3,6 @@ import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
 import { DecorativeIcon, NavigationTabBar, useTabBarLayout } from '@/components/ui';
-import { T } from '@/constants/theme';
 
 /**
  * Tab icons are decorative: each tab's visible label already names it, and
@@ -92,6 +91,8 @@ export default function ParentTabs() {
         }}
       />
       <Tabs.Screen name="legacy" options={{ href: null, title: 'Legacy' }} />
+      {/* Reachable from Decide's "Add item"; kept off the bar so five fit at 375px. */}
+      <Tabs.Screen name="capture" options={{ href: null, title: 'Add item' }} />
     </Tabs>
   );
 }
