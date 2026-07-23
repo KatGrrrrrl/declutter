@@ -35,7 +35,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { loggedOut } = useLocalSearchParams<{ loggedOut?: string }>();
 
-  const householdName = useStore((s) => s.householdName);
+  // Only claim "backed up to your account" when the home is actually cloud-linked.
+  const cloudHouseholdId = useStore((s) => s.cloudHouseholdId);
   const lockedOut = useStore((s) => s.lockedOut);
   const lastAccountEmail = useStore((s) => s.lastAccountEmail);
   const unlock = useStore((s) => s.unlock);
@@ -212,8 +213,8 @@ export default function LoginScreen() {
             You&rsquo;re logged out
           </Text>
           <Muted style={styles.sub}>
-            {householdName
-              ? `“${householdName}” is safe on this device and backed up to your account. Nothing was deleted.`
+            {cloudHouseholdId
+              ? 'Everything is safe on this device and backed up to your account. Nothing was deleted.'
               : 'Everything is safe on this device. Nothing was deleted.'}
           </Muted>
           <View style={styles.cta}>
