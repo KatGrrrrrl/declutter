@@ -240,6 +240,19 @@ export default function LoginScreen() {
         <View style={styles.body}>
           <Text style={styles.wordmark}>Inventory Our Home</Text>
 
+          {/* Prominent, high-contrast error banner — near the top so it can't
+              be missed (the old muted line sat below the fold under the links). */}
+          {error ? (
+            <View
+              style={styles.errorBanner}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+            >
+              <Ionicons name="alert-circle" size={20} color={T.toss} />
+              <Text style={styles.errorBannerText}>{error}</Text>
+            </View>
+          ) : null}
+
           {mode === 'code-sent' ? (
             <>
               <Text role="heading" aria-level={1} style={styles.title}>
@@ -390,7 +403,6 @@ export default function LoginScreen() {
             </>
           )}
 
-          {error ? <Muted style={styles.error}>{error}</Muted> : null}
 
           {/* Only meaningful when a household is stranded on this device. */}
           {lockedOut && (
@@ -509,6 +521,18 @@ const styles = StyleSheet.create({
     backgroundColor: T.surface,
   },
   oauthText: { fontSize: 15, fontWeight: '600', color: T.ink },
-  error: { marginTop: Spacing.three, color: T.toss, textAlign: 'center' },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+    backgroundColor: T.tossTint,
+    borderWidth: 1,
+    borderColor: T.toss,
+    borderRadius: Radius.control,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    marginBottom: Spacing.four,
+  },
+  errorBannerText: { flex: 1, fontSize: 14, lineHeight: 20, color: T.ink, fontWeight: '600' },
   eraseBlock: { marginTop: Spacing.five },
 });
