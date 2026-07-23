@@ -22,7 +22,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter } from '@/components/limit-banner';
 import { DecisionPill, Heading, Label, Muted, PhotoBox, Screen, Title, useIsDesktop } from '@/components/ui';
-import { Radius, Spacing, T } from '@/constants/theme';
+import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import {
   Decision,
   Item,
@@ -58,6 +58,49 @@ const STATUS_RANK: Record<Decision, number> = {
   donate: 2,
   toss: 3,
 };
+
+/** At-a-glance summary tile. Optionally a filter toggle when onPress is set. */
+function StatTile({
+  icon,
+  label,
+  value,
+  sub,
+  onPress,
+  active,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  sub?: string;
+  onPress?: () => void;
+  active?: boolean;
+}) {
+  const body = (
+    <>
+      <View style={styles.tileTop}>
+        <Ionicons name={icon} size={16} color={T.brassDeep} />
+        <Text style={styles.tileLabel}>{label}</Text>
+      </View>
+      <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
+      {sub ? <Text style={styles.tileSub}>{sub}</Text> : null}
+    </>
+  );
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+        onPress={onPress}
+        style={({ pressed }) => [styles.tile, active && styles.tileActive, pressed && styles.pressed]}
+      >
+        {body}
+      </Pressable>
+    );
+  }
+  return <View style={styles.tile}>{body}</View>;
+}
 
 /** Chat count on a row — its own component so the hook runs per item. */
 function ChatBadge({ itemId }: { itemId: string }) {
@@ -115,6 +158,21 @@ export function InventoryView() {
   }, [items]);
 
   const archivedCount = items.filter((i) => i.archived).length;
+
+  // At-a-glance summary tiles. Value is decider-only (matches the item screen),
+  // so contributors get a "rooms" tile in its place rather than a total value.
+  const stats = useMemo(() => {
+    const live = items.filter((i) => !i.archived);
+    const rooms = new Set(live.map((i) => i.room).filter(Boolean));
+    return {
+      total: live.length,
+      rooms: rooms.size,
+      toDecide: live.filter((i) => i.decision === 'undecided').length,
+      kept: live.filter((i) => i.decision === 'keep').length,
+      value: live.reduce((sum, i) => sum + (i.marketValue ?? 0), 0),
+      valuedCount: live.filter((i) => i.marketValue != null).length,
+    };
+  }, [items]);
 
   const q = query.trim().toLowerCase();
   const shown = useMemo(() => {
@@ -243,6 +301,30 @@ export function InventoryView() {
               {selecting ? 'Done' : 'Select'}
             </Text>
           </Pressable>
+        )}
+      </View>
+
+      {/* At-a-glance summary tiles */}
+      <View style={styles.tiles}>
+        <StatTile icon="cube-outline" label="Items" value={String(stats.total)} sub={`Across ${stats.rooms} room${stats.rooms === 1 ? '' : 's'}`} />
+        <StatTile
+          icon="help-circle-outline"
+          label="To decide"
+          value={String(stats.toDecide)}
+          sub={stats.toDecide ? 'Needs a decision' : 'All settled'}
+          onPress={() => setFilter(filter === 'undecided' ? 'all' : 'undecided')}
+          active={filter === 'undecided'}
+        />
+        <StatTile icon="heart-outline" label="Kept" value={String(stats.kept)} sub="Staying in the family" />
+        {canDecide ? (
+          <StatTile
+            icon="pricetag-outline"
+            label="Documented value"
+            value={`$${stats.value.toLocaleString()}`}
+            sub={`${stats.valuedCount} valued`}
+          />
+        ) : (
+          <StatTile icon="grid-outline" label="Rooms" value={String(stats.rooms)} sub="In this home" />
         )}
       </View>
 
@@ -486,8 +568,10 @@ export function InventoryView() {
                     </Text>
                   ))}
                   <ChatBadge itemId={it.id} />
-                  {it.marketValue != null && sort === 'value' ? (
-                    <Text style={styles.valueText}>${it.marketValue}</Text>
+                  {/* Value is decider-only (matches the item screen); shown on
+                      every row now, not just when sorting by value. */}
+                  {it.marketValue != null && canDecide ? (
+                    <Text style={styles.valueText}>${it.marketValue.toLocaleString()}</Text>
                   ) : null}
                   {it.decision === 'donate' && it.donateTo ? (
                     <View style={styles.donateChip}>
@@ -641,6 +725,26 @@ const styles = StyleSheet.create({
   selectBtnOn: { backgroundColor: T.ink, borderColor: T.ink },
   selectBtnText: { fontSize: 15, fontWeight: '700', color: T.inkSoft },
   selectBtnTextOn: { color: T.surface },
+
+  // Summary tiles: wrap 2-up on phones, sit 4-across on desktop.
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two, marginBottom: Spacing.three },
+  tile: {
+    flexGrow: 1,
+    flexBasis: '47%',
+    minWidth: 130,
+    borderWidth: 1,
+    borderColor: T.line,
+    borderRadius: 14,
+    backgroundColor: T.surface,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    gap: 4,
+  },
+  tileActive: { borderColor: T.brass, backgroundColor: T.brassTint },
+  tileTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tileLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: T.inkSoft },
+  tileValue: { fontFamily: Fonts?.serif, fontSize: 26, fontWeight: '600', color: T.heading },
+  tileSub: { fontSize: 11.5, color: T.inkFaint },
 
   quota: { marginTop: Spacing.one, marginBottom: Spacing.two },
   waitingCard: {

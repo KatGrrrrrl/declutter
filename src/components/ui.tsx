@@ -152,6 +152,18 @@ export function useTabBarLayout() {
  * the `tabBar` prop as a plain function call — which makes those injected hooks
  * an "Invalid hook call". Going through an element keeps the render legitimate.
  */
+/** "Backed up 2 minutes ago"-style phrasing from an ISO timestamp. */
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'Backed up just now';
+  if (m < 60) return `Backed up ${m} minute${m === 1 ? '' : 's'} ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `Backed up ${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24);
+  return `Backed up ${d} day${d === 1 ? '' : 's'} ago`;
+}
+
 export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { label: string }) {
   // On desktop the rail is a full-height left column; the landmark wrapper must
   // stretch so it doesn't collapse the sidebar. It also carries a header with
@@ -170,6 +182,9 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
     );
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  const plan = useStore((s) => s.plan);
+  const lastBackupAt = useStore((s) => s.lastBackupAt);
 
   const logOut = async () => {
     const email = sessionEmail ?? '';
@@ -195,6 +210,30 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
       {/* Account actions live at the bottom of the rail, away from the primary
           sections. marginTop:auto pushes this block to the foot of the column. */}
       <View style={styles.railFooter}>
+        {/* Backup status — makes the paid, invisible cloud protection visible. */}
+        {plan === 'pro' ? (
+          <View style={[styles.backupCard, styles.backupOk]}>
+            <Ionicons name="cloud-done" size={16} color={T.keep} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.backupTitle}>Protected & backed up</Text>
+              <Text style={styles.backupSub}>
+                {lastBackupAt ? relativeTime(lastBackupAt) : 'Back up any time in Settings'}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/upgrade')}
+            style={({ pressed }) => [styles.backupCard, pressed && styles.pressed]}
+          >
+            <Ionicons name="cloud-outline" size={16} color={T.inkSoft} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.backupTitle}>On this device</Text>
+              <Text style={styles.backupSub}>Add cloud backup with Pro</Text>
+            </View>
+          </Pressable>
+        )}
         <Pressable
           accessibilityRole="link"
           onPress={() => router.push('/settings')}
@@ -511,6 +550,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   railSettingsText: { fontSize: 13.5, fontWeight: '600', color: T.inkSoft },
+  backupCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    backgroundColor: T.sunken,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  backupOk: { backgroundColor: T.keepTint },
+  backupTitle: { fontSize: 12.5, fontWeight: '700', color: T.ink },
+  backupSub: { fontSize: 11, color: T.inkSoft, marginTop: 1 },
 
   // maxWidth is applied inline (responsive); keep width/centering here.
   column: { width: '100%', alignSelf: 'center' },
