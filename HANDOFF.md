@@ -237,8 +237,8 @@ Shipped, in order:
 
 9. **AI value estimates (Pro)** — a decider can estimate a kept item's resale
    value. Button in the item-detail **Value** row, plus an "Estimate value" chip
-   on value-less items in **Keepsakes** (deep-links `item/[id]?estimate=1`, which
-   auto-runs). Flow: `src/lib/estimate-value.ts` → edge function
+   on value-less items in **Keepsakes** and on kept, value-less rows in the
+   **Items** list (both deep-link `item/[id]?estimate=1`, which auto-runs). Flow: `src/lib/estimate-value.ts` → edge function
    `estimate-value` → Claude (`claude-sonnet-5`) with the **web_search** tool
    finds comparable listings → returns `{best, low, high, confidence, rationale,
    comparables}`, shown as a card with a "Use $X" button that fills the value.

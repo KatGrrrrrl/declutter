@@ -572,6 +572,24 @@ export function InventoryView() {
                       every row now, not just when sorting by value. */}
                   {it.marketValue != null && canDecide ? (
                     <Text style={styles.valueText}>${it.marketValue.toLocaleString()}</Text>
+                  ) : canDecide && it.decision === 'keep' && !it.archived ? (
+                    // Text (not Pressable) so web doesn't nest a <button> in the
+                    // row's <button>; stopPropagation keeps the row tap out.
+                    <Text
+                      accessibilityLabel={`Estimate the value of ${it.title} with AI`}
+                      onPress={(e) => {
+                        (e as unknown as { stopPropagation?: () => void }).stopPropagation?.();
+                        router.push({
+                          pathname: '/item/[id]',
+                          params: { id: it.id, estimate: '1' },
+                        });
+                      }}
+                      suppressHighlighting
+                      style={styles.estimateChip}
+                    >
+                      <Ionicons name="sparkles-outline" size={11} color={T.brassDeep} />
+                      {'  '}Estimate
+                    </Text>
                   ) : null}
                   {it.decision === 'donate' && it.donateTo ? (
                     <View style={styles.donateChip}>
@@ -891,6 +909,19 @@ const styles = StyleSheet.create({
   roomText: { fontSize: 13 },
   tagText: { fontSize: 13, color: T.brassDeep },
   valueText: { fontSize: 13, fontWeight: '700', color: T.ink },
+  estimateChip: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: T.brassDeep,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: T.brass,
+    borderRadius: 999,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    backgroundColor: T.brassTint,
+    overflow: 'hidden',
+  },
   chatBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   chatBadgeText: { fontSize: 12, fontWeight: '600', color: T.inkSoft },
   donateChip: {
