@@ -309,7 +309,7 @@ Files worth copying near-verbatim (rename symbols only): `constants/theme.ts`,
 - **Any secret value** (they're per-project; a human sets them in the new project).
 - Seed/demo data and the specific taxonomy if the workings change.
 - This project's `HANDOFF.md` (that's for continuing *this* app) — this
-  `PORTABLE-WINS.md` is the transfer doc.
+  `inventoryourhouse-PORTABLE-WINS.md` is the transfer doc.
 
 ---
 
@@ -317,7 +317,7 @@ Files worth copying near-verbatim (rename symbols only): `constants/theme.ts`,
 
 > I'm starting a new app in this empty repo. It reuses the proven architecture of
 > a prior Expo + Supabase + Amplify project, but with a new brand and somewhat
-> different mechanics. Read `PORTABLE-WINS.md`. First, ask me the open questions in
+> different mechanics. Read `inventoryourhouse-PORTABLE-WINS.md`. First, ask me the open questions in
 > its **Decisions** table (§4) — especially the new name, domain, core taxonomy,
 > and what changes in the workings. Then follow the **Bootstrap recipe** (§5),
 > treating §2 as proven defaults (don't relitigate the Zustand/RN-Web/edge-function
