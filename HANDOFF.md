@@ -194,6 +194,7 @@ Verify in ~30s with `node tools/probe-checkout.mjs` (it reported the
 
 | # | Item | Owner | Notes |
 |---|---|---|---|
+| 0 | Set `ANTHROPIC_API_KEY` | **user** | Powers AI value estimates. Function `estimate-value` is deployed but returns `not_configured` until set: `npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...` |
 | 1 | Set real `STRIPE_SECRET_KEY` | **user** | Blocks all payments/Pro. `tools/probe-checkout.mjs` verifies. |
 | 2 | Verify `inventoryourhouse.com` in **Resend** (DNS) | **user** | Until then, instant emails deliver **only to owner's gmail**. |
 | 3 | Set `DIGEST_SECRET` + a scheduler | **user** | Daily-digest email is locked without it. |
@@ -233,6 +234,19 @@ Shipped, in order:
    `href:null` route — kept off the 5-slot bottom bar). Items a **decider**
    captures are auto-marked **Keep** (`useCanDecide()` in `capture.tsx` adds
    `decision:'keep'` + `decidedAt`); contributor captures stay `undecided`.
+
+9. **AI value estimates (Pro)** — a decider can estimate a kept item's resale
+   value. Button in the item-detail **Value** row, plus an "Estimate value" chip
+   on value-less items in **Keepsakes** (deep-links `item/[id]?estimate=1`, which
+   auto-runs). Flow: `src/lib/estimate-value.ts` → edge function
+   `estimate-value` → Claude (`claude-sonnet-5`) with the **web_search** tool
+   finds comparable listings → returns `{best, low, high, confidence, rationale,
+   comparables}`, shown as a card with a "Use $X" button that fills the value.
+   **Server-side Pro gate** (item's `household_plans.plan` must be `pro`) and
+   photo access (stored `item_photos`, or client-sent base64 for a local photo).
+   Needs `ANTHROPIC_API_KEY` (see item 0). Framed as an informal estimate, never
+   an appraisal. (Keepsakes chip is a `Text`, not a `Pressable` — RN Web can't
+   nest a `<button>` inside the card's `<button>`.)
 
 **Deliberately NOT adopted from the mockup:** the "Assign" decision (conflates
 keeping with heir-assignment), the marketing hero (our header is already compact),

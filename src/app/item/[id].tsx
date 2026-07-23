@@ -20,7 +20,7 @@ import {
 } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -32,7 +32,7 @@ import {
 
 import { DonateTo } from '@/components/donate-to';
 import { ItemChat } from '@/components/item-chat';
-import { ROOMS } from '@/components/child/shared';
+import { notify, ROOMS } from '@/components/child/shared';
 import { Avatar, VISIBILITY_META, formatDuration } from '@/components/parent/bits';
 import {
   Btn,
@@ -46,10 +46,12 @@ import {
   Well,
 } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
+import { estimateItemValue } from '@/lib/estimate-value';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { useCanDecide, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
+import type { ValueEstimate } from '@/lib/estimate-value';
 import type { HeirVisibility } from '@/lib/store';
 
 const VISIBILITY_ORDER: HeirVisibility[] = ['owner_only', 'after_death', 'revealed'];
@@ -65,7 +67,10 @@ const CAN_RECORD = Platform.OS !== 'web';
 
 export default function ItemDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, estimate: estimateParam } = useLocalSearchParams<{
+    id: string;
+    estimate?: string;
+  }>();
 
   const item = useStore((s) => s.items.find((i) => i.id === id));
   const role = useStore((s) => s.role);
@@ -240,6 +245,41 @@ export default function ItemDetailScreen() {
     const n = parseFloat(text.replace(/[^0-9.]/g, ''));
     updateItem(item.id, { marketValue: Number.isFinite(n) ? n : undefined });
   };
+
+  /* ---- AI value estimate (Pro) ---- */
+  const plan = useStore((s) => s.plan);
+  const [estimating, setEstimating] = useState(false);
+  const [estimate, setEstimate] = useState<ValueEstimate | null>(null);
+  const autoRan = useRef(false);
+
+  const runEstimate = async () => {
+    if (!item || estimating) return;
+    if (plan !== 'pro') {
+      router.push('/upgrade');
+      return;
+    }
+    setEstimating(true);
+    const r = await estimateItemValue(item);
+    setEstimating(false);
+    if (r.ok) {
+      setEstimate(r.estimate);
+      return;
+    }
+    if (r.reason === 'pro_required') router.push('/upgrade');
+    else if (r.reason === 'not_configured')
+      notify('Not switched on yet', 'AI valuation isn’t enabled for this app yet.');
+    else if (r.reason === 'needs_account')
+      notify('Sign in first', 'Sign in to use AI valuation.');
+    else notify('Couldn’t estimate', r.error ?? 'Please try again in a moment.');
+  };
+
+  // Deep-linked from Keepsakes ("Estimate value") — run it once on arrival.
+  useEffect(() => {
+    if (autoRan.current || estimateParam !== '1' || !item || !canDecide) return;
+    autoRan.current = true;
+    void runEstimate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estimateParam, item, canDecide]);
 
   if (!item) {
     return (
@@ -589,6 +629,61 @@ export default function ItemDetailScreen() {
               <Text style={styles.heartLbl}>Sentimental</Text>
             </Pressable>
           </Row>
+
+          {/* ---- AI value estimate (Pro): web-searches comparable listings ---- */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Estimate value with AI"
+            disabled={estimating}
+            onPress={runEstimate}
+            style={({ pressed }) => [
+              styles.aiBtn,
+              pressed && styles.pressed,
+              estimating && styles.aiBtnBusy,
+            ]}
+          >
+            <Ionicons name="sparkles-outline" size={16} color={T.brassDeep} />
+            <Text style={styles.aiBtnText}>
+              {estimating ? 'Searching the market…' : 'Estimate value with AI'}
+            </Text>
+          </Pressable>
+
+          {estimate ? (
+            <View style={styles.aiCard}>
+              <Row style={styles.aiCardHead}>
+                <Text style={styles.aiBig}>${estimate.best.toLocaleString()}</Text>
+                <Text style={styles.aiRange}>
+                  ${estimate.low.toLocaleString()}–${estimate.high.toLocaleString()}
+                </Text>
+              </Row>
+              <Text style={styles.aiConf}>
+                {estimate.confidence} confidence
+                {estimate.hadPhoto ? ' · from the photo' : ' · from the description'}
+              </Text>
+              {estimate.rationale ? (
+                <Text style={styles.aiRationale}>{estimate.rationale}</Text>
+              ) : null}
+              {estimate.comparables.length > 0 ? (
+                <View style={styles.aiComps}>
+                  {estimate.comparables.map((c, i) => (
+                    <Text key={i} style={styles.aiComp} numberOfLines={1}>
+                      · {c.title} — ${c.price.toLocaleString()} ({c.source})
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              <View style={styles.aiUse}>
+                <Btn
+                  label={`Use $${estimate.best.toLocaleString()}`}
+                  onPress={() => onValueChange(String(estimate.best))}
+                />
+              </View>
+              <Muted style={styles.aiDisclaimer}>
+                An informal AI estimate from current listings — not a professional
+                appraisal.
+              </Muted>
+            </View>
+          ) : null}
         </>
       ) : null}
 
@@ -873,6 +968,47 @@ const styles = StyleSheet.create({
   },
   heartBtnOn: { borderColor: T.toss, backgroundColor: T.tossTint },
   heartLbl: { fontSize: 14, fontWeight: '600', color: T.ink },
+
+  /* AI value estimate */
+  aiBtn: {
+    marginTop: Spacing.two,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    minHeight: 46,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: T.brass,
+    borderRadius: 14,
+    backgroundColor: T.brassTint,
+  },
+  aiBtnBusy: { opacity: 0.7 },
+  aiBtnText: { fontSize: 14.5, fontWeight: '700', color: T.brassDeep },
+  aiCard: {
+    marginTop: Spacing.two,
+    borderWidth: 1,
+    borderColor: T.brass,
+    borderRadius: 16,
+    padding: Spacing.three,
+    backgroundColor: T.surface,
+  },
+  aiCardHead: { alignItems: 'baseline', gap: Spacing.two },
+  aiBig: { fontFamily: Fonts?.serif, fontSize: 28, fontWeight: '700', color: T.heading },
+  aiRange: { fontSize: 14, fontWeight: '600', color: T.inkSoft },
+  aiConf: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: T.brassDeep,
+    marginTop: 2,
+  },
+  aiRationale: { fontSize: 14, lineHeight: 20, color: T.ink, marginTop: Spacing.two },
+  aiComps: { marginTop: Spacing.two, gap: 3 },
+  aiComp: { fontSize: 12.5, color: T.inkSoft },
+  aiUse: { marginTop: Spacing.three },
+  aiDisclaimer: { fontSize: 11.5, marginTop: Spacing.two, lineHeight: 16 },
 
   chatBlock: { marginBottom: Spacing.two },
 

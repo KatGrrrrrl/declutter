@@ -42,7 +42,7 @@ export async function pickPhoto(): Promise<string | null> {
 
 /* ---------------- reading the local photo as base64 ---------------- */
 
-async function readAsBase64(uri: string): Promise<string> {
+export async function readAsBase64(uri: string): Promise<string> {
   if (Platform.OS === 'web') {
     // Web: blob/data URIs from the browser — no filesystem involved.
     const resp = await fetch(uri);

@@ -124,7 +124,25 @@ export default function KeepsakesScreen() {
                     <Text style={styles.value}>
                       ${item.marketValue.toLocaleString()}
                     </Text>
-                  ) : null}
+                  ) : (
+                    // A Text (not Pressable) so web doesn't nest a <button> in
+                    // the card's <button>; stopPropagation keeps the card tap out.
+                    <Text
+                      accessibilityLabel={`Estimate the value of ${item.title} with AI`}
+                      onPress={(e) => {
+                        (e as unknown as { stopPropagation?: () => void }).stopPropagation?.();
+                        router.push({
+                          pathname: '/item/[id]',
+                          params: { id: item.id, estimate: '1' },
+                        });
+                      }}
+                      suppressHighlighting
+                      style={styles.estimateChip}
+                    >
+                      <Ionicons name="sparkles-outline" size={12} color={T.brassDeep} />
+                      {'  '}Estimate value
+                    </Text>
+                  )}
                 </Row>
               </View>
             </Pressable>
@@ -189,6 +207,19 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: T.ink,
+  },
+  estimateChip: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: T.brassDeep,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: T.brass,
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+    backgroundColor: T.brassTint,
+    overflow: 'hidden',
   },
 
   empty: {
