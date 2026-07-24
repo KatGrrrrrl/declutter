@@ -185,16 +185,14 @@
   }
   .rec-head .room { color: var(--ink-soft); }
 
+  /* The photograph is the record. Everything around it stays quiet. */
   .plate {
-    aspect-ratio: 4 / 3;
-    display: grid;
-    place-items: center;
-    color: var(--navy);
-    background:
-      linear-gradient(var(--rule-soft) 1px, transparent 1px) 0 0 / 100% 22px;
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;   /* reserves the box, so no layout shift on load */
+    object-fit: cover;
+    background: var(--rule-soft);
   }
-  .plate svg { width: 74%; height: auto; overflow: visible; }
-  .plate svg * { vector-effect: non-scaling-stroke; }
 
   .rec-name {
     font-family: var(--serif);
@@ -383,19 +381,8 @@
         <!-- the one that carries the thesis -->
         <article class="rec" id="rec-teapot">
           <div class="rec-head tag"><span>№ 003</span><span class="room">Kitchen</span></div>
-          <div class="plate">
-            <!-- teapot -->
-            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M28 44c0-13 12-22 28-22s28 9 28 22c0 14-9 26-28 26S28 58 28 44Z"/>
-              <path d="M84 40c8-6 15-3 15 4s-8 12-16 11"/>
-              <path d="M28 40c-7-9-13-14-19-13 3 5 8 9 12 16"/>
-              <path d="M46 22c2-6 6-9 10-9s8 3 10 9"/>
-              <circle cx="56" cy="13" r="3"/>
-              <path d="M38 70h36l-3 8H41l-3-8Z"/>
-              <path d="M42 46c5 4 23 4 28 0"/>
-            </svg>
-          </div>
+          <img class="plate" src="img/teapot.webp" decoding="async"
+               alt="A blue-and-white floral china teapot on a worn wooden kitchen counter." />
           <h3 class="rec-name">Blue china teapot</h3>
           <span class="stamp tag s-keep">Kept</span>
           <div class="val">
@@ -409,16 +396,8 @@
 
         <article class="rec">
           <div class="rec-head tag"><span>№ 007</span><span class="room">Bedroom</span></div>
-          <div class="plate">
-            <!-- quilt -->
-            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M20 26h80v52c-14 6-26 6-40 0s-26-6-40 0V26Z"/>
-              <path d="M46 26v49M73 26v49"/>
-              <path d="M20 44h80M20 61h80"/>
-              <path d="M33 35l6 6-6 6-6-6 6-6ZM60 52l6 6-6 6-6-6 6-6ZM86 35l6 6-6 6-6-6 6-6Z"/>
-            </svg>
-          </div>
+          <img class="plate" src="img/quilt.webp" loading="lazy" decoding="async"
+               alt="A patchwork quilt in faded pastels, folded at the foot of a bed." />
           <h3 class="rec-name">Wedding quilt</h3>
           <span class="stamp tag s-keep">Kept</span>
           <div class="val">
@@ -429,18 +408,8 @@
 
         <article class="rec">
           <div class="rec-head tag"><span>№ 011</span><span class="room">Garage</span></div>
-          <div class="plate">
-            <!-- drill -->
-            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M30 34h34a8 8 0 0 1 8 8v9a8 8 0 0 1-8 8H30V34Z"/>
-              <path d="M72 44h13l10-5v18l-10-5H72"/>
-              <path d="M30 59l-4 20h18l3-20"/>
-              <path d="M26 79h20v6H26z"/>
-              <path d="M40 59v6"/>
-              <path d="M95 43v10"/>
-            </svg>
-          </div>
+          <img class="plate" src="img/drill.webp" loading="lazy" decoding="async"
+               alt="A well-used cordless drill resting on a cluttered garage workbench." />
           <h3 class="rec-name">Cordless drill</h3>
           <span class="stamp tag s-donate">Donate</span>
           <div class="val">
@@ -451,17 +420,8 @@
 
         <article class="rec">
           <div class="rec-head tag"><span>№ 014</span><span class="room">Study</span></div>
-          <div class="plate">
-            <!-- atlas -->
-            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M60 30c-9-6-20-8-32-7v45c12-1 23 1 32 7 9-6 20-8 32-7V23c-12-1-23 1-32 7Z"/>
-              <path d="M60 30v45"/>
-              <circle cx="41" cy="46" r="7"/>
-              <path d="M34 46h14M41 39c3 4 3 10 0 14"/>
-              <path d="M74 40h12M74 50h12M74 60h8"/>
-            </svg>
-          </div>
+          <img class="plate" src="img/atlas.webp" loading="lazy" decoding="async"
+               alt="A worn cloth-bound world atlas lying closed on a desk beside a lamp." />
           <h3 class="rec-name">World atlas, 1968</h3>
           <span class="stamp tag s-letgo">Let go</span>
           <div class="val">
