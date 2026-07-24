@@ -1,0 +1,583 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Inventory Our Home — sort a lifetime of belongings, together</title>
+<meta name="description" content="Children photograph a parent's belongings. The parent decides what to keep, donate or let go — and says why it matters. Free and unlimited on your device." />
+
+<style>
+  :root {
+    --ink:        #1B1815;
+    --ink-soft:   #6D675F;
+    --ink-faint:  #A09A90;
+    --navy:       #1E3A5F;
+    --brass:      #A67C34;
+    --brass-deep: #7E5D22;
+    --brass-tint: #F7F0DF;
+    --paper:      #FBFAF7;
+    --card:       #FFFFFF;
+    --rule:       #E4E0D8;
+    --rule-soft:  #F1EEE8;
+    /* The app's real taxonomy — these carry meaning, not decoration. */
+    --keep:   #4E7247;
+    --donate: #44708A;
+    --letgo:  #A65441;
+
+    --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+    --sans:  'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --mono:  'SF Mono', 'Cascadia Code', ui-monospace, Menlo, Consolas, monospace;
+
+    --gutter: clamp(20px, 5vw, 56px);
+    --max: 1120px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 18px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
+
+  /* ---- utility face: catalogue numbers, rooms, stamps ---- */
+  .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  a { color: inherit; }
+  :focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  /* ================= ledger bar ================= */
+  .ledger {
+    border-bottom: 1px solid var(--rule);
+    background: var(--card);
+  }
+  .ledger-in {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 14px var(--gutter);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .mark {
+    font-family: var(--serif);
+    font-size: 19px;
+    color: var(--navy);
+    letter-spacing: -0.01em;
+  }
+
+  /* ================= hero ================= */
+  .hero { padding: clamp(56px, 11vw, 120px) 0 clamp(40px, 7vw, 72px); }
+  .hero h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    color: var(--navy);
+    font-size: clamp(38px, 7.4vw, 76px);
+    line-height: 1.03;
+    letter-spacing: -0.022em;
+    margin: 0;
+    max-width: 15ch;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--ink);
+  }
+  .lede {
+    margin: clamp(20px, 3vw, 30px) 0 0;
+    max-width: 56ch;
+    font-size: clamp(17px, 1.6vw, 20px);
+    color: var(--ink-soft);
+  }
+  .actions {
+    margin-top: clamp(26px, 4vw, 38px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+  }
+  .btn {
+    display: inline-block;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 16px;
+    padding: 15px 26px;
+    border-radius: 999px;
+    border: 1px solid var(--navy);
+    background: var(--navy);
+    color: #fff;
+    transition: transform .16s ease, background .16s ease;
+  }
+  .btn:hover { background: #16304f; transform: translateY(-1px); }
+  .btn-quiet {
+    background: transparent;
+    color: var(--navy);
+    border-color: var(--rule);
+  }
+  .btn-quiet:hover { background: var(--card); border-color: var(--brass); }
+  .no-card {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+  }
+
+  /* ================= section scaffolding ================= */
+  .band { padding: clamp(48px, 8vw, 96px) 0; }
+  .band-card { background: var(--card); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    color: var(--brass-deep);
+    margin-bottom: clamp(22px, 3vw, 34px);
+  }
+  .eyebrow::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+  .band h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    color: var(--navy);
+    font-size: clamp(27px, 3.6vw, 40px);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+    max-width: 22ch;
+  }
+  .band p.say { margin: 0; max-width: 58ch; color: var(--ink-soft); }
+
+  /* ================= the inventory (signature) ================= */
+  .shelf {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .rec {
+    background: var(--card);
+    padding: 20px 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .rec-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--brass-deep);
+  }
+  .rec-head .room { color: var(--ink-soft); }
+
+  .plate {
+    aspect-ratio: 4 / 3;
+    display: grid;
+    place-items: center;
+    color: var(--navy);
+    background:
+      linear-gradient(var(--rule-soft) 1px, transparent 1px) 0 0 / 100% 22px;
+  }
+  .plate svg { width: 74%; height: auto; overflow: visible; }
+  .plate svg * { vector-effect: non-scaling-stroke; }
+
+  .rec-name {
+    font-family: var(--serif);
+    font-size: 21px;
+    line-height: 1.2;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  .stamp {
+    align-self: flex-start;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 3px 8px;
+  }
+  .s-keep   { color: var(--keep); }
+  .s-donate { color: var(--donate); }
+  .s-letgo  { color: var(--letgo); }
+
+  .val {
+    border-top: 1px dashed var(--rule);
+    padding-top: 12px;
+    margin-top: auto;
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .val .tag { color: var(--ink-soft); flex: none; }
+  /* Grid stack: both lines occupy one cell, so the box sizes to the taller
+     one and a long quote can never clip. */
+  .val-body { flex: 1; display: grid; }
+  .money, .memory {
+    grid-area: 1 / 1;
+    margin: 0;
+    transition: opacity .7s ease, transform .7s ease;
+  }
+  .money {
+    font-family: var(--serif);
+    font-size: 22px;
+    color: var(--ink);
+  }
+  .memory {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 16.5px;
+    line-height: 1.45;
+    color: var(--navy);
+  }
+  /* Only the signature card animates. Progressive enhancement: the memory is
+     the message, so it is the DEFAULT state. Script opts into starting on the
+     price (.reveal) and then resolves back — if script never runs, the reader
+     still gets the point instead of a stranded "$120". */
+  #rec-teapot .money  { opacity: 0; }
+  #rec-teapot .memory { opacity: 1; }
+  #rec-teapot.reveal .money  { opacity: 1; }
+  #rec-teapot.reveal .memory { opacity: 0; transform: translateY(6px); }
+  #rec-teapot.reveal.resolved .money  { opacity: 0; transform: translateY(-6px); }
+  #rec-teapot.reveal.resolved .memory { opacity: 1; transform: none; }
+
+  .plain { font-size: 15px; color: var(--ink-soft); margin: 0; }
+
+  .shelf-note {
+    margin: 18px 0 0;
+    font-size: 15px;
+    color: var(--ink-soft);
+    max-width: 60ch;
+  }
+
+  /* ================= steps (a real sequence) ================= */
+  .steps {
+    display: grid;
+    gap: 1px;
+    background: var(--rule);
+    border-block: 1px solid var(--rule);
+    margin-top: clamp(28px, 4vw, 44px);
+  }
+  @media (min-width: 760px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+  .step { background: var(--paper); padding: clamp(24px, 3vw, 34px); }
+  .step .n {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--brass-deep);
+    letter-spacing: 0.16em;
+  }
+  .step h3 {
+    font-family: var(--serif);
+    font-weight: 400;
+    color: var(--navy);
+    font-size: 23px;
+    line-height: 1.25;
+    margin: 10px 0 8px;
+  }
+  .step p { margin: 0; font-size: 16px; color: var(--ink-soft); }
+
+  /* ================= promises ================= */
+  .promises { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .promises li {
+    display: flex;
+    gap: 14px;
+    align-items: baseline;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule);
+    max-width: 68ch;
+  }
+  .promises li:first-child { border-top: 1px solid var(--rule); }
+  .promises .tag { color: var(--keep); flex: none; width: 8.5em; }
+  .promises span:last-child { color: var(--ink-soft); font-size: 16.5px; }
+
+  /* ================= price ================= */
+  .price-grid { display: grid; gap: 20px; }
+  @media (min-width: 720px) { .price-grid { grid-template-columns: 1fr 1fr; } }
+  .price {
+    border: 1px solid var(--rule);
+    padding: clamp(22px, 3vw, 30px);
+    background: var(--paper);
+  }
+  .price.lead { background: var(--brass-tint); border-color: var(--brass); }
+  .price .amount {
+    font-family: var(--serif);
+    font-size: clamp(30px, 4vw, 40px);
+    color: var(--navy);
+    line-height: 1;
+    margin: 12px 0 6px;
+  }
+  .price .amount small { font-size: 15px; color: var(--ink-soft); font-family: var(--sans); }
+  .price p { margin: 0; color: var(--ink-soft); font-size: 16px; }
+  .price .tag { color: var(--ink-soft); }
+  .price.lead .tag { color: var(--brass-deep); }
+  .say-gap { margin-bottom: clamp(24px, 3vw, 34px); }
+
+  /* ================= close ================= */
+  .close { text-align: center; padding: clamp(56px, 9vw, 108px) 0; }
+  .close h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    color: var(--navy);
+    font-size: clamp(28px, 4.6vw, 46px);
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    margin: 0 auto 24px;
+    max-width: 18ch;
+  }
+  footer {
+    border-top: 1px solid var(--rule);
+    padding: 26px 0 46px;
+    color: var(--ink-soft);
+    font-size: 14.5px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    justify-content: space-between;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<header class="ledger">
+  <div class="ledger-in">
+    <span class="mark">Inventory Our Home</span>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <h1>A house full of things. A few that are really <em>about someone</em>.</h1>
+    <p class="lede">
+      Your children photograph a room. You decide what stays, what goes and what
+      it meant — from your chair, at your pace, with the last word always yours.
+    </p>
+    <div class="actions">
+      <a class="btn" href="/onboarding">Start a home</a>
+      <a class="btn btn-quiet" href="#how">See how it works</a>
+      <span class="no-card">Free, unlimited, on your device.</span>
+    </div>
+  </section>
+
+  <!-- ============ SIGNATURE: the page is an inventory ============ -->
+  <section class="band band-card">
+    <div class="wrap">
+      <div class="eyebrow tag">The inventory</div>
+
+      <div class="shelf">
+
+        <!-- the one that carries the thesis -->
+        <article class="rec" id="rec-teapot">
+          <div class="rec-head tag"><span>№ 003</span><span class="room">Kitchen</span></div>
+          <div class="plate">
+            <!-- teapot -->
+            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M28 44c0-13 12-22 28-22s28 9 28 22c0 14-9 26-28 26S28 58 28 44Z"/>
+              <path d="M84 40c8-6 15-3 15 4s-8 12-16 11"/>
+              <path d="M28 40c-7-9-13-14-19-13 3 5 8 9 12 16"/>
+              <path d="M46 22c2-6 6-9 10-9s8 3 10 9"/>
+              <circle cx="56" cy="13" r="3"/>
+              <path d="M38 70h36l-3 8H41l-3-8Z"/>
+              <path d="M42 46c5 4 23 4 28 0"/>
+            </svg>
+          </div>
+          <h3 class="rec-name">Blue china teapot</h3>
+          <span class="stamp tag s-keep">Kept</span>
+          <div class="val">
+            <span class="tag">Value</span>
+            <div class="val-body">
+              <p class="money">$120</p>
+              <p class="memory">“She poured from this every Sunday for thirty years.”</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-head tag"><span>№ 007</span><span class="room">Bedroom</span></div>
+          <div class="plate">
+            <!-- quilt -->
+            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20 26h80v52c-14 6-26 6-40 0s-26-6-40 0V26Z"/>
+              <path d="M46 26v49M73 26v49"/>
+              <path d="M20 44h80M20 61h80"/>
+              <path d="M33 35l6 6-6 6-6-6 6-6ZM60 52l6 6-6 6-6-6 6-6ZM86 35l6 6-6 6-6-6 6-6Z"/>
+            </svg>
+          </div>
+          <h3 class="rec-name">Wedding quilt</h3>
+          <span class="stamp tag s-keep">Kept</span>
+          <div class="val">
+            <span class="tag">Story</span>
+            <div class="val-body"><p class="memory">0:51, in her voice</p></div>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-head tag"><span>№ 011</span><span class="room">Garage</span></div>
+          <div class="plate">
+            <!-- drill -->
+            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M30 34h34a8 8 0 0 1 8 8v9a8 8 0 0 1-8 8H30V34Z"/>
+              <path d="M72 44h13l10-5v18l-10-5H72"/>
+              <path d="M30 59l-4 20h18l3-20"/>
+              <path d="M26 79h20v6H26z"/>
+              <path d="M40 59v6"/>
+              <path d="M95 43v10"/>
+            </svg>
+          </div>
+          <h3 class="rec-name">Cordless drill</h3>
+          <span class="stamp tag s-donate">Donate</span>
+          <div class="val">
+            <span class="tag">Goes to</span>
+            <div class="val-body"><p class="plain">Habitat ReStore, Kingston</p></div>
+          </div>
+        </article>
+
+        <article class="rec">
+          <div class="rec-head tag"><span>№ 014</span><span class="room">Study</span></div>
+          <div class="plate">
+            <!-- atlas -->
+            <svg viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M60 30c-9-6-20-8-32-7v45c12-1 23 1 32 7 9-6 20-8 32-7V23c-12-1-23 1-32 7Z"/>
+              <path d="M60 30v45"/>
+              <circle cx="41" cy="46" r="7"/>
+              <path d="M34 46h14M41 39c3 4 3 10 0 14"/>
+              <path d="M74 40h12M74 50h12M74 60h8"/>
+            </svg>
+          </div>
+          <h3 class="rec-name">World atlas, 1968</h3>
+          <span class="stamp tag s-letgo">Let go</span>
+          <div class="val">
+            <span class="tag">Note</span>
+            <div class="val-body"><p class="plain">No one needs it. That's allowed.</p></div>
+          </div>
+        </article>
+
+      </div>
+
+      <p class="shelf-note">
+        Every object gets a number, a room and a decision. What it's worth is
+        rarely the point — so that line can hold a memory instead.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ how it works: a genuine sequence ============ -->
+  <section class="band" id="how">
+    <div class="wrap">
+      <div class="eyebrow tag">How it goes</div>
+      <h2>Three passes through a house, and it's done.</h2>
+      <p class="say">Nobody has to sit in a storage unit with a bin bag and a deadline.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="n">Pass 01</div>
+        <h3>They photograph a room</h3>
+        <p>One tap per object. A child, a neighbour, anyone helping can clear a whole room in an afternoon.</p>
+      </div>
+      <div class="step">
+        <div class="n">Pass 02</div>
+        <h3>You decide, from your chair</h3>
+        <p>Keep, donate or let go — one object at a time. Your say is final, and you can change your mind.</p>
+      </div>
+      <div class="step">
+        <div class="n">Pass 03</div>
+        <h3>You say why it matters</h3>
+        <p>Record the story in your own voice, and quietly note who a keepsake should go to. Export it all when you're ready.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ promises ============ -->
+  <section class="band band-card">
+    <div class="wrap">
+      <div class="eyebrow tag">What we promise</div>
+      <h2>The tender parts stay yours.</h2>
+      <ul class="promises">
+        <li><span class="tag">Private</span><span>Who gets what is visible only to you, until you choose to reveal it.</span></li>
+        <li><span class="tag">Protected</span><span>Photos are stored privately and stripped of location data before they're saved.</span></li>
+        <li><span class="tag">Reversible</span><span>Nothing is deleted by deciding. Archive it, undo it, change your mind next week.</span></li>
+        <li><span class="tag">Unsold</span><span>Paid for by subscription. No advertising, and your family's things are never sold as data.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ price ============ -->
+  <section class="band">
+    <div class="wrap">
+      <div class="eyebrow tag">What it costs</div>
+      <h2>Free to do the whole house.</h2>
+      <p class="say say-gap">
+        You only pay when you want it kept safe off the device and shared with the family.
+      </p>
+      <div class="price-grid">
+        <div class="price">
+          <span class="tag">On this device</span>
+          <div class="amount">Free</div>
+          <p>Unlimited rooms, objects, photos and stories. No card, no trial clock.</p>
+        </div>
+        <div class="price lead">
+          <span class="tag">With the family</span>
+          <div class="amount">$39 <small>/ year</small></div>
+          <p>Cloud backup, sharing with everyone helping, and an AI estimate of what a piece is worth.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="close wrap">
+    <h2>Start with one room.</h2>
+    <a class="btn" href="/onboarding">Start a home</a>
+  </section>
+</main>
+
+<footer class="wrap">
+  <span>Inventory Our Home</span>
+  <span>inventoryourhouse.com</span>
+</footer>
+
+<script>
+  // Signature: the teapot's VALUE line resolves from a price into a memory.
+  // Reduced motion → show the memory outright, no transition.
+  (function () {
+    var rec = document.getElementById('rec-teapot');
+    if (!rec) return;
+    // Reduced motion: leave the default (memory already showing), no swap.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    rec.classList.add('reveal'); // start on the price
+    var settled = false;
+    function resolve() {
+      if (settled) return;
+      settled = true;
+      rec.classList.add('resolved');
+    }
+    var io = new IntersectionObserver(function (entries, obs) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        obs.disconnect();
+        setTimeout(resolve, 900);
+      });
+    }, { threshold: 0.4 });
+    io.observe(rec);
+    // Safety net: the memory must land even if the observer never fires.
+    setTimeout(function () { io.disconnect(); resolve(); }, 6000);
+  })();
+</script>
