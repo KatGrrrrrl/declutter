@@ -48,7 +48,7 @@ import {
 import { Fonts, Spacing, T } from '@/constants/theme';
 import { estimateItemValue } from '@/lib/estimate-value';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
-import { useCanDecide, useStore } from '@/lib/store';
+import { useActiveHousehold, useCanDecide, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ValueEstimate } from '@/lib/estimate-value';
@@ -84,8 +84,11 @@ export default function ItemDetailScreen() {
   const requestItem = useStore((s) => s.requestItem);
   const decide = useStore((s) => s.decide);
   const undoDecision = useStore((s) => s.undoDecision);
+  const setMainDecider = useStore((s) => s.setMainDecider);
   const setArchived = useStore((s) => s.setArchived);
   const canDecide = useCanDecide();
+  const household = useActiveHousehold();
+  const deciders = household?.deciderNames ?? [];
 
   const isOwner = role === 'owner';
   const story = item?.story;
@@ -365,6 +368,43 @@ export default function ItemDetailScreen() {
           })}
         </View>
       )}
+      {/* Who decides this? — only meaningful with more than one decider. All
+          deciders still see and can decide it; this just flags whose call it is. */}
+      {canDecide && deciders.length > 1 && item.decision === 'undecided' && (
+        <>
+          <Label style={styles.deciderLabel}>Who decides this?</Label>
+          <Row style={styles.deciderRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: !item.mainDeciderName }}
+              onPress={() => setMainDecider(item.id, undefined)}
+              style={[styles.deciderChip, !item.mainDeciderName && styles.deciderChipOn]}
+            >
+              <Text style={[styles.deciderChipText, !item.mainDeciderName && styles.deciderChipTextOn]}>
+                Anyone
+              </Text>
+            </Pressable>
+            {deciders.map((name) => {
+              const on = item.mainDeciderName === name;
+              return (
+                <Pressable
+                  key={name}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => setMainDecider(item.id, on ? undefined : name)}
+                  style={[styles.deciderChip, on && styles.deciderChipOn]}
+                >
+                  <Text style={[styles.deciderChipText, on && styles.deciderChipTextOn]}>{name}</Text>
+                </Pressable>
+              );
+            })}
+          </Row>
+          <Muted style={styles.deciderHint}>
+            Everyone with the final say still sees it — this is just whose call it is first.
+          </Muted>
+        </>
+      )}
+
       {/* Donation destination — part of the decision, so only deciders edit. */}
       <DonateTo item={item} canEdit={isOwner} />
       {editing ? (
@@ -1091,6 +1131,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
   },
   decideText: { fontSize: 15, fontWeight: '700', color: T.inkSoft },
+
+  deciderLabel: { marginTop: Spacing.four },
+  deciderRow: { flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.two },
+  deciderChip: {
+    minHeight: 40,
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+    paddingHorizontal: Spacing.three,
+  },
+  deciderChipOn: { borderColor: T.brass, backgroundColor: T.brassTint },
+  deciderChipText: { fontSize: 14.5, fontWeight: '600', color: T.inkSoft },
+  deciderChipTextOn: { color: T.brassDeep },
+  deciderHint: { fontSize: 12.5, marginTop: Spacing.two, lineHeight: 17 },
 
   archiveBtn: {
     marginTop: Spacing.four,

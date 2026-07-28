@@ -35,6 +35,13 @@ export interface Item {
   room: string;
   decision: Decision;
   decidedAt?: string;
+  decidedBy?: string; // display name of the decider who made the call
+  /**
+   * Optional "main decider" for this item — one of the household's deciders.
+   * Every decider still sees and can decide the item (a backup if the main one
+   * doesn't act); this just flags whose call it primarily is. Undefined = all.
+   */
+  mainDeciderName?: string;
   tags: string[];
   photoUri?: string; // local uri from camera; placeholder rendered when absent
   /** Cloud storage path (private bucket) once the photo is uploaded/synced. */
@@ -224,6 +231,8 @@ interface AppState {
   setRole: (role: Role) => void; // demo-mode view switch
   decide: (id: string, decision: Decision) => void;
   undoDecision: (id: string) => void;
+  /** Flag one of the household's deciders as this item's primary decider (or clear). */
+  setMainDecider: (id: string, name: string | undefined) => void;
   /** Returns ok:false when the free item limit is reached. */
   addItem: (
     item: Omit<Item, 'id' | 'createdAt' | 'decision' | 'heirVisibility' | 'isSentimental' | 'tags'> &
@@ -584,16 +593,28 @@ export const useStore = create<AppState>()(
       setRole: (role) => set({ role }),
 
       decide: (id, decision) =>
+        set((s) => {
+          const by = s.role === 'owner' ? s.ownerName : s.userName;
+          return {
+            items: s.items.map((it) =>
+              it.id === id
+                ? { ...it, decision, decidedAt: new Date().toISOString(), decidedBy: by }
+                : it
+            ),
+          };
+        }),
+
+      setMainDecider: (id, name) =>
         set((s) => ({
-          items: s.items.map((it) =>
-            it.id === id ? { ...it, decision, decidedAt: new Date().toISOString() } : it
-          ),
+          items: s.items.map((it) => (it.id === id ? { ...it, mainDeciderName: name } : it)),
         })),
 
       undoDecision: (id) =>
         set((s) => ({
           items: s.items.map((it) =>
-            it.id === id ? { ...it, decision: 'undecided', decidedAt: undefined } : it
+            it.id === id
+              ? { ...it, decision: 'undecided', decidedAt: undefined, decidedBy: undefined }
+              : it
           ),
         })),
 
@@ -632,6 +653,8 @@ export const useStore = create<AppState>()(
       bulkDecide: (ids, decision) =>
         set((s) => {
           const at = new Date().toISOString();
+          const by = s.role === 'owner' ? s.ownerName : s.userName;
+          const undecided = decision === 'undecided';
           const set_ = new Set(ids);
           return {
             items: s.items.map((it) =>
@@ -639,7 +662,8 @@ export const useStore = create<AppState>()(
                 ? {
                     ...it,
                     decision,
-                    decidedAt: decision === 'undecided' ? undefined : at,
+                    decidedAt: undecided ? undefined : at,
+                    decidedBy: undecided ? undefined : by,
                   }
                 : it
             ),
@@ -842,8 +866,36 @@ export const useStore = create<AppState>()(
  * trips Zustand v5's "getSnapshot should be cached" infinite loop (fatal on
  * React web, silently tolerated by Hermes on device).
  */
-export const selectQueue = (s: AppState) =>
-  s.items.filter((i) => i.decision === 'undecided');
+/** A decision counts as "recently decided" (flagged) for this long, then it
+ *  just lives in its Keep/Donate/Let-go list. */
+export const RECENTLY_DECIDED_MS = 24 * 60 * 60 * 1000;
+
+/** True while a decided item is still inside its ~1-day flagged window. */
+export const isRecentlyDecided = (i: Item): boolean =>
+  i.decision !== 'undecided' &&
+  !!i.decidedAt &&
+  Date.now() - new Date(i.decidedAt).getTime() < RECENTLY_DECIDED_MS;
+
+/** The current viewer's decider display name (owner or member). */
+const viewerName = (s: AppState) => (s.role === 'owner' ? s.ownerName : s.userName);
+
+/** Undecided items, with the viewer's own flagged items surfaced first. */
+export const selectQueue = (s: AppState) => {
+  const me = viewerName(s);
+  const rank = (i: Item) =>
+    i.mainDeciderName ? (i.mainDeciderName === me ? 0 : 2) : 1;
+  return s.items
+    .filter((i) => i.decision === 'undecided')
+    .sort((a, b) => rank(a) - rank(b));
+};
+
+/** Items decided within the last day — the "recently decided" review list. */
+export const selectRecentlyDecided = (s: AppState) =>
+  s.items
+    .filter(isRecentlyDecided)
+    .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''));
+
+export const useRecentlyDecided = () => useStore(useShallow(selectRecentlyDecided));
 
 /** Kept items for the Keepsakes shelf (newest decision first). */
 export const selectKeepsakes = (s: AppState) =>

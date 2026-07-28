@@ -151,6 +151,9 @@ export function SwipeCard({
           <Text style={styles.sub}>
             {item.room} · added by {item.addedBy}
           </Text>
+          {item.mainDeciderName ? (
+            <Text style={styles.flag}>{item.mainDeciderName}&rsquo;s to decide</Text>
+          ) : null}
         </View>
 
         {/* verdict overlays — fade in with drag distance */}
@@ -217,6 +220,17 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontSize: 15,
     color: T.inkSoft,
+  },
+  flag: {
+    marginTop: 8,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: T.brassDeep,
+    backgroundColor: T.brassTint,
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    overflow: 'hidden',
   },
   verdict: {
     position: 'absolute',

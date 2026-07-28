@@ -25,6 +25,7 @@ import { DecisionPill, Heading, Label, Muted, PhotoBox, Screen, Title, useIsDesk
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import {
   Decision,
+  isRecentlyDecided,
   Item,
   useCanDecide,
   useDuplicateIds,
@@ -32,12 +33,13 @@ import {
   useStore,
 } from '@/lib/store';
 
-type Filter = 'all' | Decision | 'mine-waiting' | 'duplicates' | 'archived';
+type Filter = 'all' | Decision | 'mine-waiting' | 'duplicates' | 'archived' | 'recent';
 type Sort = 'newest' | 'name' | 'value' | 'room' | 'status';
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'undecided', label: 'Undecided' },
+  { key: 'recent', label: 'Just decided' },
   { key: 'keep', label: 'Keep' },
   { key: 'donate', label: 'Donate' },
   { key: 'toss', label: 'Let go' },
@@ -198,6 +200,8 @@ export function InventoryView() {
         if (it.addedBy !== userName || it.decision !== 'undecided') return false;
       } else if (filter === 'duplicates') {
         if (!dupSet.has(it.id)) return false;
+      } else if (filter === 'recent') {
+        if (!isRecentlyDecided(it)) return false;
       } else if (filter !== 'all' && filter !== 'archived' && it.decision !== filter) {
         return false;
       }
@@ -627,6 +631,18 @@ export function InventoryView() {
                 ) : (
                   <DecisionPill decision={it.decision} />
                 )}
+                {/* Fresh decisions stay flagged for ~a day before settling in. */}
+                {!it.archived && isRecentlyDecided(it) && (
+                  <Text style={styles.recentChip} numberOfLines={1}>
+                    New{it.decidedBy ? ` · ${it.decidedBy}` : ''}
+                  </Text>
+                )}
+                {/* Whose call an undecided item primarily is. */}
+                {!it.archived && it.decision === 'undecided' && it.mainDeciderName && (
+                  <Text style={styles.deciderFlag} numberOfLines={1}>
+                    {it.mainDeciderName}&rsquo;s call
+                  </Text>
+                )}
                 {shownHeir && <Text style={styles.heirText}>→ {shownHeir.displayName}</Text>}
                 {hiddenHeir && (
                   <View style={styles.lock}>
@@ -970,6 +986,17 @@ const styles = StyleSheet.create({
   },
   archChipText: { fontSize: 12, fontWeight: '700', color: T.inkSoft },
   heirText: { fontSize: 12, fontWeight: '600', color: T.brassDeep },
+  recentChip: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: T.brassDeep,
+    backgroundColor: T.brassTint,
+    borderRadius: 999,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    overflow: 'hidden',
+  },
+  deciderFlag: { fontSize: 11, fontWeight: '600', color: T.inkFaint },
   lock: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   lockText: { fontSize: 11, fontWeight: '600', color: T.inkFaint },
 
