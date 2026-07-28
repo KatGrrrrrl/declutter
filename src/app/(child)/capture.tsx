@@ -21,9 +21,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useRouter } from 'expo-router';
+
 import { AccountButton } from '@/components/account-button';
 import { notify, ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
+import { SplitReview } from '@/components/split-review';
 import {
   Body,
   Btn,
@@ -40,8 +43,47 @@ import {
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
+import { splitGroupPhoto } from '@/lib/split-photo';
 import { useCanDecide, useEntitlement, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+
+import type { ProposedItem } from '@/lib/split-photo';
+
+/**
+ * Shared "split this group photo" runner — resolves the AI proposals or
+ * explains why it can't (Pro-only, not configured, nothing found).
+ */
+function useSplitPhoto() {
+  const router = useRouter();
+  const [splitting, setSplitting] = useState(false);
+  const [proposals, setProposals] = useState<ProposedItem[] | null>(null);
+
+  const runSplit = async (uri: string) => {
+    if (splitting) return;
+    setSplitting(true);
+    const r = await splitGroupPhoto(uri);
+    setSplitting(false);
+    if (r.ok) {
+      setProposals(r.items);
+      return true;
+    }
+    if (r.reason === 'pro_required') {
+      notify('A Pro feature', 'Splitting one photo into many items uses AI vision — part of Inventory Our Home Pro.');
+      router.push('/upgrade');
+    } else if (r.reason === 'not_configured') {
+      notify('Not switched on yet', 'AI photo splitting isn’t enabled for this app yet.');
+    } else if (r.reason === 'no_items') {
+      notify('One item, then', 'No separate objects were found — add it as a single item.');
+    } else if (r.reason === 'needs_account') {
+      notify('Sign in first', 'Sign in to use AI photo splitting.');
+    } else {
+      notify('Couldn’t split the photo', r.error ?? 'Please try again in a moment.');
+    }
+    return false;
+  };
+
+  return { splitting, proposals, setProposals, runSplit };
+}
 
 export default function CaptureScreen() {
   if (Platform.OS === 'web') return <WebCapture />;
@@ -57,6 +99,7 @@ function NativeCapture() {
   const ent = useEntitlement();
   // A parent cataloguing their own things is deciding as they go: mark it Keep.
   const canDecide = useCanDecide();
+  const split = useSplitPhoto();
 
   const cameraRef = useRef<CameraView>(null);
   const [room, setRoom] = useState<string>(ROOMS[0]);
@@ -74,6 +117,22 @@ function NativeCapture() {
         <Label>Batch capture</Label>
         <Title>Capture</Title>
         <LimitReachedCard />
+      </Screen>
+    );
+  }
+
+  // A split is in review — the shot becomes several proposed items to approve.
+  if (split.proposals) {
+    return (
+      <Screen>
+        <SplitReview
+          proposals={split.proposals}
+          room={room}
+          onClose={(added) => {
+            split.setProposals(null);
+            if (added > 0) setCount((n) => n + added);
+          }}
+        />
       </Screen>
     );
   }
@@ -232,6 +291,24 @@ function NativeCapture() {
               <Text style={styles.discardText}>Discard</Text>
             </Pressable>
           </View>
+          {/* Several objects in one shot → AI proposes one item per object. */}
+          <Pressable
+            accessibilityRole="button"
+            disabled={split.splitting}
+            onPress={() => {
+              const uri = pendingUri;
+              if (!uri) return;
+              void split.runSplit(uri).then((ok) => {
+                if (ok) setPendingUri(null);
+              });
+            }}
+            style={({ pressed }) => [styles.splitBtn, pressed && styles.splitPressed]}
+          >
+            <Ionicons name="sparkles-outline" size={14} color={T.brassDeep} />
+            <Text style={styles.splitBtnText}>
+              {split.splitting ? 'Looking for items…' : 'Several items? Split with AI'}
+            </Text>
+          </Pressable>
         </Card>
       ) : (
         /* -------- shutter dock -------- */
@@ -272,6 +349,7 @@ function WebCapture() {
   const ent = useEntitlement();
   // A parent cataloguing their own things is deciding as they go: mark it Keep.
   const canDecide = useCanDecide();
+  const split = useSplitPhoto();
 
   const [room, setRoom] = useState<string>(ROOMS[0]);
   const [title, setTitle] = useState('');
@@ -329,6 +407,27 @@ function WebCapture() {
     );
   }
 
+  // A split is in review — the shot becomes several proposed items to approve.
+  if (split.proposals) {
+    return (
+      <Screen>
+        <SplitReview
+          proposals={split.proposals}
+          room={room}
+          onClose={(count) => {
+            split.setProposals(null);
+            if (count > 0) {
+              setAdded((n) => n + count);
+              setPhotoUri(null);
+              setTitle('');
+              setNoPhoto(false);
+            }
+          }}
+        />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <View style={styles.webHead}>
@@ -377,6 +476,21 @@ function WebCapture() {
               <Muted style={styles.dropHint}>From your files — drag-worthy shots welcome</Muted>
             </>
           )}
+        </Pressable>
+      )}
+
+      {/* Group shot → AI proposes one item per object, each approved by hand. */}
+      {!noPhoto && photoUri != null && (
+        <Pressable
+          accessibilityRole="button"
+          disabled={split.splitting}
+          onPress={() => void split.runSplit(photoUri)}
+          style={({ pressed }) => [styles.splitBtn, pressed && styles.splitPressed]}
+        >
+          <Ionicons name="sparkles-outline" size={14} color={T.brassDeep} />
+          <Text style={styles.splitBtnText}>
+            {split.splitting ? 'Looking for items…' : 'Several items in this shot? Split with AI'}
+          </Text>
         </Pressable>
       )}
 
@@ -573,6 +687,24 @@ const styles = StyleSheet.create({
   },
   discard: { paddingVertical: 8, paddingHorizontal: 4 },
   discardText: { fontSize: 13, fontWeight: '600', color: T.inkSoft },
+
+  /* group-photo split (shared by web + native) */
+  splitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    minHeight: 44,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: T.brass,
+    borderRadius: 14,
+    backgroundColor: T.brassTint,
+    marginTop: Spacing.two,
+    marginBottom: Spacing.two,
+  },
+  splitPressed: { opacity: 0.7 },
+  splitBtnText: { fontSize: 13.5, fontWeight: '700', color: T.brassDeep },
 
   /* web fallback */
   webHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.two },

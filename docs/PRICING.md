@@ -59,7 +59,7 @@ usage — check each dashboard for live figures.
 | Service | Used for | Key / config | Cost basis | Status |
 |---|---|---|---|---|
 | **Stripe** | Collecting the Pro subscription | `STRIPE_SECRET_KEY` (Supabase secret) | Standard Stripe per-transaction fees | ⚠️ Secret was set to a placeholder — must be re-set with the real key before payments work |
-| **Anthropic API** | AI value estimates (§1.4) — model `claude-sonnet-5` + the `web_search` tool | `ANTHROPIC_API_KEY` (Supabase secret) | Per estimate: one Claude call **with web search** (pricier than a plain call). Pro-gated to cap spend. | ⚠️ Not set yet — `estimate-value` returns `not_configured` until it is |
+| **Anthropic API** | AI value estimates (§1.4) — `claude-sonnet-5` + `web_search`; AI group-photo splitting (`split-photo`, plain vision call, cheaper) | `ANTHROPIC_API_KEY` (Supabase secret) | Per estimate: one Claude call **with web search** (pricier). Per split: one vision call. Both Pro-gated to cap spend. | ⚠️ Not set yet — both functions return `not_configured` until it is |
 | **Supabase** | Postgres, Auth, private Storage, Edge Functions | project `xkzuoogmcfrxicmoybzp` (ca-central-1) | Plan tier + usage | Live |
 | **Supabase custom auth domain** | `auth.inventoryourhouse.com` on the sign-in screen | domain add-on | ~$10/mo add-on | Live |
 | **Resend** | Transactional email (invites, notifications, digest) | `RESEND_API_KEY` (Supabase secret) | Free tier / usage-based | Live — but only delivers to the owner's own address until `inventoryourhouse.com` is verified in Resend |

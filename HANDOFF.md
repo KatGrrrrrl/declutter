@@ -248,6 +248,18 @@ Shipped, in order:
    an appraisal. (Keepsakes chip is a `Text`, not a `Pressable` — RN Web can't
    nest a `<button>` inside the card's `<button>`.)
 
+10. **Group-photo splitting (Pro)** — one shot of several objects → edge
+    function `split-photo` (Claude vision finds objects + boxes, server crops
+    each out; re-encode strips EXIF) → `SplitReview` screen where the picture
+    taker renames/approves each or taps "Approve all"; approved crops become
+    normal items (decider captures auto-Keep) and upload via upload-photo.
+    Entry points: web Capture (photo picked → "Several items in this shot?")
+    and native Capture (name-it form → "Several items? Split with AI").
+    Client: `src/lib/split-photo.ts` (web = blob URLs, native = files in
+    documentDirectory). Pro gate is server-side (`FREE_FOR_ALL` flag to open
+    it up); needs `ANTHROPIC_API_KEY`. AI path untested end-to-end until the
+    key is set — verify the first real split.
+
 **Deliberately NOT adopted from the mockup:** the "Assign" decision (conflates
 keeping with heir-assignment), the marketing hero (our header is already compact),
 and the "Keepsake" brand.
