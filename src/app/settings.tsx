@@ -178,8 +178,10 @@ export default function SettingsScreen() {
         <Title style={styles.title}>Settings</Title>
         <Muted style={styles.sub}>Your household, your plan, and your data.</Muted>
 
-        {/* ---------- account, front and center (logging out is routine) ---------- */}
-        {sessionEmail && (
+        {/* ---------- account, front and center — ALWAYS visible, so "where is
+             log out?" has one answer: here. Signed in → Log out; signed out →
+             say so plainly and offer Sign in (nothing to log out of). ---------- */}
+        {sessionEmail ? (
           <Card style={styles.accountBar}>
             <Row style={styles.accountRow}>
               <View style={styles.accountDot} />
@@ -196,6 +198,30 @@ export default function SettingsScreen() {
               >
                 <Ionicons name="log-out-outline" size={16} color={T.ink} />
                 <Text style={styles.logoutText}>Log out</Text>
+              </Pressable>
+            </Row>
+          </Card>
+        ) : (
+          <Card style={styles.accountBar}>
+            <Row style={styles.accountRow}>
+              <View style={[styles.accountDot, styles.accountDotOff]} />
+              <View style={styles.cardMain}>
+                <Text style={styles.accountEmail}>
+                  {state.lastAccountEmail ?? 'Not signed in'}
+                </Text>
+                <Muted style={styles.accountMeta}>
+                  {state.lastAccountEmail
+                    ? 'Signed out — everything stays on this device'
+                    : 'Sign in to turn on cloud backup and family sharing'}
+                </Muted>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push('/login')}
+                style={({ pressed }) => [styles.logoutBtn, pressed && styles.pressed]}
+              >
+                <Ionicons name="log-in-outline" size={16} color={T.ink} />
+                <Text style={styles.logoutText}>Sign in</Text>
               </Pressable>
             </Row>
           </Card>
@@ -523,6 +549,7 @@ const styles = StyleSheet.create({
   accountBar: { marginBottom: Spacing.two, backgroundColor: T.sunken, borderColor: T.line },
   accountRow: { gap: Spacing.two },
   accountDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: T.keep },
+  accountDotOff: { backgroundColor: T.inkFaint },
   accountEmail: { fontSize: 14.5, fontWeight: '700', color: T.ink },
   accountMeta: { fontSize: 12, marginTop: 1 },
   logoutBtn: {
