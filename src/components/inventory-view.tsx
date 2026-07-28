@@ -67,6 +67,7 @@ function StatTile({
   sub,
   onPress,
   active,
+  compact,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
@@ -74,17 +75,26 @@ function StatTile({
   sub?: string;
   onPress?: () => void;
   active?: boolean;
+  /** Phones: tighter padding + smaller value so items reach the top sooner. */
+  compact?: boolean;
 }) {
+  const tileBase = [styles.tile, compact && styles.tileCompact];
   const body = (
     <>
       <View style={styles.tileTop}>
-        <Ionicons name={icon} size={16} color={T.brassDeep} />
-        <Text style={styles.tileLabel}>{label}</Text>
+        <Ionicons name={icon} size={compact ? 14 : 16} color={T.brassDeep} />
+        <Text style={styles.tileLabel} numberOfLines={1}>{label}</Text>
       </View>
-      <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+      <Text
+        style={[styles.tileValue, compact && styles.tileValueCompact]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
         {value}
       </Text>
-      {sub ? <Text style={styles.tileSub}>{sub}</Text> : null}
+      {sub ? (
+        <Text style={styles.tileSub} numberOfLines={1}>{sub}</Text>
+      ) : null}
     </>
   );
   if (onPress) {
@@ -93,13 +103,13 @@ function StatTile({
         accessibilityRole="button"
         accessibilityState={{ selected: active }}
         onPress={onPress}
-        style={({ pressed }) => [styles.tile, active && styles.tileActive, pressed && styles.pressed]}
+        style={({ pressed }) => [...tileBase, active && styles.tileActive, pressed && styles.pressed]}
       >
         {body}
       </Pressable>
     );
   }
-  return <View style={styles.tile}>{body}</View>;
+  return <View style={tileBase}>{body}</View>;
 }
 
 /** Chat count on a row — its own component so the hook runs per item. */
@@ -274,6 +284,11 @@ export function InventoryView() {
 
   return (
     <Screen scroll={false}>
+      <ScrollView
+        style={styles.flex}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
       <View style={styles.headRow}>
         <View style={styles.headMain}>
           <Label>
@@ -306,8 +321,9 @@ export function InventoryView() {
 
       {/* At-a-glance summary tiles */}
       <View style={styles.tiles}>
-        <StatTile icon="cube-outline" label="Items" value={String(stats.total)} sub={`Across ${stats.rooms} room${stats.rooms === 1 ? '' : 's'}`} />
+        <StatTile compact={!isDesktop} icon="cube-outline" label="Items" value={String(stats.total)} sub={`Across ${stats.rooms} room${stats.rooms === 1 ? '' : 's'}`} />
         <StatTile
+          compact={!isDesktop}
           icon="help-circle-outline"
           label="To decide"
           value={String(stats.toDecide)}
@@ -315,16 +331,17 @@ export function InventoryView() {
           onPress={() => setFilter(filter === 'undecided' ? 'all' : 'undecided')}
           active={filter === 'undecided'}
         />
-        <StatTile icon="heart-outline" label="Kept" value={String(stats.kept)} sub="Staying in the family" />
+        <StatTile compact={!isDesktop} icon="heart-outline" label="Kept" value={String(stats.kept)} sub="Staying in the family" />
         {canDecide ? (
           <StatTile
+            compact={!isDesktop}
             icon="pricetag-outline"
             label="Documented value"
             value={`$${stats.value.toLocaleString()}`}
             sub={`${stats.valuedCount} valued`}
           />
         ) : (
-          <StatTile icon="grid-outline" label="Rooms" value={String(stats.rooms)} sub="In this home" />
+          <StatTile compact={!isDesktop} icon="grid-outline" label="Rooms" value={String(stats.rooms)} sub="In this home" />
         )}
       </View>
 
@@ -505,12 +522,10 @@ export function InventoryView() {
       )}
 
       {/* rows — a single column on phones, a wrapped 2-up grid on desktop so
-          the wide content area doesn't leave items stranded in one thin column */}
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={isDesktop ? styles.gridContent : undefined}
-        showsVerticalScrollIndicator={false}
-      >
+          the wide content area doesn't leave items stranded in one thin column.
+          The whole screen shares one scroll (below), so the header scrolls away
+          on a phone and items get the full height instead of a cramped window. */}
+      <View style={isDesktop ? styles.gridContent : undefined}>
         {shown.map((it) => {
           const heirPerson = it.heirPersonId
             ? people.find((p) => p.id === it.heirPersonId)
@@ -624,6 +639,7 @@ export function InventoryView() {
           );
         })}
         {shown.length === 0 && <Muted style={styles.empty}>{emptyMessage()}</Muted>}
+        </View>
         <View style={styles.bottomPad} />
       </ScrollView>
 
@@ -761,7 +777,9 @@ const styles = StyleSheet.create({
   tileActive: { borderColor: T.brass, backgroundColor: T.brassTint },
   tileTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   tileLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: T.inkSoft },
+  tileCompact: { paddingVertical: Spacing.two, borderRadius: 12, gap: 2 },
   tileValue: { fontFamily: Fonts?.serif, fontSize: 26, fontWeight: '600', color: T.heading },
+  tileValueCompact: { fontSize: 20 },
   tileSub: { fontSize: 11.5, color: T.inkFaint },
 
   quota: { marginTop: Spacing.one, marginBottom: Spacing.two },
