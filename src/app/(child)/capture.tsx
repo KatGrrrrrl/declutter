@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AccountButton } from '@/components/account-button';
 import { notify, ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import {
@@ -330,8 +331,13 @@ function WebCapture() {
 
   return (
     <Screen>
-      <Label>Batch capture</Label>
-      <Title>Capture</Title>
+      <View style={styles.webHead}>
+        <View style={styles.flex}>
+          <Label>Batch capture</Label>
+          <Title>Capture</Title>
+        </View>
+        <AccountButton />
+      </View>
 
       {ent.nearItemLimit && <ItemQuotaMeter style={styles.webQuota} />}
 
@@ -569,6 +575,7 @@ const styles = StyleSheet.create({
   discardText: { fontSize: 13, fontWeight: '600', color: T.inkSoft },
 
   /* web fallback */
+  webHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.two },
   webQuota: { marginTop: Spacing.two },
   webCard: { marginTop: Spacing.two, alignItems: 'center' },
   webChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.three },
