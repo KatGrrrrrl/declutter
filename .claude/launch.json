@@ -34,6 +34,18 @@
         "8082"
       ],
       "port": 8082
+    },
+    {
+      "name": "web-alt2",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8083"
+      ],
+      "port": 8083
     }
   ]
 }
