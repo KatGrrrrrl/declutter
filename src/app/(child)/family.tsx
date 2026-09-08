@@ -1,8 +1,10 @@
 /**
- * Child family — the household roster, plain about authority: the designated
- * decider(s) hold the final say on every item; everyone else helps. Shows who
- * set the home up and who has the final say (per household — different homes
- * can have different deciders).
+ * Child family — every family home this user helps with, one card each, plus
+ * the roster of the home that is open. Plain about authority: the designated
+ * decider(s) hold the final say on every item; everyone else helps. Each card
+ * shows who set the home up and who has the final say (per household —
+ * different homes can have different deciders). The big "+" in the header
+ * starts another family home; tapping a card opens it.
  *
  * Membership flow: anyone may invite a family member by name; the invitation
  * waits as "Invited" until a decider approves (or declines) it here. With no
@@ -16,8 +18,8 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Avatar, notify } from '@/components/child/shared';
-import { SETTINGS_ROUTE } from '@/components/settings/routes';
-import { Btn, Card, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
+import { SETTINGS_ROUTE, UPGRADE_ROUTE } from '@/components/settings/routes';
+import { Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
 import { sendInviteEmail } from '@/lib/invites';
 import { createCloudInvite } from '@/lib/join';
@@ -29,6 +31,10 @@ export default function FamilyScreen() {
   const ownerName = useStore((s) => s.ownerName);
   const userName = useStore((s) => s.userName);
   const items = useStore((s) => s.items);
+  const households = useStore((s) => s.households);
+  const activeHouseholdId = useStore((s) => s.activeHouseholdId);
+  const addHousehold = useStore((s) => s.addHousehold);
+  const switchHousehold = useStore((s) => s.switchHousehold);
   const setRole = useStore((s) => s.setRole);
   const inviteMember = useStore((s) => s.inviteMember);
   const approveMember = useStore((s) => s.approveMember);
@@ -42,6 +48,10 @@ export default function FamilyScreen() {
   const [inviteRel, setInviteRel] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
 
+  const [addingFamily, setAddingFamily] = useState(false);
+  const [newFamilyName, setNewFamilyName] = useState('');
+  const [newFamilyDeciders, setNewFamilyDeciders] = useState('');
+
   const deciders = household?.deciderNames ?? [ownerName];
   const createdBy = household?.createdBy ?? ownerName;
 
@@ -54,6 +64,33 @@ export default function FamilyScreen() {
   const active = members.filter((m) => m.status === 'active');
   const invited = members.filter((m) => m.status === 'invited');
   const pending = items.filter((i) => i.requestedBy);
+
+  const closeNewFamily = () => {
+    setAddingFamily(false);
+    setNewFamilyName('');
+    setNewFamilyDeciders('');
+  };
+
+  /**
+   * Start another family home. Comma-separated decider names; blank means this
+   * user holds the final say there. The new home opens immediately (the store
+   * switches to it), so the roster below is ready for invitations.
+   */
+  const saveFamily = () => {
+    const name = newFamilyName.trim();
+    if (!name) return;
+    const deciders = newFamilyDeciders
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean);
+    const res = addHousehold(name, deciders.length ? deciders : undefined);
+    if (!res.ok) {
+      router.push(UPGRADE_ROUTE);
+      return;
+    }
+    closeNewFamily();
+    notify('Family added', `${name} is open now. Invite the people who belong there below.`);
+  };
 
   const sendInvite = () => {
     const name = inviteName.trim();
@@ -112,32 +149,122 @@ export default function FamilyScreen() {
 
   return (
     <Screen>
-      <Label>{householdName}</Label>
-      <Title>Family</Title>
+      <Row style={styles.headerRow}>
+        <View style={styles.flex}>
+          <Label>{householdName}</Label>
+          <Title>Family</Title>
+        </View>
+        {/* Big "+" — starts another family home. Toggles to a close glyph while
+            the form is open so the same target dismisses it. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={addingFamily ? 'Close the new family form' : 'Add a new family home'}
+          accessibilityState={{ expanded: addingFamily }}
+          onPress={() => (addingFamily ? closeNewFamily() : setAddingFamily(true))}
+          style={({ pressed }) => [styles.addFab, pressed && styles.addFabPressed]}
+        >
+          <Ionicons name={addingFamily ? 'close' : 'add'} size={36} color={T.surface} />
+        </Pressable>
+      </Row>
 
-      <Card style={styles.authority}>
-        <Row style={styles.authorityRow}>
-          <Ionicons name="shield-checkmark-outline" size={20} color={T.brass} />
-          <Muted style={styles.flex}>
-            <Text style={styles.strong}>
-              {deciders.join(' and ')} {deciders.length === 1 ? 'holds' : 'hold'} the
-              final say here.
-            </Text>{' '}
-            Every keep, donate, and heir choice is theirs. Everyone else helps by
-            adding photos and notes.
+      {/* new family form */}
+      {addingFamily && (
+        <Card style={styles.newFamilyCard}>
+          <Label asHeading style={styles.inviteLabel}>
+            New family home
+          </Label>
+          <TextInput
+            style={styles.input}
+            value={newFamilyName}
+            onChangeText={setNewFamilyName}
+            placeholder="Name — e.g. The Cottage"
+            placeholderTextColor={T.inkFaint}
+            aria-label="New family home name"
+            autoFocus
+            returnKeyType="next"
+          />
+          <TextInput
+            style={[styles.input, styles.inputGap]}
+            value={newFamilyDeciders}
+            onChangeText={setNewFamilyDeciders}
+            placeholder={`Who has the final say there? (${userName})`}
+            placeholderTextColor={T.inkFaint}
+            aria-label="Who has the final say in the new family home"
+            returnKeyType="done"
+            onSubmitEditing={saveFamily}
+          />
+          <Muted style={styles.inviteNote}>
+            Leave that blank if it&rsquo;s you. Separate names with commas for more
+            than one.
           </Muted>
-        </Row>
-        <Row style={styles.govRow}>
-          <Ionicons name="key-outline" size={15} color={T.brass} />
-          <Muted style={styles.govText}>Final say: {deciders.join(', ')}</Muted>
-        </Row>
-        <Row style={styles.govRow}>
-          <Ionicons name="home-outline" size={15} color={T.brass} />
-          <Muted style={styles.govText}>Set up by {createdBy}</Muted>
-        </Row>
-      </Card>
+          <Row style={styles.inviteActions}>
+            <View style={styles.flex}>
+              <Btn label="Add family" onPress={saveFamily} />
+            </View>
+            <Pressable accessibilityRole="button" onPress={closeNewFamily} style={styles.cancelBtn}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </Row>
+        </Card>
+      )}
 
-      {/* members */}
+      {/* families — one card each; the open one carries the authority note */}
+      <Label asHeading>Your families</Label>
+      {households.map((h) => {
+        const open = h.id === activeHouseholdId;
+        const hDeciders = h.deciderNames.length ? h.deciderNames : [ownerName];
+        return (
+          <Pressable
+            key={h.id}
+            accessibilityRole="button"
+            accessibilityState={{ selected: open }}
+            accessibilityLabel={open ? `${h.name}, open` : `Open ${h.name}`}
+            onPress={() => {
+              if (!open) switchHousehold(h.id);
+            }}
+            style={({ pressed }) => [pressed && !open && styles.pressed]}
+          >
+            <Card style={[styles.familyCard, open && styles.familyCardOpen]}>
+              <Row style={styles.familyHead}>
+                <Heading style={styles.flex}>{h.name}</Heading>
+                <View style={[styles.badge, open ? styles.badgeOwner : styles.badgeHelper]}>
+                  <Text
+                    style={[styles.badgeText, open ? styles.badgeOwnerText : styles.badgeHelperText]}
+                  >
+                    {open ? 'Open' : 'Tap to open'}
+                  </Text>
+                </View>
+              </Row>
+              {open && (
+                <Row style={[styles.authorityRow, styles.familyNote]}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color={T.brass} />
+                  <Muted style={styles.flex}>
+                    <Text style={styles.strong}>
+                      {hDeciders.join(' and ')} {hDeciders.length === 1 ? 'holds' : 'hold'}{' '}
+                      the final say here.
+                    </Text>{' '}
+                    Every keep, donate, and heir choice is theirs. Everyone else helps by
+                    adding photos and notes.
+                  </Muted>
+                </Row>
+              )}
+              <Row style={styles.govRow}>
+                <Ionicons name="key-outline" size={15} color={T.brass} />
+                <Muted style={styles.govText}>Final say: {hDeciders.join(', ')}</Muted>
+              </Row>
+              <Row style={styles.govRow}>
+                <Ionicons name="home-outline" size={15} color={T.brass} />
+                <Muted style={styles.govText}>Set up by {h.createdBy || createdBy}</Muted>
+              </Row>
+            </Card>
+          </Pressable>
+        );
+      })}
+
+      {/* members of the open family */}
+      <Label asHeading style={styles.rosterLabel}>
+        People at {householdName}
+      </Label>
       <View style={styles.list}>
         {active.map((m) => (
           <MemberRow
@@ -353,7 +480,27 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   strong: { color: T.ink, fontWeight: '700' },
 
-  authority: { marginTop: Spacing.two, backgroundColor: T.sunken },
+  headerRow: { alignItems: 'flex-end', gap: Spacing.three },
+  addFab: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: T.brass,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  addFabPressed: { opacity: 0.8 },
+  pressed: { opacity: 0.7 },
+
+  newFamilyCard: { marginTop: Spacing.three, backgroundColor: T.sunken },
+
+  familyCard: { marginTop: Spacing.two },
+  familyCardOpen: { borderColor: T.brass, backgroundColor: T.sunken },
+  familyHead: { alignItems: 'center', gap: Spacing.two },
+  familyNote: { marginTop: Spacing.two },
+  rosterLabel: { marginTop: Spacing.four },
+
   authorityRow: { alignItems: 'flex-start', gap: Spacing.two },
   govRow: { marginTop: Spacing.two, gap: Spacing.two },
   govText: { fontSize: 12.5, color: T.inkSoft },
