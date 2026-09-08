@@ -3,8 +3,6 @@ import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
 import { DecorativeIcon, NavigationTabBar, useIsDesktop, useTabBarLayout } from '@/components/ui';
-import { T } from '@/constants/theme';
-
 /**
  * Tab icons are decorative: each tab's visible label already names it, and
  * Ionicons glyphs are private-use characters that a screen reader would

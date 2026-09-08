@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MiniChip } from '@/components/child/shared';
-import { Btn, Heading, Label, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
+import { Btn, DECISION_META, Heading, Label, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
 import { useCanDecide, useCollection, useCollectionItems, useStore } from '@/lib/store';
 
@@ -174,7 +174,7 @@ export default function CollectionScreen() {
               {it.title}
             </Heading>
             <Muted style={styles.cellSub} numberOfLines={1}>
-              {it.decision === 'undecided' ? 'Undecided' : it.decision === 'keep' ? 'Kept' : it.decision === 'donate' ? 'Donate' : 'Let go'}
+              {it.decision === 'undecided' ? 'Undecided' : DECISION_META[it.decision].label}
               {it.marketValue != null && canDecide ? ` · $${it.marketValue.toLocaleString()}` : ''}
             </Muted>
           </Pressable>

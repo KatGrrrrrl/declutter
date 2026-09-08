@@ -25,7 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { useSignedPhotoUrl } from '@/lib/photo-sync';
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { Decision } from '@/lib/store';
@@ -189,7 +189,7 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
   // "Backed up" must reflect the household actually being in the cloud, not
   // the plan alone: a Pro plan with no backup yet is still device-only, and a
   // linked household syncs as you go whatever the card used to say.
-  const linked = useStore((s) => !s.isDemo && !!s.cloudHouseholdId && s.cloudHouseholdId === s.activeHouseholdId);
+  const linked = useStore((s) => !!linkedCloudId(s));
 
   const logOut = async () => {
     const email = sessionEmail ?? '';

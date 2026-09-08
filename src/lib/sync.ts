@@ -90,8 +90,8 @@ async function ensureCollectionUploaded(
 export async function pushCollectionUpdate(
   c: Collection
 ): Promise<{ ok: boolean; error?: string }> {
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return { ok: false, error: 'Not signed in.' };
+  // No getUser() round trip first: the UPDATE is RLS-gated and fails cleanly
+  // when signed out, and nothing here needs the user id.
   const { error } = await supabase
     .from('collections')
     .update({ name: c.name, note: c.note ?? null })
@@ -122,6 +122,34 @@ export async function cloudRole(
     .eq('status', 'active')
     .maybeSingle();
   return (data?.role as 'owner' | 'co_owner' | 'contributor' | 'executor') ?? 'none';
+}
+
+/**
+ * The cloud row for one item. Every write path — full backup, single push,
+ * reconcile — builds rows here, so a new synced column is a one-site edit
+ * instead of three. Contributors never carry a decision (the DB's items_guard
+ * enforces the same rule server-side).
+ */
+function itemRow(i: Item, householdId: string, userId: string, isOwner: boolean) {
+  const decided = isOwner && i.decision !== 'undecided';
+  return {
+    id: i.id,
+    household_id: householdId,
+    created_by: userId,
+    title: i.title,
+    room: i.room || null,
+    collection_id: i.collectionId ?? null,
+    decision: isOwner ? i.decision : 'undecided',
+    decided_by: decided ? userId : null,
+    decided_by_name: decided ? (i.decidedBy ?? null) : null,
+    decided_at: decided ? (i.decidedAt ?? new Date().toISOString()) : null,
+    market_value_cents: i.marketValue != null ? Math.round(i.marketValue * 100) : null,
+    is_sentimental: i.isSentimental,
+    donate_to: i.donateTo ?? null,
+    donate_to_kind: i.donateToKind ?? null,
+    archived: i.archived ?? false,
+    created_at: i.createdAt,
+  };
 }
 
 export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
@@ -207,27 +235,7 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
       const colErr = await upsertCollections(cols, hid, user.id, isOwner);
       if (colErr.error) throw new Error(colErr.error);
 
-      const rows = mine.map((i) => ({
-        id: i.id,
-        household_id: hid,
-        created_by: user.id,
-        title: i.title,
-        room: i.room || null,
-        collection_id: i.collectionId ?? null,
-        decision: isOwner ? i.decision : 'undecided',
-        decided_by: isOwner && i.decision !== 'undecided' ? user.id : null,
-        decided_by_name: isOwner && i.decision !== 'undecided' ? (i.decidedBy ?? null) : null,
-        decided_at:
-          isOwner && i.decision !== 'undecided'
-            ? (i.decidedAt ?? new Date().toISOString())
-            : null,
-        market_value_cents: i.marketValue != null ? Math.round(i.marketValue * 100) : null,
-        is_sentimental: i.isSentimental,
-        donate_to: i.donateTo ?? null,
-        donate_to_kind: i.donateToKind ?? null,
-        archived: i.archived ?? false,
-        created_at: i.createdAt,
-      }));
+      const rows = mine.map((i) => itemRow(i, hid, user.id, isOwner));
       const { error } = await supabase
         .from('items')
         .upsert(rows, { ignoreDuplicates: !isOwner });
@@ -337,19 +345,27 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
     if (hhErr) throw hhErr;
     if (!hh) return { ok: false, error: 'No household found on this account yet.' };
 
-    const [items, tags, stories, people, roster, photos, collections] = await Promise.all([
-      supabase.from('items').select('*').eq('household_id', hh.id),
-      supabase.from('item_tags').select('*'),
-      supabase.from('stories').select('*'),
+    const items = await supabase.from('items').select('*').eq('household_id', hh.id);
+    if (items.error) throw items.error;
+    const itemIds = (items.data ?? []).map((i) => i.id);
+
+    // item_tags, stories and item_photos have no household column, so they
+    // are scoped to this household's items — unscoped, a member of two homes
+    // downloaded the other home's tags, story bodies and photo paths on every
+    // restore, only to discard them in the maps below.
+    const [tags, stories, people, roster, photos, collections] = await Promise.all([
+      supabase.from('item_tags').select('*').in('item_id', itemIds),
+      supabase.from('stories').select('*').in('item_id', itemIds),
       supabase.from('people').select('*').eq('household_id', hh.id),
       supabase.from('roster_entries').select('*').eq('household_id', hh.id),
-      supabase.from('item_photos').select('item_id, storage_path, is_primary, created_at'),
+      supabase
+        .from('item_photos')
+        .select('item_id, storage_path, is_primary, created_at')
+        .in('item_id', itemIds),
       supabase.from('collections').select('*').eq('household_id', hh.id),
     ]);
-    for (const r of [items, tags, stories, people, roster, photos, collections])
-      if (r.error) throw r.error;
+    for (const r of [tags, stories, people, roster, photos, collections]) if (r.error) throw r.error;
 
-    const itemIds = (items.data ?? []).map((i) => i.id);
     const { data: msgs, error: msgErr } = itemIds.length
       ? await supabase.from('item_messages').select('*').in('item_id', itemIds)
       : { data: [], error: null };
@@ -485,34 +501,14 @@ export async function pushItem(
     return { ok: false, error: 'Not a contributing member of this household.' };
   }
   const isOwner = role === 'owner' || role === 'co_owner';
-  // Contributors may not decide; the DB's items_guard enforces this too.
-  const decided = isOwner && item.decision !== 'undecided';
 
   if (item.collectionId) {
     await ensureCollectionUploaded(item.collectionId, cloudHouseholdId, user.id, isOwner);
   }
 
-  const { error } = await supabase.from('items').upsert(
-    {
-      id: item.id,
-      household_id: cloudHouseholdId,
-      created_by: user.id,
-      title: item.title,
-      room: item.room || null,
-      collection_id: item.collectionId ?? null,
-      decision: isOwner ? item.decision : 'undecided',
-      decided_by: decided ? user.id : null,
-      decided_by_name: decided ? (item.decidedBy ?? null) : null,
-      decided_at: decided ? (item.decidedAt ?? new Date().toISOString()) : null,
-      market_value_cents: item.marketValue != null ? Math.round(item.marketValue * 100) : null,
-      is_sentimental: item.isSentimental,
-      donate_to: item.donateTo ?? null,
-      donate_to_kind: item.donateToKind ?? null,
-      archived: item.archived ?? false,
-      created_at: item.createdAt,
-    },
-    { ignoreDuplicates: !isOwner }
-  );
+  const { error } = await supabase
+    .from('items')
+    .upsert(itemRow(item, cloudHouseholdId, user.id, isOwner), { ignoreDuplicates: !isOwner });
   if (error) return { ok: false, error: error.message };
 
   // Tags ride along so a later pull doesn't find the item bare.
@@ -599,6 +595,7 @@ export async function pushItemUpdate(
 export async function reconcileHousehold(
   householdId: string,
   items: Item[],
+  collections: Collection[],
   userName: string
 ): Promise<{ linked: boolean; pushed: number; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
@@ -624,35 +621,19 @@ export async function reconcileHousehold(
     : missing.filter((i) => i.addedBy === userName && i.decision === 'undecided');
   if (!mine.length) return { linked: true, pushed: 0 };
 
-  const decidedAt = (i: Item) =>
-    isOwner && i.decision !== 'undecided' ? (i.decidedAt ?? new Date().toISOString()) : null;
-
-  // Collections the backlog references must exist before the item FKs land.
-  for (const c of new Set(mine.map((i) => i.collectionId).filter((x): x is string => !!x))) {
-    await ensureCollectionUploaded(c, householdId, user.id, isOwner);
-  }
-
-  const { error } = await supabase.from('items').upsert(
-    mine.map((i) => ({
-      id: i.id,
-      household_id: householdId,
-      created_by: user.id,
-      title: i.title,
-      room: i.room || null,
-      collection_id: i.collectionId ?? null,
-      decision: isOwner ? i.decision : 'undecided',
-      decided_by: isOwner && i.decision !== 'undecided' ? user.id : null,
-      decided_by_name: isOwner && i.decision !== 'undecided' ? (i.decidedBy ?? null) : null,
-      decided_at: decidedAt(i),
-      market_value_cents: i.marketValue != null ? Math.round(i.marketValue * 100) : null,
-      is_sentimental: i.isSentimental,
-      donate_to: i.donateTo ?? null,
-      donate_to_kind: i.donateToKind ?? null,
-      archived: i.archived ?? false,
-      created_at: i.createdAt,
-    })),
-    { ignoreDuplicates: true }
+  // Collections the backlog references must exist before the item FKs land —
+  // one batched upsert, the same way a full backup does it.
+  const colErr = await upsertCollections(
+    referencedCollections(collections, mine),
+    householdId,
+    user.id,
+    isOwner
   );
+  if (colErr.error) return { linked: true, pushed: 0, error: colErr.error };
+
+  const { error } = await supabase
+    .from('items')
+    .upsert(mine.map((i) => itemRow(i, householdId, user.id, isOwner)), { ignoreDuplicates: true });
   if (error) return { linked: true, pushed: 0, error: error.message };
 
   const tagRows = mine.flatMap((i) => i.tags.map((tag) => ({ item_id: i.id, tag })));

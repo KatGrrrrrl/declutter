@@ -50,7 +50,7 @@ export function CloudBridge() {
       try {
         const { reconcileHousehold } = await import('@/lib/sync');
         const s = useStore.getState();
-        const res = await reconcileHousehold(activeHouseholdId, s.items, s.userName);
+        const res = await reconcileHousehold(activeHouseholdId, s.items, s.collections, s.userName);
         // Only adopt the link if that household is still the one open — the
         // user may have switched while this was in flight.
         if (res.linked && useStore.getState().activeHouseholdId === activeHouseholdId) {

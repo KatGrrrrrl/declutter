@@ -633,7 +633,7 @@ export function InventoryView() {
                 </Heading>
                 <View style={styles.subRow}>
                   <Muted style={styles.roomText}>{it.room}</Muted>
-                  {it.collectionId && collectionName.has(it.collectionId) && (
+                  {it.collectionId && collectionName.get(it.collectionId) && (
                     <View style={styles.collectionTag}>
                       <Ionicons name="albums-outline" size={10} color={T.brassDeep} />
                       <Text style={styles.collectionTagText} numberOfLines={1}>

@@ -87,7 +87,9 @@ export default function DecideScreen() {
     const grouped = new Map<string, Item[]>();
     for (const it of queue) {
       if (it.collectionId && byId.has(it.collectionId) && !expandedIds.has(it.collectionId)) {
-        grouped.set(it.collectionId, [...(grouped.get(it.collectionId) ?? []), it]);
+        const members = grouped.get(it.collectionId);
+        if (members) members.push(it);
+        else grouped.set(it.collectionId, [it]);
       }
     }
     const emitted = new Set<string>();
@@ -335,6 +337,7 @@ export default function DecideScreen() {
                     params: { id: current.collection.id },
                   })
                 }
+                accessibilityLabel="Look inside"
                 style={({ pressed }) => [styles.tellBar, styles.setBar, pressed && styles.pressed]}
               >
                 <Ionicons name="albums-outline" size={18} color={T.brassDeep} />
@@ -345,6 +348,7 @@ export default function DecideScreen() {
                 onPress={() =>
                   setExpandedIds((prev) => new Set(prev).add(current.collection.id))
                 }
+                accessibilityLabel="One by one"
                 style={({ pressed }) => [styles.tellBar, styles.setBar, pressed && styles.pressed]}
               >
                 <Ionicons name="layers-outline" size={18} color={T.brassDeep} />
@@ -354,6 +358,7 @@ export default function DecideScreen() {
           ) : (
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Tell me about this one"
               onPress={() =>
                 router.push({ pathname: '/item/[id]', params: { id: current.item.id } })
               }
