@@ -89,7 +89,8 @@ Live-site pass on desktop and mobile (demo role), plus a read-only code audit. E
 - [x] `split-photo`: new `needs_backup` reason; capture says "back this home up first" instead of sending a subscriber to the paywall.
 - [x] Stale comments in `store.ts`, `ui.tsx`, `limit-banner.tsx`, `upgrade.tsx`.
 - [ ] **Support / contact address:** the domain is now verified in Resend (Sep 8, thread 7) and all three email functions send as **`hello@inventoryourhouse.com`** — so that's the address. Still to do: put it in Settings and the Pro card ("get in touch" currently points nowhere). Small.
-- [ ] **Resend sender is untested in practice** — DNS verified byte-for-byte, but no mail has gone through `hello@` yet; `dkim=pass` / `dmarc=pass` unconfirmed. Send one to a **non-owner** address (the owner's gmail passed under the old sandbox sender too, so it proves nothing). Your call — it lands in a real inbox.
+- [x] ~~Resend sender untested~~ — **tested Sep 8** through the real `notify-item-added` path: Resend `sent:1`; Gmail shows SPF pass, DKIM pass signed by `inventoryourhouse.com`, DMARC pass (aligned). Evidence in `docs/GO-LIVE.md`.
+- [ ] Narrower residue: delivery to a recipient **other than the Resend account owner**, and spam placement, aren't empirically proven yet (the test went to the owner's gmail). Should just work now the sandbox sender is gone; the first real invite to a family member settles it.
 - [ ] **Auth email is now the likelier launch failure:** sign-in codes and `invite-member` still use Supabase's built-in mailer (a few sends/hour). That's the first email an invited child receives. GO-LIVE polish item 9 (custom SMTP) — promote it.
 
 **Docs behind the code** — fixed Sep 8
