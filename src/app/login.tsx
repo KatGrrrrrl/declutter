@@ -24,8 +24,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Btn, CONTENT_MAX, DecorativeIcon, Muted, Row } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
-import { loadMyHousehold } from '@/lib/join';
+import { loadHouseholdById, loadMyHousehold } from '@/lib/join';
 import { linkedCloudId, useStore } from '@/lib/store';
+
+import type { CloudHouseholdSummary } from '@/lib/sync';
 import { supabase } from '@/lib/supabase';
 
 const looksLikeEmail = (v: string) => v.includes('@') && v.includes('.');
@@ -71,6 +73,10 @@ export default function LoginScreen() {
   // True while a signed-in account's household is being pulled onto a device
   // that has no home yet (see finish).
   const [loadingHome, setLoadingHome] = useState(false);
+  // The account belongs to several homes and this device has none of them
+  // open: the person picks. Never guessed (the old "oldest wins" rule put a
+  // member of two homes in the wrong house).
+  const [homeChoices, setHomeChoices] = useState<CloudHouseholdSummary[]>([]);
 
   // This screen does not use the `Screen` kit component, so it carries its own
   // `main` landmark. Gated on focus so it can never coexist with the landmark
@@ -98,11 +104,23 @@ export default function LoginScreen() {
     setLoadingHome(false);
     if (res.ok) {
       router.replace('/');
+    } else if (res.choices) {
+      setHomeChoices(res.choices);
     } else if (res.error) {
       setError(`Signed in, but your home couldn’t be loaded: ${res.error}`);
     } else {
       router.replace('/onboarding');
     }
+  };
+
+  /** The person chose one of several homes: load that one. */
+  const pickHome = async (householdId: string) => {
+    setHomeChoices([]);
+    setLoadingHome(true);
+    const res = await loadHouseholdById(householdId);
+    setLoadingHome(false);
+    if (res.ok) router.replace('/');
+    else setError(`Signed in, but your home couldn’t be loaded: ${res.error ?? 'unknown error'}`);
   };
 
   /**
@@ -251,6 +269,26 @@ export default function LoginScreen() {
                 setShowLoggedOut(false);
               }}
             />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ---------- several homes on the account: which one? ---------- */
+  if (homeChoices.length > 0) {
+    return (
+      <SafeAreaView style={styles.screen} role={mainRole}>
+        <View style={styles.body}>
+          <Text style={styles.wordmark}>Inventory Our Home</Text>
+          <Text role="heading" aria-level={1} style={styles.title}>
+            Which home?
+          </Text>
+          <Muted style={styles.sub}>Your account belongs to more than one. Pick the one for this device.</Muted>
+          <View style={styles.cta}>
+            {homeChoices.map((h) => (
+              <Btn key={h.id} label={h.name} kind="primary" big onPress={() => pickHome(h.id)} />
+            ))}
           </View>
         </View>
       </SafeAreaView>

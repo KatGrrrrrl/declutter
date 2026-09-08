@@ -302,6 +302,29 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
   }
 }
 
+export interface CloudHouseholdSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+/** Every cloud household this account belongs to (RLS-scoped), oldest first. */
+export async function listMyHouseholds(): Promise<{
+  ok: boolean;
+  households: CloudHouseholdSummary[];
+  error?: string;
+}> {
+  const { data, error } = await supabase
+    .from('households')
+    .select('id, name, created_at')
+    .order('created_at', { ascending: true });
+  if (error) return { ok: false, households: [], error: error.message };
+  return {
+    ok: true,
+    households: (data ?? []).map((h) => ({ id: h.id, name: h.name, createdAt: h.created_at })),
+  };
+}
+
 export interface PullResult {
   ok: boolean;
   snapshot?: {
@@ -317,20 +340,46 @@ export interface PullResult {
     /** Ids of items this account captured — the store restores their addedBy. */
     selfItemIds: string[];
   };
+  /**
+   * Set when no id was given and the account belongs to several households:
+   * the caller must let the person choose, then call again with the id.
+   */
+  choices?: CloudHouseholdSummary[];
   error?: string;
 }
 
-/** Pull a household (by id, or the user's first) into local shape. */
+/**
+ * Pull a household into local shape. Without an id the account must belong
+ * to exactly one household — several come back as `choices`, never a guess.
+ * (This used to take the oldest, which put a member of two homes in the wrong
+ * house.)
+ */
 export async function pullHousehold(householdId?: string): Promise<PullResult> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) return { ok: false, error: 'Not signed in.' };
 
   try {
-    const hhQuery = supabase.from('households').select('id, name');
-    const { data: hh, error: hhErr } = householdId
-      ? await hhQuery.eq('id', householdId).maybeSingle()
-      : await hhQuery.order('created_at', { ascending: true }).limit(1).maybeSingle();
-    if (hhErr) throw hhErr;
+    let hh: { id: string; name: string } | null = null;
+    if (householdId) {
+      const { data, error } = await supabase
+        .from('households')
+        .select('id, name')
+        .eq('id', householdId)
+        .maybeSingle();
+      if (error) throw error;
+      hh = data;
+    } else {
+      const mine = await listMyHouseholds();
+      if (!mine.ok) throw new Error(mine.error);
+      if (mine.households.length > 1) {
+        return {
+          ok: false,
+          choices: mine.households,
+          error: 'This account has more than one household — choose which one to load.',
+        };
+      }
+      hh = mine.households[0] ?? null;
+    }
     if (!hh) return { ok: false, error: 'No household found on this account yet.' };
 
     const items = await supabase.from('items').select('*').eq('household_id', hh.id);

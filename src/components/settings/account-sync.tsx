@@ -15,11 +15,13 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { notify } from '@/components/child/shared';
 import { Btn, Card, Heading, Label, Muted, Row } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
-import { acceptInvite, listPendingInvites, PendingInvite } from '@/lib/join';
+import { acceptInvite, listPendingInvites, PendingInvite, pickMyHousehold } from '@/lib/join';
 import { uploadPendingPhotos } from '@/lib/photo-sync';
 import { useActiveHousehold, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { backupHousehold, restoreHousehold } from '@/lib/sync';
+
+import type { CloudHouseholdSummary } from '@/lib/sync';
 
 export function AccountSync() {
   const router = useRouter();
@@ -29,6 +31,9 @@ export function AccountSync() {
   const [stage, setStage] = useState<'email' | 'code'>('email');
   const [busy, setBusy] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  // The account belongs to several cloud homes and none is the one open here:
+  // the person picks which to restore. Never guessed.
+  const [restoreChoices, setRestoreChoices] = useState<CloudHouseholdSummary[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
 
   const state = useStore();
@@ -147,11 +152,29 @@ export function AccountSync() {
     notify('Backed up', `${res.itemsPushed} items are safe in your account.${photoNote}${skipped}`);
   };
 
-  const runRestore = async () => {
+  const runRestore = async (householdId?: string) => {
     setBusy(true);
-    const res = await restoreHousehold();
+    let id = householdId;
+    if (!id) {
+      const picked = await pickMyHousehold();
+      if (picked.choices) {
+        // Several homes, none of them the one open here — ask, don't guess.
+        setBusy(false);
+        setRestoreChoices(picked.choices);
+        return;
+      }
+      if (!picked.id) {
+        setBusy(false);
+        setConfirmRestore(false);
+        notify('Nothing restored', picked.error ?? 'No backup found.');
+        return;
+      }
+      id = picked.id;
+    }
+    const res = await restoreHousehold(id);
     setBusy(false);
     setConfirmRestore(false);
+    setRestoreChoices([]);
     if (!res.ok || !res.snapshot) {
       notify('Nothing restored', res.error ?? 'No backup found.');
       return;
@@ -280,12 +303,34 @@ export function AccountSync() {
                 <View style={styles.cta}>
                   <Btn label={busy ? 'Backing up…' : 'Back up now'} onPress={runBackup} disabled={busy} />
                 </View>
-                {confirmRestore ? (
+                {confirmRestore && restoreChoices.length > 0 ? (
+                  <View style={styles.cta}>
+                    <Muted style={styles.lede}>Your account has more than one home. Which one?</Muted>
+                    {restoreChoices.map((c) => (
+                      <Btn
+                        key={c.id}
+                        label={busy ? 'Restoring…' : c.name}
+                        kind="brass"
+                        onPress={() => runRestore(c.id)}
+                        disabled={busy}
+                      />
+                    ))}
+                    <Text
+                      style={styles.linkText}
+                      onPress={() => {
+                        setRestoreChoices([]);
+                        setConfirmRestore(false);
+                      }}
+                    >
+                      Keep what’s here
+                    </Text>
+                  </View>
+                ) : confirmRestore ? (
                   <View style={styles.cta}>
                     <Btn
                       label={busy ? 'Restoring…' : 'Yes — replace this device’s data'}
                       kind="brass"
-                      onPress={runRestore}
+                      onPress={() => runRestore()}
                       disabled={busy}
                     />
                     <Text style={styles.linkText} onPress={() => setConfirmRestore(false)}>
