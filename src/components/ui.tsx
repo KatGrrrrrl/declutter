@@ -185,8 +185,11 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const plan = useStore((s) => s.plan);
   const lastBackupAt = useStore((s) => s.lastBackupAt);
+  // "Backed up" must reflect the household actually being in the cloud, not
+  // the plan alone: a Pro plan with no backup yet is still device-only, and a
+  // linked household syncs as you go whatever the card used to say.
+  const linked = useStore((s) => !s.isDemo && !!s.cloudHouseholdId && s.cloudHouseholdId === s.activeHouseholdId);
 
   const logOut = async () => {
     const email = sessionEmail ?? '';
@@ -213,26 +216,28 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
           sections. marginTop:auto pushes this block to the foot of the column. */}
       <View style={styles.railFooter}>
         {/* Backup status — makes the paid, invisible cloud protection visible. */}
-        {plan === 'pro' ? (
+        {linked ? (
           <View style={[styles.backupCard, styles.backupOk]}>
             <Ionicons name="cloud-done" size={16} color={T.keep} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.backupTitle}>Protected & backed up</Text>
+              <Text style={styles.backupTitle}>In your account</Text>
               <Text style={styles.backupSub}>
-                {lastBackupAt ? relativeTime(lastBackupAt) : 'Back up any time in Settings'}
+                {lastBackupAt ? `Syncs as you go · full backup ${relativeTime(lastBackupAt)}` : 'Syncs as you go'}
               </Text>
             </View>
           </View>
         ) : (
+          // Cloud backup is free — the only reason to be device-only is not
+          // having signed in and backed up yet.
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/upgrade')}
+            onPress={() => router.push('/settings')}
             style={({ pressed }) => [styles.backupCard, pressed && styles.pressed]}
           >
-            <Ionicons name="cloud-outline" size={16} color={T.inkSoft} />
+            <Ionicons name="cloud-upload-outline" size={16} color={T.brassDeep} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.backupTitle}>On this device</Text>
-              <Text style={styles.backupSub}>Add cloud backup with Pro</Text>
+              <Text style={styles.backupTitle}>On this device only</Text>
+              <Text style={styles.backupSub}>Sign in & back up in Settings</Text>
             </View>
           </Pressable>
         )}

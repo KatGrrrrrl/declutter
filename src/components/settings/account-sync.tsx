@@ -17,7 +17,7 @@ import { Btn, Card, Heading, Label, Muted, Row } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
 import { acceptInvite, listPendingInvites, PendingInvite } from '@/lib/join';
 import { uploadPendingPhotos } from '@/lib/photo-sync';
-import { useActiveHousehold, useEntitlement, useStore } from '@/lib/store';
+import { useActiveHousehold, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { backupHousehold, restoreHousehold } from '@/lib/sync';
 
@@ -33,7 +33,6 @@ export function AccountSync() {
 
   const state = useStore();
   const household = useActiveHousehold();
-  const ent = useEntitlement();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -273,9 +272,7 @@ export function AccountSync() {
                 </View>
               </View>
             ))}
-            {ent.pro ? (
-              <>
-                <Muted style={styles.lede}>
+            <Muted style={styles.lede}>
                   {state.lastBackupAt
                     ? `Last backup ${new Date(state.lastBackupAt).toLocaleString()}.`
                     : 'No backup yet from this device.'}{' '}
@@ -306,20 +303,6 @@ export function AccountSync() {
                     />
                   </View>
                 )}
-              </>
-            ) : (
-              <>
-                <Muted style={styles.lede}>
-                  Cloud backup and family sharing are part of Pro — so a lost
-                  phone never means a lost inventory, and family can join from
-                  their own devices. Your inventory stays free and unlimited on
-                  this device either way.
-                </Muted>
-                <View style={styles.cta}>
-                  <Btn label="See Pro — backup & sharing" onPress={() => router.push('/upgrade')} />
-                </View>
-              </>
-            )}
             <View style={styles.cta}>
               <Btn label="Log out" kind="quiet" onPress={signOutAccount} />
             </View>

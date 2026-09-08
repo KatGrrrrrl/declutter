@@ -29,7 +29,7 @@ import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { refreshPlan, verifyCheckout } from '@/lib/billing';
 import { getNotifyPref, setNotifyPref } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
-import { selectEntitlement, useStore } from '@/lib/store';
+import { linkedCloudId, selectEntitlement, useStore } from '@/lib/store';
 
 import type { NotifyMode } from '@/lib/notifications';
 
@@ -55,6 +55,11 @@ export default function SettingsScreen() {
   const activeHousehold = households.find((h) => h.id === activeHouseholdId);
   const deciders = activeHousehold?.deciderNames ?? [];
   const defaultDecider = activeHousehold ? state.defaultDeciders[activeHousehold.id] : undefined;
+  // Is the household actually in the cloud? Drives every "on this device"
+  // message below — they used to be unconditional, and told a synced
+  // household that signing out would erase it for good.
+  const linked = Boolean(linkedCloudId(state));
+  const lastBackup = state.lastBackupAt ? new Date(state.lastBackupAt).toLocaleString() : null;
 
   const [addingHousehold, setAddingHousehold] = useState(false);
   const [newHouseholdName, setNewHouseholdName] = useState('');
@@ -243,12 +248,12 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.cardMain}>
                 <Heading style={styles.cardTitle}>
-                  Welcome to Pro — the whole house fits now
+                  Welcome to Pro — the AI tools are on
                 </Heading>
                 <Body style={styles.cardBody}>
-                  Your payment went through and this household is on Pro: unlimited
-                  items, and room for a second home. Thank you for funding Inventory Our Home
-                  directly.
+                  Your payment went through and this household is on Pro: value
+                  estimates on any item, and photo splitting. Thank you for funding
+                  Inventory Our Home directly.
                 </Body>
               </View>
             </Row>
@@ -454,8 +459,8 @@ export default function SettingsScreen() {
               <View style={styles.cardMain}>
                 <Heading style={styles.cardTitle}>Pro</Heading>
                 <Body style={styles.cardBody}>
-                  Your home is backed up to the cloud, and family can join across
-                  their own devices.
+                  AI value estimates and photo splitting are switched on. Cloud
+                  backup and family sharing are included for everyone.
                 </Body>
                 <Muted style={styles.cardMeta}>
                   Manage your subscription in the App Store, Google Play, or on the
@@ -468,13 +473,13 @@ export default function SettingsScreen() {
           <Card>
             <Heading style={styles.cardTitle}>Free</Heading>
             <Body style={styles.cardBody}>
-              Your inventory is unlimited and free on this device —
+              Unlimited items, cloud backup and family sharing —
               {' '}{ent.itemsUsed} item{ent.itemsUsed === 1 ? '' : 's'} so far.
-              Pro adds cloud backup and family sharing, so a lost phone never
-              means a lost inventory and everyone can pitch in.
+              Pro adds a little AI: value estimates for each item, and splitting
+              one group photo into separate items.
             </Body>
             <View style={styles.cta}>
-              <Btn label="See Pro — backup & sharing" big onPress={goUpgrade} />
+              <Btn label="See Pro — AI tools" big onPress={goUpgrade} />
             </View>
           </Card>
         )}
@@ -525,17 +530,23 @@ export default function SettingsScreen() {
         <Card>
           <Heading style={styles.cardTitle}>You&rsquo;re {userName} here</Heading>
           <Muted style={styles.cardMeta}>
-            Your inventory lives on this device first; the account above only
-            holds what you choose to back up.
+            {linked
+              ? 'Your inventory lives on this device and syncs to your account as you go, so it looks the same on every device you sign in on.'
+              : 'Your inventory lives on this device first; the account above only holds what you choose to back up.'}
           </Muted>
         </Card>
 
-        <Well style={styles.dangerWell}>
+        <Well style={linked ? styles.eraseWell : styles.dangerWell}>
           <Row style={styles.cardTop}>
-            <Ionicons name="warning-outline" size={18} color={T.toss} />
+            <Ionicons
+              name={linked ? 'cloud-done-outline' : 'warning-outline'}
+              size={18}
+              color={linked ? T.keep : T.toss}
+            />
             <Muted style={styles.cardMain}>
-              Your inventory is stored only on this device. There is no backup yet,
-              so signing out erases every item, photo and story here permanently.
+              {linked
+                ? `This household is in your account${lastBackup ? ` (last full backup ${lastBackup})` : ''}. Signing out only removes the copy on this device — sign in on any device to get it back.`
+                : 'Your inventory is stored only on this device. There is no backup yet, so signing out erases every item, photo and story here permanently.'}
             </Muted>
           </Row>
 
@@ -551,8 +562,12 @@ export default function SettingsScreen() {
             >
               <Text style={[styles.dangerText, confirmErase && styles.dangerTextArmed]}>
                 {confirmErase
-                  ? 'Tap again to erase everything'
-                  : 'Sign out & erase this device'}
+                  ? linked
+                    ? 'Tap again to remove it from this device'
+                    : 'Tap again to erase everything'
+                  : linked
+                    ? 'Sign out & remove from this device'
+                    : 'Sign out & erase this device'}
               </Text>
             </Pressable>
             {confirmErase && (
@@ -585,7 +600,9 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
         <Muted style={styles.footer}>
-          Your inventory stays on this device. No ads, ever.
+          {linked
+            ? 'Your inventory is yours — private to your family. No ads, ever.'
+            : 'Your inventory stays on this device. No ads, ever.'}
         </Muted>
       </Screen>
     </KeyboardAvoidingView>
@@ -706,6 +723,7 @@ const styles = StyleSheet.create({
 
   /* danger */
   dangerWell: { marginTop: Spacing.three, backgroundColor: T.tossTint },
+  eraseWell: { marginTop: Spacing.three, backgroundColor: T.keepTint },
   dangerBtn: {
     minHeight: 52,
     borderRadius: Radius.control,

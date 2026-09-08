@@ -62,7 +62,7 @@ const REASSURANCES = [
   'No ads, ever.',
   'We never sell your data — subscriptions are how Inventory Our Home is funded.',
   'Your inventory, photos and stories stay yours.',
-  'Cancel anytime; your inventory keeps working free on this device.',
+  'Cancel anytime; your inventory, backup and family sharing keep working free.',
 ];
 
 export default function UpgradeScreen() {
@@ -116,10 +116,10 @@ export default function UpgradeScreen() {
           <View style={styles.proGlyph}>
             <Ionicons name="checkmark" size={26} color={T.brassDeep} />
           </View>
-          <Heading style={styles.proHeading}>Unlimited items, unlimited homes</Heading>
+          <Heading style={styles.proHeading}>AI estimates and photo splitting are on</Heading>
           <Body style={styles.proBody}>
-            Photograph as much of the house as you like, and keep a separate inventory
-            for every home in the family. Thank you for funding Inventory Our Home directly —
+            Ask for a value on any item, and turn one photo of a crowded shelf into
+            separate items. Thank you for funding Inventory Our Home directly —
             it&apos;s why there are no ads and nothing to sell.
           </Body>
         </Card>
@@ -153,12 +153,12 @@ export default function UpgradeScreen() {
     <Screen>
       <BackRow onPress={back} />
       <Label>Inventory Our Home Pro</Label>
-      <Title>Keep it safe, together</Title>
+      <Title>A little help from AI</Title>
       <Body style={styles.lede}>
-        Your inventory is free and unlimited on this device. Pro adds the cloud:
-        your home is backed up — so a lost or broken phone never means a lost
-        inventory — and your family can join from their own devices to add
-        photos, tell the stories, and see what&apos;s been decided.
+        Your inventory, cloud backup and family sharing are free. Pro adds the
+        AI: a rough value for any item, so the family knows what matters, and
+        photo splitting, which turns one snap of a crowded shelf into separate
+        items you can decide on one at a time.
       </Body>
 
       <Label>Choose a plan</Label>
@@ -233,8 +233,8 @@ export default function UpgradeScreen() {
       </Well>
 
       <Muted style={styles.freeNote}>
-        Not ready? The free plan keeps working — unlimited items and homes on
-        this device, with every feature above except cloud backup and sharing.
+        Not ready? The free plan keeps working — unlimited items and homes,
+        backed up and shared with your family, just without the AI tools.
       </Muted>
 
       <Pressable
@@ -282,19 +282,19 @@ function BackRow({ onPress }: { onPress: () => void }) {
 
 const BENEFITS: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string }[] = [
   {
-    icon: 'cloud-done-outline',
-    title: 'Cloud backup',
-    body: 'A lost or broken phone never loses the inventory — restore it on any device.',
+    icon: 'pricetag-outline',
+    title: 'AI value estimates',
+    body: 'A rough replacement value for any item, from its photo and name — handy for insurance and for fair shares.',
   },
   {
-    icon: 'people-outline',
-    title: 'Family sharing',
-    body: 'Invite family to join from their own phones; changes and chat sync live.',
+    icon: 'images-outline',
+    title: 'Photo splitting',
+    body: 'One photo of a whole shelf becomes separate items, each ready for its own decision.',
   },
   {
-    icon: 'home-outline',
-    title: 'More than one home, in the cloud',
-    body: 'Mum’s house and the cottage, backed up and shared separately.',
+    icon: 'heart-outline',
+    title: 'Funds the app, not ads',
+    body: 'Cloud backup and family sharing stay free for everyone; Pro is how the lights stay on.',
   },
 ];
 

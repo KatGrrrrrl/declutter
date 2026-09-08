@@ -11,15 +11,15 @@ _Last updated: 2026-07-24._
 
 ## 1. What customers buy
 
-### Free — "On this device"
+### Free — "With the family"
 | | |
 |---|---|
 | Price | **$0**, no card, no trial clock |
-| What's included | Unlimited rooms, items, photos, and voice stories — all stored locally on the device |
-| Enforced by | `FREE_ITEM_LIMIT = Infinity` in `src/lib/store.ts` (local tier is genuinely unlimited) |
+| What's included | Unlimited rooms, items, photos, voice stories, **cloud backup, family sharing and live sync, more than one home** |
+| Enforced by | `FREE_ITEM_LIMIT = Infinity` and `cloudEnabled: true` in `src/lib/store.ts` (decided 2026-09-07: sync is never paywalled — a family should not lose its shared inventory when a card lapses) |
 
-### Inventory Our Home Pro — "With the family"
-The single paid product. Adds the cloud layer on top of the free local app.
+### Inventory Our Home Pro — "A little help from AI"
+The single paid product. Adds the AI layer on top of the free, synced app.
 
 | Plan | Price | Billing | Stripe `lookup_key` | `unit_amount` | Interval |
 |---|---|---|---|---|---|
@@ -39,11 +39,11 @@ The single paid product. Adds the cloud layer on top of the free local app.
   yearly price is **$39** (the reason the yearly key is `_v2` — Stripe prices are
   immutable, so the $49.99→$39 change needed a new lookup key).
 
-**What Pro unlocks** (from `BENEFITS` in `upgrade.tsx` + the AI feature):
-1. **Cloud backup** — restore the inventory on any device if a phone is lost/broken.
-2. **Family sharing** — invite family to join from their own phones; live sync + chat.
-3. **More than one home, in the cloud** — e.g. Mum's house and the cottage, backed up separately.
-4. **AI value estimates** — Pro-only; see §2, gated server-side on `household_plans.plan = 'pro'`.
+**What Pro unlocks** (from `BENEFITS` in `upgrade.tsx`):
+1. **AI value estimates** — see §2, gated server-side on `household_plans.plan = 'pro'`.
+2. **AI photo splitting** — one group photo → separate items; same server-side gate (`split-photo`).
+
+Cloud backup, family sharing and multi-home were Pro features until 2026-09-07 and are now free.
 
 **Entitlement storage:** `public.household_plans.plan` (`'free' | 'pro'`), written
 only by the service role via the Stripe flow; clients read it.
