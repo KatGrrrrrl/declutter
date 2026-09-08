@@ -29,6 +29,20 @@ export interface Story {
   createdAt: string;
 }
 
+/**
+ * A named set of items that belong together — a coin collection, the wine
+ * cellar, Grandad's fishing gear. Organizational only: items keep their own
+ * decisions, heirs, and stories; deleting a collection un-groups its items,
+ * never deletes them. Any household member may create one (like rooms).
+ */
+export interface Collection {
+  id: string;
+  name: string;
+  note?: string;
+  createdBy: string; // display name
+  createdAt: string;
+}
+
 export interface Item {
   id: string;
   title: string;
@@ -71,6 +85,8 @@ export interface Item {
    * a family may want back.
    */
   archived?: boolean;
+  /** The collection this item belongs to, if any (one collection per item). */
+  collectionId?: string;
   createdAt: string;
 }
 
@@ -92,6 +108,7 @@ export interface RemoteItemFields {
   donateTo?: string;
   donateToKind?: 'charity' | 'person';
   archived?: boolean;
+  collectionId?: string;
   createdAt: string;
 }
 
@@ -107,6 +124,7 @@ const CLOUD_ITEM_KEYS = new Set<keyof Item>([
   'donateTo',
   'donateToKind',
   'archived',
+  'collectionId',
   'tags',
 ]);
 
@@ -187,6 +205,8 @@ interface AppState {
 
   people: Person[];
   items: Item[];
+  /** Named item sets (coin collection, wine cellar, …) for this household. */
+  collections: Collection[];
   /** Per-item family chat threads. */
   messages: ItemMessage[];
   /** Household roster: active members + pending invitations. */
@@ -229,6 +249,7 @@ interface AppState {
     cloudHouseholdId: string;
     items: Item[];
     people: Person[];
+    collections: Collection[];
     messages: ItemMessage[];
     members: Member[];
     /** View to land in: contributors join as helpers. */
@@ -301,9 +322,22 @@ interface AppState {
   /** Archive/restore — reversible, unlike removeItem. */
   setArchived: (id: string, archived: boolean) => void;
   /** Bulk helpers for the inventory's multi-select mode. */
-  bulkDecide: (ids: string[], decision: Decision) => void;
+  bulkDecide: (
+    ids: string[],
+    decision: Decision,
+    donate?: { donateTo: string; donateToKind: 'charity' | 'person' }
+  ) => void;
   bulkSetRoom: (ids: string[], room: string) => void;
   bulkArchive: (ids: string[], archived: boolean) => void;
+  /** Create a collection and return its id (for making it sticky in capture). */
+  addCollection: (name: string, note?: string) => string;
+  updateCollection: (id: string, patch: { name?: string; note?: string }) => void;
+  /** Delete a collection; its items stay, un-grouped (cloud FK is SET NULL). */
+  removeCollection: (id: string) => void;
+  /** Assign one item to a collection (undefined = remove from collection). */
+  setItemCollection: (itemId: string, collectionId: string | undefined) => void;
+  /** Assign many items at once — the inventory multi-select action. */
+  bulkSetCollection: (ids: string[], collectionId: string | undefined) => void;
   setStory: (id: string, story: Story) => void;
   assignHeir: (id: string, personId: string | undefined, visibility: HeirVisibility) => void;
   requestItem: (id: string, byName: string) => void;
@@ -454,6 +488,7 @@ const initial = {
   isDemo: true,
   people: seedPeople,
   items: seedItems,
+  collections: [] as Collection[],
   messages: seedMessages,
   members: seedMembers,
   defaultDeciders: {} as Record<string, string>,
@@ -534,6 +569,7 @@ export const useStore = create<AppState>()(
             ? {
                 items: [] as Item[],
                 people: [] as Person[],
+                collections: [] as Collection[],
                 messages: [] as ItemMessage[],
                 members: roster,
                 isDemo: false,
@@ -548,6 +584,14 @@ export const useStore = create<AppState>()(
                 ] as Household[],
                 activeHouseholdId: id,
                 ownerName: deciders[0] ?? userName,
+                // A brand-new household is not the linked one. startFresh and
+                // addHousehold already drop the old link for this reason; this
+                // path didn't, so onboarding after a prior link pushed the new
+                // home's items into the OLD cloud household — and, once that
+                // one was deleted, tripped the missing-household guard with
+                // nothing to restore.
+                cloudHouseholdId: undefined,
+                lastBackupAt: undefined,
               }
             : {};
           return { onboarded: true, role, householdName, userName, ...fresh };
@@ -596,6 +640,7 @@ export const useStore = create<AppState>()(
           return {
             items: [],
             people: [],
+            collections: [],
             messages: [],
             members: [
               { id: uid(), name: s.userName, status: 'active' as const, invitedBy: s.userName, invitedAt: now },
@@ -778,7 +823,7 @@ export const useStore = create<AppState>()(
         pushItemChange(get(), id);
       },
 
-      bulkDecide: (ids, decision) => {
+      bulkDecide: (ids, decision, donate) => {
         set((s) => {
           const at = new Date().toISOString();
           const by = s.role === 'owner' ? s.ownerName : s.userName;
@@ -792,6 +837,9 @@ export const useStore = create<AppState>()(
                     decision,
                     decidedAt: undecided ? undefined : at,
                     decidedBy: undecided ? undefined : by,
+                    ...(donate && decision === 'donate'
+                      ? { donateTo: donate.donateTo, donateToKind: donate.donateToKind }
+                      : {}),
                   }
                 : it
             ),
@@ -812,6 +860,86 @@ export const useStore = create<AppState>()(
         set((s) => {
           const set_ = new Set(ids);
           return { items: s.items.map((it) => (set_.has(it.id) ? { ...it, archived } : it)) };
+        });
+        pushItemChange(get(), ...ids);
+      },
+
+      addCollection: (name, note) => {
+        const s = get();
+        const trimmed = name.trim();
+        const existing = s.collections.find(
+          (c) => c.name.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (existing) return existing.id; // creating "Coins" twice just reuses it
+        const col: Collection = {
+          id: uid(),
+          name: trimmed,
+          note: note?.trim() || undefined,
+          createdBy: viewerName(s),
+          createdAt: new Date().toISOString(),
+        };
+        set({ collections: [col, ...s.collections] });
+        // The cloud row is uploaded lazily, alongside the first synced item
+        // that references it — a collection holding only localOnly items never
+        // leaks even its name (see sync.ts).
+        return col.id;
+      },
+
+      updateCollection: (id, patch) => {
+        const s = get();
+        const name = patch.name?.trim();
+        set({
+          collections: s.collections.map((c) =>
+            c.id === id
+              ? { ...c, ...(name ? { name } : {}), note: patch.note ?? c.note }
+              : c
+          ),
+        });
+        const hid = linkedCloudId(s);
+        if (!hid) return;
+        void (async () => {
+          try {
+            const { pushCollectionUpdate } = await import('@/lib/sync');
+            const next = get().collections.find((c) => c.id === id);
+            if (next) await pushCollectionUpdate(next);
+          } catch {
+            /* offline — the next backup carries it */
+          }
+        })();
+      },
+
+      removeCollection: (id) => {
+        const s = get();
+        set({
+          collections: s.collections.filter((c) => c.id !== id),
+          items: s.items.map((it) =>
+            it.collectionId === id ? { ...it, collectionId: undefined } : it
+          ),
+        });
+        // Cloud FK is ON DELETE SET NULL, so this one delete un-groups the
+        // cloud rows too; deleting a never-uploaded collection is a no-op.
+        if (linkedCloudId(s)) {
+          void (async () => {
+            try {
+              const { supabase } = await import('@/lib/supabase');
+              await supabase.from('collections').delete().eq('id', id);
+            } catch {
+              /* offline — the row stays until a future cleanup */
+            }
+          })();
+        }
+      },
+
+      setItemCollection: (itemId, collectionId) => {
+        get().updateItem(itemId, { collectionId });
+      },
+
+      bulkSetCollection: (ids, collectionId) => {
+        set((s) => {
+          const set_ = new Set(ids);
+          return {
+            items: s.items.map((it) => (set_.has(it.id) ? { ...it, collectionId } : it)),
+          };
         });
         pushItemChange(get(), ...ids);
       },
@@ -900,6 +1028,7 @@ export const useStore = create<AppState>()(
             cloudHouseholdId: snap.cloudHouseholdId,
             items,
             people: snap.people,
+            collections: snap.collections,
             messages: snap.messages,
             members: snap.members,
           };
@@ -938,13 +1067,14 @@ export const useStore = create<AppState>()(
     {
       name: 'declutter-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 4,
+      version: 5,
       /**
        * v1 → v2: chat messages + per-household deciders/creator.
        * v2 → v3: member roster (backfilled from deciders + current user).
        * v3 → v4: ALL ids become UUIDs (and cross-references are remapped) so
        *          local rows and cloud rows share identity — the basis of
        *          multi-device upsert sync.
+       * v4 → v5: collections (named item sets); defaults to none.
        */
       migrate: (persisted) => {
         const s = persisted as Partial<AppState>;
@@ -1005,6 +1135,8 @@ export const useStore = create<AppState>()(
           members: members4,
           households: households4,
           activeHouseholdId,
+          // v5: collections arrive empty for stores persisted before them.
+          collections: s.collections ?? [],
         } as AppState;
       },
     }
@@ -1107,24 +1239,41 @@ export const useDefaultDecider = () => useStore(selectDefaultDecider);
 /** Full roster (stable reference). Filter by status at the call site. */
 export const useMembers = () => useStore(useShallow((s: AppState) => s.members));
 
+/** All collections (stable reference), newest first as stored. */
+export const useCollections = () => useStore(useShallow((s: AppState) => s.collections));
+
+/** One collection by id (undefined when it was deleted or never synced). */
+export const useCollection = (id: string | undefined) =>
+  useStore((s) => (id ? s.collections.find((c) => c.id === id) : undefined));
+
+/** Items belonging to one collection (unarchived, stable reference). */
+export const useCollectionItems = (collectionId: string) =>
+  useStore(
+    useShallow((s: AppState) =>
+      s.items.filter((i) => i.collectionId === collectionId && !i.archived)
+    )
+  );
+
 /** Normalized title used for duplicate detection. */
 const dupKey = (i: Item) => i.title.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /**
  * Ids of items whose title matches another item's (case/space-insensitive) —
- * the "did we photograph this twice?" signal for batch capture.
+ * the "did we photograph this twice?" signal for batch capture. Items inside a
+ * collection are exempt: forty near-identical coins in a coin collection are
+ * intentional, not re-photographs.
  */
 export const useDuplicateIds = () =>
   useStore(
     useShallow((s: AppState) => {
       const counts = new Map<string, number>();
       s.items.forEach((i) => {
-        if (i.archived) return;
+        if (i.archived || i.collectionId) return;
         const k = dupKey(i);
         counts.set(k, (counts.get(k) ?? 0) + 1);
       });
       return s.items
-        .filter((i) => !i.archived && (counts.get(dupKey(i)) ?? 0) > 1)
+        .filter((i) => !i.archived && !i.collectionId && (counts.get(dupKey(i)) ?? 0) > 1)
         .map((i) => i.id);
     })
   );
