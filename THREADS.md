@@ -48,9 +48,36 @@ Summary: 4 threads — 0 running, 4 idle. Everything committed; all pushed excep
 
 ### 🟡 Follow-ups (not blocking)
 - [ ] Run the two-user e2e script: `SERVICE_KEY=<key> node tools/e2e-sync-live.mjs`
-- [ ] "Daily summary" setting is dead (no `pg_cron`/scheduler) — hide it or wire a scheduler.
+- [x] ~~"Daily summary" setting is dead~~ — **wrong, verified live Sep 8:** migration `20260908000010` applied, `cron.job` `daily-digest` active at `0 23 * * *`, function deployed with `verify_jwt: false`. Keep it deployed `--no-verify-jwt`.
 - [ ] Clear 5 leftover July test households + orphan Millrun.
 - [ ] Cosmetic: realtime decisions arrive nameless; chat realtime has no household filter.
+
+### 🔍 E2E + static audit findings (Sep 8) — not yet fixed unless ticked
+Live-site pass on desktop and mobile (demo role), plus a read-only code audit. Everything below was verified in code, not assumed.
+
+**Bugs**
+- [ ] **React #418 hydration mismatch ×4 per load, desktop and mobile, pre-existing.** `web.output: "static"` pre-renders, but `useIsDesktop()` reads live width and the store hydrates client-side. React recovers, so nothing looks broken, but every load throws in prod and discards the pre-render. Fix = gate layout on a `mounted` flag, or switch to `web.output: "single"` (product call — changes deep-link serving).
+- [ ] **`completeOnboarding` never clears `cloudHouseholdId`** (`store.ts` ~505–554) unlike `startFresh`/`addHousehold` → onboarding after a prior link pushes the new home's items into the **old** cloud household. Wrong-household write.
+- [ ] **The new backup guard has a gap:** `switchHousehold`/`addHousehold`/`startFresh` clear `cloudHouseholdId`, destroying the "was linked, now gone" evidence, so `pushHousehold` can still re-insert a deleted household. Needs a persisted breadcrumb of known cloud ids.
+- [ ] **`pullHousehold()` with no id picks the *oldest* household** (`order created_at limit 1`). Multi-home is free now, so Restore / sign-in-with-no-home can land in the wrong home. This also affects the Millrun recovery: with two Millruns, Restore picks the **July** one — which is the correct target *after* the merge, but only because the duplicate gets deleted first. Keep that order.
+- [ ] **`restoreSnapshot` replaces `households` with a single element** — wipes every other local home, reachable via `acceptInvite`, beside copy promising "your own data stays untouched."
+- [ ] `signOut`/`resetAll` `set({...initial})` doesn't clear `cloudHouseholdId`/`lastAccountEmail` (initial lacks the keys; zustand merges). Masked by `isDemo` today.
+- [ ] `login.tsx` `finish()` error path shows the sign-in form to an already-signed-in user with no retry — dead end.
+- [ ] `item_messages` realtime has no household filter (table lacks `household_id`); client drops unknown items, silently losing messages for items not yet pulled.
+- [x] `Btn` had no accessible name — fixed `11025f8`.
+
+**Stale copy (free-sync change not propagated)**
+- [ ] **`welcome.tsx:98-99` — the first screen still says backup and sharing are "from $39 a year."** Launch-visible.
+- [ ] `account-sync.tsx:279-281` says photos aren't backed up — they are (`uploadPendingPhotos` runs on every backup). Only voice audio isn't.
+- [ ] `upgrade.tsx` native CTA says "Start free trial" / "after your trial" — there is no trial in `create-checkout`.
+- [ ] `settings.tsx:466-469` promises "manage your subscription in the App Store / Play / web" — no billing portal exists.
+- [ ] `split-photo.ts:49-50` tells a Pro user with a cleared cloud link "A Pro feature" instead of "back up first."
+- [ ] Stale comments: `store.ts:142-150` (paywall at cloud), `ui.tsx:218` ("paid"), `limit-banner.tsx:2-4`, `upgrade.tsx:37` ("PLACEHOLDER PRICING"), `store.ts:183` (RevenueCat).
+
+**Docs behind the code**
+- [ ] **`HANDOFF.md`** ("read this first") still states the old cloud paywall as shipped (§7), lists `ANTHROPIC_API_KEY` as unset, says 7 migrations / 7 functions (actual 10 / 9), and describes tab layouts that no longer exist.
+- [ ] **`AGENTS.md`** is wrong on brand (says Declutter; app is "Inventory Our Home"), auth (says OTP only; password + OTP + Google exist), payments (says RevenueCat later; Stripe is live), photos (says not uploaded; they are), and phase gating (tells agents not to build heirs/memorandum/AI — all shipped). An agent following it would regress the app.
+- [ ] Privacy row in Settings → "Coming soon"; a privacy policy is typically required for Stripe/app stores.
 
 ### ⚠️ Cross-cutting
 - [ ] 3–4 sessions edited `store.ts` / `realtime.ts` at once; commit 28bbfce swept ~5 lines of another thread's work in. Decide whether to keep multiple agents in the same files.

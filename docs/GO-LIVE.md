@@ -66,7 +66,7 @@ Making backup and sharing free inverted the cost story: **Supabase now carries e
 | 5 | Replace Expo placeholder app icons | pre-launch | Still default Expo icons in `app.json` |
 | 6 | Rebrand Google OAuth client to its own Declutter GCP project | pre-launch | Currently lives in the OurGroupTrips GCP project |
 | 7 | Test Google sign-in on the custom domain | user | Consent screen should read "continue to auth.inventoryourhouse.com" |
-| 8 | `DIGEST_SECRET` + a scheduler for the daily digest | user | The "Daily summary" notification option is **dead** until a scheduler calls `daily-digest` (no `pg_cron` installed) — either wire it or hide the setting |
+| 8 | Daily digest — **now live** | — | Migration `20260908000010` (applied) installs `pg_cron` + `pg_net` and schedules `daily-digest` at 23:00 with a Vault secret; cron job verified active. `DIGEST_SECRET` is an optional override, not required. **Keep the function deployed with `--no-verify-jwt`** (see §5) or every cron run 401s and the "Daily summary" setting goes silently dead again. |
 | 9 | Custom SMTP | pre-launch | Built-in mailer caps at a few emails/hr; Resend covers most volume |
 
 ---
@@ -83,7 +83,7 @@ Set in Supabase secrets only — never in the repo. Confirm each is the **produc
 
 - [ ] `STRIPE_SECRET_KEY` = `sk_live_…`  ← **currently a test key**
 - [x] `ANTHROPIC_API_KEY` = `sk-ant-…`  ← set Sep 7, 2026; one key serves both AI functions
-- [ ] `DIGEST_SECRET` (only if enabling the daily digest)
+- [x] Daily-digest secret — generated in **Vault** by migration `20260908000010`; `DIGEST_SECRET` is only an optional override
 - [ ] Resend API key / domain verified
 - [ ] Service-role key stays server-side only (used by `tools/e2e-*` locally, never shipped)
 
@@ -99,6 +99,10 @@ git push origin main
 supabase functions deploy create-checkout
 supabase functions deploy verify-checkout
 # …etc
+
+# ⚠️ daily-digest is called by pg_cron with NO Authorization header — it MUST
+# stay deployed with JWT verification off, or the schedule silently 401s:
+supabase functions deploy daily-digest --no-verify-jwt
 
 # migrations
 supabase db push
