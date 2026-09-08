@@ -27,31 +27,12 @@ Summary: 5 threads — 0 running, 3 idle, 2 retired. Everything committed, pushe
 - [x] ~~Duplicate "Millrun" households~~ — **superseded by a full wipe, run Sep 8 ~11:20.** Verified: 0 households, 0 items, 0 members; 4 auth users remain (you + the 3 relatives). The 7 July test households and 11 throwaway users went with it.
 
 ### Post-wipe sequence (phone, after the `8b72d3b` build is live)
-> **Mostly done, Sep 8 (verified in DB by thread 5):** the phone backed up a fresh **Millrun** (1 item, "Painting of Greece", in the Paintings collection) and the desktop restored it — auto-sync confirmed working from here. Remaining: re-invites (step 4) and the second painting (step 5).
+> **Mostly done, Sep 8 (verified in DB by threads 5 and this one):** the phone backed up a fresh **Millrun** (`e1462b4f`; 1 item, "Painting of Greece", in the Paintings collection), the desktop restored it, and auto-sync is confirmed. **1 of 3 invites is out** (cloud shows one pending). Remaining: the other two invites (step 4) and the second painting (step 5).
 1. **Do not tap "Back up now" on the old local Millrun.** Its record still says it was backed up (`cloudLinkedAt`), and the cloud copy is gone — so the guard refuses and points at Restore, and Restore finds nothing. That's the guard working, not a bug.
 2. **Settings → Start my real household** (or add a new household): name it Millrun. A fresh record has no link, so its first backup creates the cloud household cleanly.
 3. **Back up now.** This is the moment the cloud gets its first household again; every other device syncs from here.
 4. **Re-invite** Jesvina, Joseph, dmistry2 (their accounts still exist; a normal invite).
 5. Re-photograph the two paintings. Then the refresh sync (`8b72d3b`) means they appear on the laptop on its next load — no Restore needed.
-
-### Millrun recovery sequence (do in this exact order)
-1. **Merge** the 2 items into the invited household, then **delete** the duplicate (SQL blocked by the harness classifier — run in Supabase SQL editor):
-   ```sql
-   begin;
-   update items set household_id='942f5389-85e2-492d-927d-b0b43fdcea14'
-     where household_id='8974781a-8c9a-4904-8ac3-95af8c92ea82';
-   delete from households where id='8974781a-8c9a-4904-8ac3-95af8c92ea82';
-   commit;
-   ```
-2. On the phone: **Settings → Account & sync → "Restore from my backup."** After the delete, `942f5389` is your only cloud household, so restore pulls it and repoints the device (`activeHouseholdId = cloudHouseholdId = 942f5389`). Your 2 paintings come back stamped as yours.
-3. ⚠️ **Do NOT tap "Back up now" before step 2.** While the phone is still on local `8974781a`, a backup would recreate the deleted household and re-push the items — resurrecting the duplicate. (The backup guard drafted in `sync.ts` now blocks this, but restore-first is still the rule.)
-4. Verify one Millrun remains with 2 items + 4 members:
-   ```sql
-   select id, name,
-     (select count(*) from items i where i.household_id=h.id) as items,
-     (select count(*) from household_members m where m.household_id=h.id) as members
-   from households h where h.name ilike '%millrun%';
-   ```
 
 ### ✅ Commit decisions (done)
 - [x] Thread 2 — Mobile logout committed as **55b4e32** and pushed.
