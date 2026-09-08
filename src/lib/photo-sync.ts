@@ -12,7 +12,7 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { Item } from '@/lib/store';
@@ -101,6 +101,25 @@ export async function uploadItemPhoto(item: Item): Promise<UploadResult> {
 }
 
 /**
+ * Does this item's photo still need to go up?
+ *
+ * Not simply "has no remotePhotoPath". Storage paths are
+ * `{household_id}/{item_id}/{uuid}.jpg`, so a path whose household segment
+ * isn't the household we're linked to now points into a DIFFERENT home —
+ * one that was deleted and re-created, or restored under a new cloud id. The
+ * bytes there are unreachable: the metadata row cascaded away with the old
+ * household and nobody can sign a URL for it.
+ *
+ * That stale path used to disqualify the item forever, because the sweep
+ * skipped anything with a path set. The capturing device still showed the
+ * photo from its local `photoUri`, so it looked fine to the person who took
+ * it, while every other device — the decider's especially — saw an item with
+ * no photo at all, permanently. Treat a foreign path as no path.
+ */
+const needsUpload = (item: Item, householdId: string): boolean =>
+  !item.remotePhotoPath || !item.remotePhotoPath.startsWith(`${householdId}/`);
+
+/**
  * Upload every item photo that hasn't reached the cloud yet — sequentially,
  * on purpose: dribbling one photo at a time is kind to the backend and to the
  * user's uplink (see the market-wide ops cautions this project inherits).
@@ -109,9 +128,15 @@ export async function uploadPendingPhotos(): Promise<{ uploaded: number; failed:
   const { data: sess } = await supabase.auth.getSession();
   if (!sess?.session) return { uploaded: 0, failed: 0 };
 
-  const pending = useStore
-    .getState()
-    .items.filter((i) => i.photoUri && !i.remotePhotoPath && !i.localOnly);
+  const state = useStore.getState();
+  // upload-photo looks the item up in the cloud and 404s if it isn't there,
+  // so an unlinked household has nothing to sweep into.
+  const hid = linkedCloudId(state);
+  if (!hid) return { uploaded: 0, failed: 0 };
+
+  const pending = state.items.filter(
+    (i) => i.photoUri && !i.localOnly && needsUpload(i, hid)
+  );
 
   let uploaded = 0;
   let failed = 0;

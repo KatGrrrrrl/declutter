@@ -70,6 +70,19 @@ export function CloudBridge() {
           ) {
             useStore.getState().mergeCloudData(pull.snapshot);
           }
+
+          // Photos last. The catalog reaching the cloud is not the same as the
+          // photos reaching it: a capture-time upload can lose the race with
+          // its own item row, fail offline, or — after a household is deleted
+          // and re-created — leave a path pointing into the old home. Any of
+          // those left the photo on the capturing device forever, because the
+          // only sweep was behind the manual "Back up" button in Settings.
+          // The person who took the photo still saw it locally and had no way
+          // to know the rest of the family couldn't.
+          if (useStore.getState().activeHouseholdId === activeHouseholdId) {
+            const { uploadPendingPhotos } = await import('@/lib/photo-sync');
+            await uploadPendingPhotos();
+          }
         }
       } catch {
         /* offline — the next load, or a manual backup, catches up */
