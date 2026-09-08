@@ -91,7 +91,7 @@ Four-angle review (reuse / simplification / efficiency / altitude) of every comm
 
 Deferred — real, but architecture changes or refactors of another session's fresh feature code, not tonight:
 - [x] ~~`cloudHouseholdId` is a boolean wearing a uuid, hand-cleared in 6 places.~~ **Done Sep 8.** `Household.cloudLinkedAt` / `lastBackupAt` live on the record; `linkedCloudId()` derives from the open household; all six clears removed; `markCloudLinked` / `unlinkHousehold` replace `setCloudMeta`; persist v6 migrates old devices. Also closes: the backup-guard gap (guard now keys off `wasBackedUp` from the record) and `signOut`/`resetAll` leaving a stale link.
-- [ ] `pushItemChange` fans out one-swipe collection decides into N sequential chains (~7 round trips per item; 40 coins ≈ 280 requests). Batch rows + resolve user/role once.
+- [x] ~~`pushItemChange` fans out one-swipe collection decides into N sequential chains~~ — **fixed Sep 8.** `pushItemUpdates` resolves user/role once, batches the collection upsert, runs row UPDATEs concurrently, tags as one delete + one insert (40 coins ≈ 44 requests, 40 in flight together). Kept UPDATE-per-row on purpose — an upsert would resurrect items deleted elsewhere. **Not yet exercised signed-in** — the wipe → re-onboard → collection-decide run is the real test.
 - [ ] `ensureCollectionUploaded` re-upserts the same collection once per photographed item in a sweep — needs a session memo.
 - [ ] Derive `CLOUD_ITEM_KEYS` from `RemoteItemFields` so the compiler catches a missing synced column (four hand-kept copies today).
 - [ ] `item_messages` needs a `household_id` column; the client-side filter drops messages for items not yet pulled.
