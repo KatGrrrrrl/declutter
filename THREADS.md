@@ -15,7 +15,11 @@ _Last updated: Sep 8, 2026_
 
 | 6 | Family admin controls and custom rooms | 🟢 Running | Sep 8, 12:12 PM | In flight, uncommitted: custom rooms with floor + location note (`rooms` table, name-keyed upsert, rename-aware `pushRoom`), per-household `adminNames`; touches `store.ts`, `sync.ts`, `account-sync.tsx`, `onboarding`. |
 
-Summary: 6 threads — 1 running (thread 6), 1 idle (thread 1), 4 retired and archived. `main` is clean at `72647b8`; the only dirty files are thread 6's in-progress work. Everything committed, pushed and live; the restore prompt was confirmed in the deployed bundle (`entry-d6e386c…`) before retiring (Sep 8, afternoon).
+| 7 | Sign-in flow for existing house members | ⚪ Idle | Sep 8, 12:26 PM | In flight, uncommitted: invited members decline/accept from the sign-in screen (`declineInvite` RPC, migration `0015_invite_decline`, `notify-invite-declined` function; `join.ts`, `login.tsx`). |
+
+Summary: 7 threads — 0 running, 3 idle (1, 6, 7), 4 retired and archived. Threads 6 and 7 hold **uncommitted** work awaiting the user's say-so (they were asked for features, not commits); neither applies migrations. Pending on the linked project: migrations `0013` (thread 6), `0014` (this thread: heirs + main decider), `0015` (thread 7) — `supabase db push` applies all three together.
+
+> Handed over by thread 6, pre-existing: **`addHousehold` doesn't clear `items`/`collections`/`rooms`** the way `removeHousehold` and `startFresh` do, so a newly added home shows the previous home's contents until CloudBridge replaces them. Unowned; on the engineering list. Everything committed, pushed and live; the restore prompt was confirmed in the deployed bundle (`entry-d6e386c…`) before retiring (Sep 8, afternoon).
 
 > ⚠️ Incident, resolved: commit `375797a` (the `completeOnboarding` fix) accidentally swept ~150 lines of thread 5's uncommitted `store.ts` work along with it, leaving `main` type-broken for four minutes. Thread 5 resolved it by committing the rest of the feature (`8910ac7`). Root cause is the standing cross-cutting risk below — multiple sessions editing the same files. **Rule going forward: `git add -p` or a diff check before any commit touching `store.ts`, `sync.ts`, or `realtime.ts`.**
 

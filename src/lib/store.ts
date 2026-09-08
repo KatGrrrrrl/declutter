@@ -109,10 +109,16 @@ export interface RemoteItemFields {
   donateToKind?: 'charity' | 'person';
   archived?: boolean;
   collectionId?: string;
+  /** Whose call this item primarily is (owner-set; every member may see it). */
+  mainDeciderName?: string;
   createdAt: string;
 }
 
-/** Item fields the cloud row carries — an edit to anything else stays local. */
+/**
+ * Item fields the cloud carries — an edit to anything else stays local.
+ * Heir fields ride on their own row (heir_assignments), so a change to them
+ * must push too; they are simply mirrored by a different write.
+ */
 const CLOUD_ITEM_KEYS = new Set<keyof Item>([
   'title',
   'room',
@@ -125,6 +131,9 @@ const CLOUD_ITEM_KEYS = new Set<keyof Item>([
   'donateToKind',
   'archived',
   'collectionId',
+  'mainDeciderName',
+  'heirPersonId',
+  'heirVisibility',
   'tags',
 ]);
 
@@ -379,6 +388,8 @@ interface AppState {
   bulkSetCollection: (ids: string[], collectionId: string | undefined) => void;
   setStory: (id: string, story: Story) => void;
   assignHeir: (id: string, personId: string | undefined, visibility: HeirVisibility) => void;
+  /** Realtime: an heir_assignments row arrived or went away (undefined = unassigned). */
+  applyRemoteHeir: (itemId: string, personId: string | undefined, visibility: HeirVisibility) => void;
   requestItem: (id: string, byName: string) => void;
   addPerson: (p: Omit<Person, 'id'>) => void;
   resetAll: () => void;
@@ -833,10 +844,13 @@ export const useStore = create<AppState>()(
         pushItemChange(get(), id);
       },
 
-      setMainDecider: (id, name) =>
+      setMainDecider: (id, name) => {
         set((s) => ({
           items: s.items.map((it) => (it.id === id ? { ...it, mainDeciderName: name } : it)),
-        })),
+        }));
+        // Whose call it is belongs to the family, not the device (0014).
+        pushItemChange(get(), id);
+      },
 
       setDefaultDecider: (householdId, name) =>
         set((s) => {
@@ -1046,10 +1060,21 @@ export const useStore = create<AppState>()(
           items: s.items.map((it) => (it.id === id ? { ...it, story } : it)),
         })),
 
-      assignHeir: (id, personId, visibility) =>
+      assignHeir: (id, personId, visibility) => {
         set((s) => ({
           items: s.items.map((it) =>
             it.id === id ? { ...it, heirPersonId: personId, heirVisibility: visibility } : it
+          ),
+        }));
+        // Mirrored to heir_assignments (owner-only rows; a non-owner device
+        // only ever receives the ones marked 'revealed'). See 0014.
+        pushItemChange(get(), id);
+      },
+
+      applyRemoteHeir: (itemId, personId, visibility) =>
+        set((s) => ({
+          items: s.items.map((it) =>
+            it.id === itemId ? { ...it, heirPersonId: personId, heirVisibility: visibility } : it
           ),
         })),
 
@@ -1160,6 +1185,12 @@ export const useStore = create<AppState>()(
               donateToKind: cloud.donateToKind,
               archived: cloud.archived,
               collectionId: cloud.collectionId,
+              // Cloud-owned since 0014. An owner's pull carries every
+              // assignment; a non-owner's carries only the revealed ones,
+              // which is all that device may hold anyway.
+              mainDeciderName: cloud.mainDeciderName,
+              heirPersonId: cloud.heirPersonId,
+              heirVisibility: cloud.heirVisibility,
               remotePhotoPath: cloud.remotePhotoPath ?? local.remotePhotoPath,
               story: local.story ?? cloud.story,
             };

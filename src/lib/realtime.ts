@@ -33,7 +33,15 @@ interface ItemRow {
   donate_to_kind: 'charity' | 'person' | null;
   archived: boolean | null;
   collection_id: string | null;
+  main_decider_name: string | null;
   created_at: string;
+}
+
+/** The `heir_assignments` columns realtime replicates (RLS-filtered per device). */
+interface HeirRow {
+  item_id: string;
+  person_id: string;
+  visibility: 'owner_only' | 'after_death' | 'revealed';
 }
 
 let channel: RealtimeChannel | null = null;
@@ -132,8 +140,32 @@ function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
           donateToKind: r.donate_to_kind ?? undefined,
           archived: r.archived ?? false,
           collectionId: r.collection_id ?? undefined,
+          mainDeciderName: r.main_decider_name ?? undefined,
           createdAt: r.created_at,
         });
+      }
+    )
+    // Heir assignments live on their own rows so RLS can hide them per device:
+    // an owner's devices see every change; a helper's only ever receives rows
+    // the owner has marked 'revealed', and a DELETE (or a visibility change
+    // back to private, which arrives here as a delete) clears it locally.
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'heir_assignments',
+        filter: `household_id=eq.${cloudHouseholdId}`,
+      },
+      (payload) => {
+        const store = useStore.getState();
+        if (payload.eventType === 'DELETE') {
+          const gone = payload.old as Partial<HeirRow>;
+          if (gone?.item_id) store.applyRemoteHeir(gone.item_id, undefined, 'owner_only');
+          return;
+        }
+        const r = payload.new as HeirRow;
+        store.applyRemoteHeir(r.item_id, r.person_id, r.visibility);
       }
     )
     .subscribe((status) => {

@@ -140,6 +140,8 @@ function itemRow(i: Item, householdId: string, userId: string, isOwner: boolean)
     title: i.title,
     room: i.room || null,
     collection_id: i.collectionId ?? null,
+    // Owner-set; the DB nulls it on a contributor's insert anyway (0014).
+    main_decider_name: isOwner ? (i.mainDeciderName ?? null) : null,
     decision: isOwner ? i.decision : 'undecided',
     decided_by: decided ? userId : null,
     decided_by_name: decided ? (i.decidedBy ?? null) : null,
@@ -228,6 +230,7 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
         .from('items')
         .upsert(rows, { ignoreDuplicates: !isOwner });
       if (error) throw error;
+      if (isOwner) await syncHeirAssignments(mine, hid);
 
       // Tags: replace per pushed item (tiny sets).
       const ids = mine.map((i) => i.id);
@@ -423,6 +426,22 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
         if (!photoByItem.has(p.item_id)) photoByItem.set(p.item_id, p.storage_path);
       });
 
+    // Heir assignments (0014). RLS decides what comes back, not the client:
+    // an owner's device gets every row, a helper's only the ones marked
+    // 'revealed'. Best-effort, like rooms — a project that hasn't applied
+    // 0014 yet must still restore. (A separate request rather than a slot in
+    // the Promise.all above; cheap, and it keeps this block self-contained.)
+    const heirByItem = new Map<string, { personId: string; visibility: Item['heirVisibility'] }>();
+    if (itemIds.length) {
+      const heirs = await supabase
+        .from('heir_assignments')
+        .select('item_id, person_id, visibility')
+        .in('item_id', itemIds);
+      (heirs.data ?? []).forEach((h) => {
+        heirByItem.set(h.item_id, { personId: h.person_id, visibility: h.visibility });
+      });
+    }
+
     const localItems: Item[] = (items.data ?? []).map((i) => ({
       id: i.id,
       title: i.title ?? 'Untitled item',
@@ -440,7 +459,9 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
             createdAt: storyByItem.get(i.id)!.createdAt,
           }
         : undefined,
-      heirVisibility: 'owner_only',
+      heirPersonId: heirByItem.get(i.id)?.personId,
+      heirVisibility: heirByItem.get(i.id)?.visibility ?? 'owner_only',
+      mainDeciderName: i.main_decider_name ?? undefined,
       donateTo: i.donate_to ?? undefined,
       donateToKind: i.donate_to_kind ?? undefined,
       remotePhotoPath: photoByItem.get(i.id),
@@ -574,6 +595,7 @@ function itemPatch(item: Item, isOwner: boolean): Record<string, unknown> {
     archived: item.archived ?? false,
   };
   if (isOwner) {
+    patch.main_decider_name = item.mainDeciderName ?? null;
     patch.decision = item.decision;
     // Cosmetic companion to the decision; the trigger nulls it when undecided.
     patch.decided_by_name = item.decision !== 'undecided' ? (item.decidedBy ?? null) : null;
@@ -628,6 +650,7 @@ export async function pushItemUpdates(
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { ok: false, pushed: 0, error: failed.error.message };
+  if (isOwner) await syncHeirAssignments(uploadable, cloudHouseholdId);
 
   // Tags are a tiny replace-set, same contract as the bulk push.
   const ids = uploadable.map((i) => i.id);
@@ -636,6 +659,40 @@ export async function pushItemUpdates(
   if (tagRows.length) await supabase.from('item_tags').insert(tagRows);
 
   return { ok: true, pushed: uploadable.length };
+}
+
+/**
+ * Mirror heir assignments for a set of items — one heir_assignments row per
+ * assigned item, none for an unassigned one. Owner-level only (RLS rejects
+ * anyone else, and callers gate on isOwner). Read side: an owner pulls every
+ * row; a non-owner device only ever receives the ones marked 'revealed'.
+ *
+ * BEST-EFFORT by design: it never fails the item write it rides with. The
+ * table arrives with migration 0014, and a device on this build must keep
+ * syncing items against a project that hasn't applied it yet; supabase-js
+ * returns errors rather than throwing, and they are deliberately ignored.
+ */
+async function syncHeirAssignments(items: Item[], householdId: string): Promise<void> {
+  const assigned = items.filter((i) => i.heirPersonId);
+  const unassigned = items.filter((i) => !i.heirPersonId).map((i) => i.id);
+  try {
+    if (assigned.length) {
+      await supabase.from('heir_assignments').upsert(
+        assigned.map((i) => ({
+          household_id: householdId,
+          item_id: i.id,
+          person_id: i.heirPersonId!,
+          visibility: i.heirVisibility,
+        })),
+        { onConflict: 'item_id' }
+      );
+    }
+    if (unassigned.length) {
+      await supabase.from('heir_assignments').delete().in('item_id', unassigned);
+    }
+  } catch {
+    /* offline — the next backup carries it */
+  }
 }
 
 /**
@@ -695,6 +752,7 @@ export async function reconcileHousehold(
     .from('items')
     .upsert(mine.map((i) => itemRow(i, householdId, user.id, isOwner)), { ignoreDuplicates: true });
   if (error) return { linked: true, pushed: 0, error: error.message };
+  if (isOwner) await syncHeirAssignments(mine, householdId);
 
   const tagRows = mine.flatMap((i) => i.tags.map((tag) => ({ item_id: i.id, tag })));
   if (tagRows.length) await supabase.from('item_tags').insert(tagRows);
