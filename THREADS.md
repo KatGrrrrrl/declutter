@@ -3,23 +3,24 @@
 Running tally of Claude Code sessions in this folder (`C:\Users\kavit\declutter`).
 Statuses: 🟢 Running · ⚪ Idle (not running) · ✅ Done/merged · 🔴 Blocked
 
-_Last updated: Sep 7, 2026 (11:20 PM)_
+_Last updated: Sep 8, 2026_
 
 | # | Thread | Status | Last activity | Latest work |
 |---|--------|--------|---------------|-------------|
 | 1 | Menu visibility on iPhone with bottom menu | ✅ Shipped | Sep 7, 11:00 PM | Family tab "+" / per-family cards (068a166) — verified live |
 | 2 | Mobile site logout | ✅ Shipped | Sep 7, 9:01 PM | Account tab → Log out (55b4e32) |
 | 3 | Default decider, sync e2e & presence banner | ✅ Shipped | Sep 7, 10:56 PM | Fixed desktop sign-in loop; signing in with no home now loads your household (88717b8) |
-| 4 | Household inventory app (main) | ⏳ Awaiting user | Sep 7, 11:15 PM | Walked user through setting the real Stripe **test** key; probe (`tools/probe-checkout.mjs`) not yet confirmed. Also 2078376, 8737944 (pricing doc vs "free-sync" change) |
+| 4 | Household inventory app (main) | ✅ Retired | Sep 8 | Retired after verifying everything shipped. Landing page + Welcome front door, AI valuation & group-photo split, cross-device item sync (add/edit/delete/archive), the wrong-household write fix, and the pricing doc. One item handed back: re-run the Stripe probe (below) |
 
-Summary: 4 threads — 0 running, 4 idle. Everything committed; all pushed except this session's two commits (7606910 guard, 219514b docs).
+Summary: 4 threads — 0 running, 3 idle, 1 retired. Everything committed and pushed; `main` is level with origin.
 
 > ✅ Resolved: as of Sep 7 cloud backup/sharing/multi-home are **free**; Pro = the AI layer only (value estimates + photo splitting). `docs/GO-LIVE.md` reconciled to match `docs/PRICING.md`, and `ANTHROPIC_API_KEY` is confirmed set (no longer a blocker).
 
 ## What needs to be dealt with
 
 ### 🔴 Urgent (runtime / data)
-- [ ] Confirm Amplify build for today's commits (28bbfce reconcile-on-connect) is **live** — items captured on the phone tonight never reached the cloud (upload-photo 404s) until this bundle deploys.
+- [x] ~~Confirm Amplify build for 28bbfce (reconcile-on-connect) is **live**~~ — **confirmed Sep 8.** The deployed bundle carries a string from 7606910, the newest code commit at the time, so every commit through it is out. Phone captures reach the cloud now.
+- [ ] **Re-run the Stripe probe.** Probed Sep 7: `STRIPE_SECRET_KEY` held the literal placeholder `sk_test_...`, so `create-checkout` returned `500 Invalid API Key` — nobody could subscribe. A real **test** key was set afterwards but never re-verified. Confirm with `$env:SERVICE_KEY="<service_role>"; node tools/probe-checkout.mjs` — want `status: 200` and a `checkout.stripe.com` URL. `docs/PRICING.md` still records the failing state until this passes.
 - [ ] **Duplicate "Millrun" households** — corrected picture: the July one (`942f5389`) has the 3 invites but 0 items; the one created tonight (`8974781a`) has your 2 paintings but no invites. This is a **merge, not a delete** (see recovery sequence below).
 
 ### Millrun recovery sequence (do in this exact order)
