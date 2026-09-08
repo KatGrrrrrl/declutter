@@ -123,6 +123,7 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
         room: i.room || null,
         decision: isOwner ? i.decision : 'undecided',
         decided_by: isOwner && i.decision !== 'undecided' ? user.id : null,
+        decided_by_name: isOwner && i.decision !== 'undecided' ? (i.decidedBy ?? null) : null,
         decided_at:
           isOwner && i.decision !== 'undecided'
             ? (i.decidedAt ?? new Date().toISOString())
@@ -279,6 +280,7 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
       room: i.room ?? 'Elsewhere',
       decision: i.decision,
       decidedAt: i.decided_at ?? undefined,
+      decidedBy: i.decided_by_name ?? undefined,
       tags: tagsByItem.get(i.id) ?? [],
       addedBy: 'Family',
       marketValue: i.market_value_cents != null ? i.market_value_cents / 100 : undefined,
@@ -389,6 +391,7 @@ export async function pushItem(
       room: item.room || null,
       decision: isOwner ? item.decision : 'undecided',
       decided_by: decided ? user.id : null,
+      decided_by_name: decided ? (item.decidedBy ?? null) : null,
       decided_at: decided ? (item.decidedAt ?? new Date().toISOString()) : null,
       market_value_cents: item.marketValue != null ? Math.round(item.marketValue * 100) : null,
       is_sentimental: item.isSentimental,
@@ -442,7 +445,11 @@ export async function pushItemUpdate(
     donate_to_kind: item.donateToKind ?? null,
     archived: item.archived ?? false,
   };
-  if (isOwner) patch.decision = item.decision;
+  if (isOwner) {
+    patch.decision = item.decision;
+    // Cosmetic companion to the decision; the trigger nulls it when undecided.
+    patch.decided_by_name = item.decision !== 'undecided' ? (item.decidedBy ?? null) : null;
+  }
 
   const { error } = await supabase
     .from('items')
@@ -513,6 +520,7 @@ export async function reconcileHousehold(
       room: i.room || null,
       decision: isOwner ? i.decision : 'undecided',
       decided_by: isOwner && i.decision !== 'undecided' ? user.id : null,
+      decided_by_name: isOwner && i.decision !== 'undecided' ? (i.decidedBy ?? null) : null,
       decided_at: decidedAt(i),
       market_value_cents: i.marketValue != null ? Math.round(i.marketValue * 100) : null,
       is_sentimental: i.isSentimental,

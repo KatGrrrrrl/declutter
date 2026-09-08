@@ -86,6 +86,7 @@ export interface RemoteItemFields {
   room: string;
   decision: Decision;
   decidedAt?: string;
+  decidedBy?: string;
   marketValue?: number;
   isSentimental: boolean;
   donateTo?: string;
@@ -93,6 +94,21 @@ export interface RemoteItemFields {
   archived?: boolean;
   createdAt: string;
 }
+
+/** Item fields the cloud row carries — an edit to anything else stays local. */
+const CLOUD_ITEM_KEYS = new Set<keyof Item>([
+  'title',
+  'room',
+  'decision',
+  'decidedAt',
+  'decidedBy',
+  'marketValue',
+  'isSentimental',
+  'donateTo',
+  'donateToKind',
+  'archived',
+  'tags',
+]);
 
 /** A family-chat message about one item. Visible to the whole household. */
 export interface ItemMessage {
@@ -748,7 +764,11 @@ export const useStore = create<AppState>()(
         set((s) => ({
           items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
         }));
-        pushItemChange(get(), id);
+        // Story, heir, photo uri, main decider… are device-local: no round
+        // trip (and no tag churn) unless a cloud-owned field actually changed.
+        if ((Object.keys(patch) as (keyof Item)[]).some((k) => CLOUD_ITEM_KEYS.has(k))) {
+          pushItemChange(get(), id);
+        }
       },
 
       setArchived: (id, archived) => {
@@ -1124,8 +1144,11 @@ export const selectEntitlement = (s: AppState) => {
   const pro = s.plan === 'pro';
   return {
     pro,
-    /** Cloud backup, family sharing, multi-device — the paid tier. */
-    cloudEnabled: pro,
+    /**
+     * Cloud backup, family sharing, multi-device — free for everyone (decided
+     * 2026-09-07). Pro is the AI layer only: value estimates + photo splitting.
+     */
+    cloudEnabled: true,
     itemsUsed: s.items.length,
     householdsUsed: s.households.length,
     // Local use is unlimited and free; nothing is ever "at a limit" now. These

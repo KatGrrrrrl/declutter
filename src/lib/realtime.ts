@@ -26,6 +26,7 @@ interface ItemRow {
   room: string | null;
   decision: 'undecided' | 'keep' | 'donate' | 'toss';
   decided_at: string | null;
+  decided_by_name: string | null;
   is_sentimental: boolean;
   market_value_cents: number | null;
   donate_to: string | null;
@@ -80,7 +81,12 @@ function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
           body: string;
           created_at: string;
         };
-        useStore.getState().applyRemoteMessage({
+        // item_messages has no household column, so this subscription spans
+        // every household the account belongs to. Keep only chat for items
+        // this device actually holds — anything else is another household's.
+        const store = useStore.getState();
+        if (!store.items.some((i) => i.id === r.item_id)) return;
+        store.applyRemoteMessage({
           id: r.id,
           itemId: r.item_id,
           author: r.author_name,
@@ -118,6 +124,7 @@ function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
           room: r.room ?? 'Elsewhere',
           decision: r.decision,
           decidedAt: r.decided_at ?? undefined,
+          decidedBy: r.decided_by_name ?? undefined,
           isSentimental: r.is_sentimental,
           marketValue: r.market_value_cents != null ? r.market_value_cents / 100 : undefined,
           donateTo: r.donate_to ?? undefined,

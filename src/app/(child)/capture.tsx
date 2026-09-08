@@ -221,19 +221,19 @@ function NativeCapture() {
         // so nobody has to press Back up to see it. The instant-email ping
         // waits for that push: an email about an item the cloud doesn't have
         // yet would link to nothing.
+        // The photo waits for the row too: upload-photo looks the item up
+        // and 404s if the upload wins the race. uploadPendingPhotos still
+        // sweeps up anything that fails here.
         void pushItem(added, hid)
-          .then((r) => {
-            if (r.ok) pingItemAdded(added);
+          .then(async (r) => {
+            if (!r.ok) return;
+            pingItemAdded(added);
+            if (added.photoUri === pendingUri) {
+              const { data } = await supabase.auth.getSession();
+              if (data.session) await uploadItemPhoto(added);
+            }
           })
           .catch(() => {});
-        if (added.photoUri === pendingUri) {
-          supabase.auth
-            .getSession()
-            .then(({ data }) => {
-              if (data.session) return uploadItemPhoto(added);
-            })
-            .catch(() => {});
-        }
       }
     }
   };
@@ -403,9 +403,10 @@ function WebCapture() {
       const fresh = useStore.getState().items[0];
       if (!fresh || fresh.localOnly) return;
       const pushed = await pushItem(fresh, hid).catch(() => ({ ok: false }));
-      if (pushed.ok) pingItemAdded(fresh);
+      if (!pushed.ok) return; // the next reconcile/backup carries it, photo included
+      pingItemAdded(fresh);
       if (!withoutPhoto && photoUri && fresh.photoUri === photoUri) {
-        void uploadItemPhoto(fresh);
+        void uploadItemPhoto(fresh); // after the row exists, so upload-photo can find it
       }
     })();
     setTitle('');

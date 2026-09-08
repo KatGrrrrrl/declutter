@@ -72,19 +72,17 @@ export function SplitReview({
         if (fresh && !fresh.localOnly) {
           // Item first, so the rest of the family sees it without a backup;
           // the instant-email ping follows only once it's really there.
+          // The photo waits for the row as well — upload-photo 404s otherwise.
           void pushItem(fresh, hid)
-            .then((r) => {
-              if (r.ok) pingItemAdded(fresh);
+            .then(async (res) => {
+              if (!res.ok) return;
+              pingItemAdded(fresh);
+              if (fresh.photoUri === r.photoUri) {
+                const { data } = await supabase.auth.getSession();
+                if (data.session) await uploadItemPhoto(fresh);
+              }
             })
             .catch(() => {});
-          if (fresh.photoUri === r.photoUri) {
-            supabase.auth
-              .getSession()
-              .then(({ data }) => {
-                if (data.session) return uploadItemPhoto(fresh);
-              })
-              .catch(() => {});
-          }
         }
       }
     }
