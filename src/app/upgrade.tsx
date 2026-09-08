@@ -13,8 +13,10 @@
  *   - NATIVE: still a local preview — App Store / Google Play purchases arrive
  *     with the store release. <DevNote/> labels this for testers; delete it
  *     when store billing ships.
- *   - PRICES ARE PLACEHOLDERS ($4.99 / $49.99) and must stay in sync with the
- *     create-checkout function's catalog (declutter_pro_monthly / _yearly).
+ *   - PRICES ($4.99 monthly / $39 yearly) must stay in sync with the
+ *     create-checkout function's catalog (declutter_pro_monthly /
+ *     declutter_pro_yearly_v2). Stripe prices are immutable, so a change means
+ *     a new lookup_key — which is why the yearly one carries _v2.
  */
 
 import { Ionicons } from '@expo/vector-icons';
