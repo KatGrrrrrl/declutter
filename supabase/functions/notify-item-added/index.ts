@@ -10,18 +10,20 @@
  * Fanout: notification_prefs rows for the household with mode = 'instant'
  * (service role read; the (household_id, mode) index makes this one scan).
  *
- * Delivery: Resend (https://resend.com). Until a sending domain is verified
- * in the Resend dashboard, the only allowed from-address is their shared
- * `onboarding@resend.dev` — swap it for e.g. `hello@inventoryourhouse.com`
- * once the domain is verified. Until `supabase secrets set RESEND_API_KEY=…`
- * is run, this function fails gracefully with 503 email_not_configured and
- * the app carries on — email is an enhancement, never a dependency.
+ * Delivery: Resend (https://resend.com). `inventoryourhouse.com` is a
+ * verified sending domain (DKIM at resend._domainkey, bounce CNAMEs on
+ * send/rsend, DMARC p=none), so mail goes out as hello@ to any recipient.
+ * Do NOT revert the from-address to `onboarding@resend.dev`: that sandbox
+ * sender only ever reached the Resend account owner's own inbox. Until
+ * `supabase secrets set RESEND_API_KEY=…` is run, this function fails
+ * gracefully with 503 email_not_configured and the app carries on — email
+ * is an enhancement, never a dependency.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const RESEND_URL = 'https://api.resend.com/emails';
-const FROM = 'Inventory Our Home <onboarding@resend.dev>'; // Resend sandbox sender (see header note)
+const FROM = 'Inventory Our Home <hello@inventoryourhouse.com>'; // verified sending domain (see header note)
 const APP_URL = 'https://inventoryourhouse.com';
 
 const cors = {

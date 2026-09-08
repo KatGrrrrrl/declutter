@@ -48,7 +48,7 @@ Then do one real end-to-end purchase (a live card, small amount, refundable) and
 | # | Blocker | Owner | How to clear / verify |
 |---|---------|-------|-----------------------|
 | 1 | **Stripe live key** (see §0) | user | `npx supabase secrets set STRIPE_SECRET_KEY=sk_live_…`; `node tools/probe-checkout.mjs`; one real purchase; confirm the auto-created live catalog in the dashboard |
-| 2 | **Resend domain verification** for `inventoryourhouse.com` | user | Add DNS records in Route 53; until verified, instant emails deliver **only to the owner's gmail** |
+| 2 | ~~Resend domain verification~~ | done | Verified 2026-09-08. DKIM (`resend._domainkey`), bounce CNAMEs (`send`, `rsend` → `*.forge.rmta.net`) and DMARC `p=none` live in Route 53 (zone `Z020699712JNYFI5HYBEX`); all three senders now mail as `hello@inventoryourhouse.com` to any recipient |
 | 3 | ~~Millrun duplicate-household cleanup~~ | done | Superseded by a full DB wipe on Sep 8 (0 households; 4 real auth users kept). Fresh onboarding sequence in [`THREADS.md`](../THREADS.md) → *Post-wipe sequence*. |
 | 4 | **Testing Pro grants reverted** | user + Claude | Any household flipped to Pro without paying keeps the AI features free in production. Run `node tools/make-household-pro.mjs --free "<name>"` for every entry in the grant log in [`PRICING.md`](PRICING.md) §5, then confirm a free household still gets `pro_required` |
 
@@ -85,7 +85,7 @@ Set in Supabase secrets only — never in the repo. Confirm each is the **produc
 - [ ] `STRIPE_SECRET_KEY` = `sk_live_…`  ← **currently a test key**
 - [x] `ANTHROPIC_API_KEY` = `sk-ant-…`  ← set Sep 7, 2026; one key serves both AI functions
 - [x] Daily-digest secret — generated in **Vault** by migration `20260908000010`; `DIGEST_SECRET` is only an optional override
-- [ ] Resend API key / domain verified
+- [x] Resend API key / domain verified  ← key set Jul 20; `inventoryourhouse.com` verified 2026-09-08
 - [ ] Service-role key stays server-side only (used by `tools/e2e-*` locally, never shipped)
 
 ---
@@ -119,7 +119,14 @@ supabase db push
 - [ ] Now the AI value estimate returns a result, and a group-photo split works — **this is what the money buys**
 - [ ] Confirm the auto-created live product/prices in the Stripe dashboard (§0)
 - [ ] Refund the test purchase
-- [ ] A notification email lands (confirms Resend domain)
+- [x] A notification email lands and authenticates — sent 2026-09-08 through the real
+      `notify-item-added` path; Gmail reported **SPF PASS** (54.240.9.8), **DKIM PASS with
+      domain `inventoryourhouse.com`** (signed by us, so DMARC is aligned) and **DMARC PASS**
+- [ ] Still unproven: delivery to a recipient who is **not** the Resend account owner. The
+      owner-only limit was a property of the `onboarding@resend.dev` sandbox sender, which is
+      gone, so this should now just work — but it has not been exercised. Confirm on the first
+      real invite to a family member's address, and check it isn't landing in spam (a new
+      sending domain has no reputation yet)
 
 ---
 

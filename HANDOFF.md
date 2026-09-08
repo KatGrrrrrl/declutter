@@ -48,7 +48,7 @@ Supabase backend is live; custom auth domain is live; payments are wired but
 | Pricing | ✅ **Changed 2026-09-07:** backup, sharing, multi-home are **free**; Pro ($4.99/mo · $39/yr) = AI value estimates + photo splitting only |
 | Payments | ⚠️ Stripe Checkout live on a **test** key (`sk_test_…`). Real launch needs `sk_live_…` — see GO-LIVE §0. Probe with `node tools/probe-checkout.mjs` |
 | AI | ✅ `ANTHROPIC_API_KEY` set 2026-09-07; `estimate-value` and `split-photo` live, Pro-gated server-side |
-| Email | ⚠️ Instant delivery works to owner's gmail only until domain verified in Resend. Daily digest **is live** (pg_cron, migration 0010) |
+| Email | ✅ `inventoryourhouse.com` verified in Resend 2026-09-08 — instant, digest and invite-declined all send as `hello@` to **any** recipient. Daily digest **is live** (pg_cron, migration 0010). Auth emails (sign-in codes, `invite-member`) still use Supabase's built-in mailer, capped at a few/hour — custom SMTP is still pre-launch |
 | iOS/Android | ⛔ Not submitted — blocked on Apple Developer enrollment. Native `upgrade.tsx` has a **preview-only** Pro button (no checkout); must not ship reachable |
 
 ---
@@ -222,7 +222,7 @@ dashboard. Full sequence in `docs/GO-LIVE.md` §0.
 |---|---|---|---|
 | 0 | ~~Set `ANTHROPIC_API_KEY`~~ | done | Set 2026-09-07; both AI functions live. |
 | 1 | Set **live** `STRIPE_SECRET_KEY` (currently a test key) | **user** | Blocks real payments. `tools/probe-checkout.mjs` verifies; GO-LIVE §0. |
-| 2 | Verify `inventoryourhouse.com` in **Resend** (DNS) | **user** | Until then, instant emails deliver **only to owner's gmail**. |
+| 2 | ~~Verify `inventoryourhouse.com` in **Resend**~~ | done | Verified 2026-09-08. Records in Route 53 zone `Z020699712JNYFI5HYBEX`. Do not revert any `FROM` to `onboarding@resend.dev` — that sandbox sender only reached the Resend account owner. |
 | 3 | ~~Set `DIGEST_SECRET` + a scheduler~~ | done | Migration 0010 schedules it via pg_cron with a Vault secret; `DIGEST_SECRET` is an optional override. Keep `daily-digest` deployed `--no-verify-jwt`. |
 | 3b | Add a **support / contact address** to the app | **user** | None exists anywhere; the Pro card says "get in touch" with nowhere to go. |
 | 4 | Test Google sign-in on custom domain | user | Should read "continue to auth.inventoryourhouse.com". |

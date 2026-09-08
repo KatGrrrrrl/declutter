@@ -25,7 +25,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const RESEND_URL = 'https://api.resend.com/emails';
-const FROM = 'Inventory Our Home <onboarding@resend.dev>'; // Resend sandbox sender
+const FROM = 'Inventory Our Home <hello@inventoryourhouse.com>'; // verified sending domain
 const APP_URL = 'https://inventoryourhouse.com';
 
 const cors = {

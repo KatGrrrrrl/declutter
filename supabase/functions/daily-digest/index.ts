@@ -14,15 +14,15 @@
  * the last 24 hours and mails each subscriber a short list (title · room ·
  * added date). Households with nothing new send nothing — no empty emails.
  *
- * Delivery: Resend, same handling as notify-item-added — sandbox sender
- * `onboarding@resend.dev` until a domain is verified, and a graceful
+ * Delivery: Resend, same handling as notify-item-added — the verified
+ * `inventoryourhouse.com` sending domain, and a graceful
  * 503 email_not_configured until RESEND_API_KEY is set.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const RESEND_URL = 'https://api.resend.com/emails';
-const FROM = 'Inventory Our Home <onboarding@resend.dev>'; // Resend sandbox sender (see header note)
+const FROM = 'Inventory Our Home <hello@inventoryourhouse.com>'; // verified sending domain (see header note)
 const APP_URL = 'https://inventoryourhouse.com';
 
 const cors = {
