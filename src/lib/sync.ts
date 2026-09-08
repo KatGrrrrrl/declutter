@@ -556,34 +556,13 @@ export async function pushItem(
 }
 
 /**
- * Mirror one item's cloud-owned fields after a local EDIT, so other devices
- * see the change without a manual backup.
- *
- * Sends only what the cloud row owns — local-only state (story, heirs, main
- * decider, photo uri) is left alone. `decision` goes only when the caller is
- * an owner: items_guard raises if a contributor touches the decision triple,
- * which would fail the whole update, and it stamps decided_by/decided_at
- * itself, so those are never sent.
+ * The columns a local EDIT may change on the cloud row. Only what the cloud
+ * owns — local-only state (story, heirs, main decider, photo uri) is left
+ * alone. `decision` goes only when the caller is an owner: items_guard raises
+ * if a contributor touches the decision triple, which would fail the whole
+ * update, and it stamps decided_by/decided_at itself, so those are never sent.
  */
-export async function pushItemUpdate(
-  item: Item,
-  cloudHouseholdId: string
-): Promise<{ ok: boolean; error?: string }> {
-  if (item.localOnly) return { ok: false, error: 'This item never leaves the device.' };
-
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user) return { ok: false, error: 'Not signed in.' };
-
-  const role = await cloudRole(cloudHouseholdId);
-  if (role === 'none' || role === 'executor') {
-    return { ok: false, error: 'Not a contributing member of this household.' };
-  }
-  const isOwner = role === 'owner' || role === 'co_owner';
-
-  if (item.collectionId) {
-    await ensureCollectionUploaded(item.collectionId, cloudHouseholdId, auth.user.id, isOwner);
-  }
-
+function itemPatch(item: Item, isOwner: boolean): Record<string, unknown> {
   const patch: Record<string, unknown> = {
     title: item.title,
     room: item.room || null,
@@ -599,20 +578,64 @@ export async function pushItemUpdate(
     // Cosmetic companion to the decision; the trigger nulls it when undecided.
     patch.decided_by_name = item.decision !== 'undecided' ? (item.decidedBy ?? null) : null;
   }
+  return patch;
+}
 
-  const { error } = await supabase
-    .from('items')
-    .update(patch)
-    .eq('id', item.id)
-    .eq('household_id', cloudHouseholdId);
-  if (error) return { ok: false, error: error.message };
+/**
+ * Mirror items' cloud-owned fields after local EDITS, so other devices see
+ * the change without a manual backup. One call for the whole set: user and
+ * role are resolved once, referenced collections go up in one batched upsert
+ * (FK on the item rows), the row updates run concurrently, and tags are one
+ * delete-set plus one insert. A one-swipe collection decide used to be ~7
+ * sequential round trips PER ITEM.
+ *
+ * UPDATE per row on purpose, never an upsert: an edit must not re-create an
+ * item another device deleted a moment ago. Inserts belong to reconcile.
+ */
+export async function pushItemUpdates(
+  items: Item[],
+  cloudHouseholdId: string,
+  collections: Collection[]
+): Promise<{ ok: boolean; pushed: number; error?: string }> {
+  const uploadable = items.filter((i) => !i.localOnly);
+  if (!uploadable.length) return { ok: true, pushed: 0 };
+
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return { ok: false, pushed: 0, error: 'Not signed in.' };
+
+  const role = await cloudRole(cloudHouseholdId);
+  if (role === 'none' || role === 'executor') {
+    return { ok: false, pushed: 0, error: 'Not a contributing member of this household.' };
+  }
+  const isOwner = role === 'owner' || role === 'co_owner';
+
+  const colErr = await upsertCollections(
+    referencedCollections(collections, uploadable),
+    cloudHouseholdId,
+    auth.user.id,
+    isOwner
+  );
+  if (colErr.error) return { ok: false, pushed: 0, error: colErr.error };
+
+  const results = await Promise.all(
+    uploadable.map((item) =>
+      supabase
+        .from('items')
+        .update(itemPatch(item, isOwner))
+        .eq('id', item.id)
+        .eq('household_id', cloudHouseholdId)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, pushed: 0, error: failed.error.message };
 
   // Tags are a tiny replace-set, same contract as the bulk push.
-  await supabase.from('item_tags').delete().eq('item_id', item.id);
-  if (item.tags.length) {
-    await supabase.from('item_tags').insert(item.tags.map((tag) => ({ item_id: item.id, tag })));
-  }
-  return { ok: true };
+  const ids = uploadable.map((i) => i.id);
+  await supabase.from('item_tags').delete().in('item_id', ids);
+  const tagRows = uploadable.flatMap((i) => i.tags.map((tag) => ({ item_id: i.id, tag })));
+  if (tagRows.length) await supabase.from('item_tags').insert(tagRows);
+
+  return { ok: true, pushed: uploadable.length };
 }
 
 /**
@@ -627,7 +650,7 @@ export async function pushItemUpdate(
  *
  * INSERT-ONLY on purpose: it never rewrites a row that already exists, so a
  * device holding stale local state cannot overwrite a newer edit made
- * somewhere else. Ongoing edits travel through pushItemUpdate instead.
+ * somewhere else. Ongoing edits travel through pushItemUpdates instead.
  */
 export async function reconcileHousehold(
   householdId: string,

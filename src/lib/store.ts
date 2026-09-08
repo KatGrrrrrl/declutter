@@ -548,8 +548,12 @@ function pushItemChange(s: AppState, ...ids: string[]) {
   if (!changed.length) return;
   void (async () => {
     try {
-      const { pushItemUpdate } = await import('@/lib/sync');
-      for (const item of changed) await pushItemUpdate(item, hid);
+      // One batch: user and role resolved once, collections uploaded once,
+      // item updates in parallel, tags as a single replace-set. A one-swipe
+      // collection decide used to fan out into ~7 sequential round trips per
+      // item — forty coins was ~280 requests, each waiting on the last.
+      const { pushItemUpdates } = await import('@/lib/sync');
+      await pushItemUpdates(changed, hid, s.collections);
     } catch {
       /* offline — the next backup carries it */
     }
