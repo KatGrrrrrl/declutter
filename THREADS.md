@@ -83,7 +83,9 @@ Live-site pass on desktop and mobile (demo role), plus a read-only code audit. E
 - [x] Settings Pro card: no longer promises App Store / Play / web management.
 - [x] `split-photo`: new `needs_backup` reason; capture says "back this home up first" instead of sending a subscriber to the paywall.
 - [x] Stale comments in `store.ts`, `ui.tsx`, `limit-banner.tsx`, `upgrade.tsx`.
-- [ ] **New:** there is **no support / contact address anywhere in the app** — the Pro card now says "get in touch" with nowhere to go. Decide an address (e.g. hello@inventoryourhouse.com, once Resend verifies the domain) and add it to Settings and the Pro card. Launch item.
+- [ ] **Support / contact address:** the domain is now verified in Resend (Sep 8, thread 7) and all three email functions send as **`hello@inventoryourhouse.com`** — so that's the address. Still to do: put it in Settings and the Pro card ("get in touch" currently points nowhere). Small.
+- [ ] **Resend sender is untested in practice** — DNS verified byte-for-byte, but no mail has gone through `hello@` yet; `dkim=pass` / `dmarc=pass` unconfirmed. Send one to a **non-owner** address (the owner's gmail passed under the old sandbox sender too, so it proves nothing). Your call — it lands in a real inbox.
+- [ ] **Auth email is now the likelier launch failure:** sign-in codes and `invite-member` still use Supabase's built-in mailer (a few sends/hour). That's the first email an invited child receives. GO-LIVE polish item 9 (custom SMTP) — promote it.
 
 **Docs behind the code** — fixed Sep 8
 - [x] **`HANDOFF.md`** refreshed: status table, repo map, migrations 0008–0012 + 9 functions, pricing, outstanding items, new §13 (everything since July + the multi-session rule). Points at THREADS / GO-LIVE / PRICING as living docs.
