@@ -83,6 +83,20 @@ Live-site pass on desktop and mobile (demo role), plus a read-only code audit. E
 - [ ] **`AGENTS.md`** is wrong on brand (says Declutter; app is "Inventory Our Home"), auth (says OTP only; password + OTP + Google exist), payments (says RevenueCat later; Stripe is live), photos (says not uploaded; they are), and phase gating (tells agents not to build heirs/memorandum/AI — all shipped). An agent following it would regress the app.
 - [ ] Privacy row in Settings → "Coming soon"; a privacy policy is typically required for Stripe/app stores.
 
+### 🧹 Simplify pass (Sep 8) — applied vs deferred
+Four-angle review (reuse / simplification / efficiency / altitude) of every commit since `28bbfce`. Applied and shipped, behavior-preserving, net −16 lines:
+- [x] `sync.ts`: one `itemRow()` for all three item write paths; reconcile batches collection upserts; `pullHousehold` scopes tags/stories/photos to the household's items (was downloading every home's story bodies); `pushCollectionUpdate` drops an unused `getUser()` round trip.
+- [x] `ui.tsx` rail card reuses `linkedCloudId()`; Decide grouping is O(n) not O(n²); three Decide bars get a11y labels; collection grid uses `DECISION_META`; unused `T` import removed (lint now 0 warnings).
+
+Deferred — real, but architecture changes or refactors of another session's fresh feature code, not tonight:
+- [ ] **`cloudHouseholdId` is a boolean wearing a uuid, hand-cleared in 6 places.** Deeper fix: persist `Household.cloudLinkedAt` on the household record and derive the link — removes all six clears *and* makes the backup guard hold across switches (the audit's guard-gap bug). Recommended next.
+- [ ] `pushItemChange` fans out one-swipe collection decides into N sequential chains (~7 round trips per item; 40 coins ≈ 280 requests). Batch rows + resolve user/role once.
+- [ ] `ensureCollectionUploaded` re-upserts the same collection once per photographed item in a sweep — needs a session memo.
+- [ ] Derive `CLOUD_ITEM_KEYS` from `RemoteItemFields` so the compiler catches a missing synced column (four hand-kept copies today).
+- [ ] `item_messages` needs a `household_id` column; the client-side filter drops messages for items not yet pulled.
+- [ ] ~60 raw `Pressable`s still lack `accessibilityLabel` (8 added tonight). Shared `TapRow`/`IconBtn` in `ui.tsx` + a lint rule — otherwise every new screen reintroduces it.
+- [ ] Duplicates worth one helper each: new-household form (`family.tsx` / `settings.tsx`), collection-count selector (4 sites), `joinNames` (banner / Decide), round icon button (`collection/[id]` / `settings`), Decide's `collectionMeta` IIFE → `useMemo`, `SwipeCard` element + meta block duplicated per card kind.
+
 ### ⚠️ Cross-cutting
 - [ ] 3–4 sessions edited `store.ts` / `realtime.ts` at once; commit 28bbfce swept ~5 lines of another thread's work in. Decide whether to keep multiple agents in the same files.
 
