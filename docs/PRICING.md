@@ -62,7 +62,7 @@ usage — check each dashboard for live figures.
 
 | Service | Used for | Key / config | Cost basis | Status |
 |---|---|---|---|---|
-| **Stripe** | Collecting the Pro subscription | `STRIPE_SECRET_KEY` (Supabase secret) | Standard Stripe per-transaction fees (~2.9% + 30¢): $4.99 nets ~$4.55, $39 nets ~$37.57 | Secret is present. It was once set to the literal `sk_test_...` placeholder, and secrets are write-only, so **confirm with `node tools/probe-checkout.mjs`** before trusting checkout |
+| **Stripe** | Collecting the Pro subscription | `STRIPE_SECRET_KEY` (Supabase secret) | Standard Stripe per-transaction fees (~2.9% + 30¢): $4.99 nets ~$4.55, $39 nets ~$37.57 | ⚠️ **BROKEN.** Probed 2026-09-07: the secret is still the literal string `sk_test_...`, so `create-checkout` returns `500 Invalid API Key provided`. No one can subscribe. Fix with `npx supabase secrets set STRIPE_SECRET_KEY=sk_test_<real key>` (Stripe → Developers → API keys → Secret key), then re-run `node tools/probe-checkout.mjs` |
 | **Anthropic API** | AI value estimates — `claude-sonnet-5` + `web_search`; group-photo splitting (`split-photo`, plain vision call, cheaper) | `ANTHROPIC_API_KEY` (Supabase secret) | Rough per use: estimate **~$0.05–0.15** (one call *with* web search), split **~$0.01–0.02** (one vision call). Both Pro-gated to cap spend. | Set (2026-09-07). One key serves both functions |
 | **Supabase** | Postgres, Auth, private Storage, Edge Functions | project `xkzuoogmcfrxicmoybzp` (ca-central-1) | Plan tier + usage | Live |
 | **Supabase custom auth domain** | `auth.inventoryourhouse.com` on the sign-in screen | domain add-on | ~$10/mo add-on | Live |
