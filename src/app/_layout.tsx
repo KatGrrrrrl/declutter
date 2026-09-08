@@ -1,8 +1,10 @@
 import { DefaultTheme, Redirect, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { CloudBridge } from '@/components/cloud-bridge';
+import { PresenceBanner } from '@/components/presence-banner';
 import { T } from '@/constants/theme';
 import { useStore } from '@/lib/store';
 import { useDocumentTitle } from '@/lib/use-document-title';
@@ -46,6 +48,10 @@ export default function RootLayout() {
       <ThemeProvider value={theme}>
         <CloudBridge />
         <LockGate />
+        {/* Sits above the whole stack so "Tom is here too" survives tab and
+            detail navigation; it renders nothing unless someone else is online. */}
+        <View style={{ flex: 1 }}>
+        <PresenceBanner />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: T.ground } }}>
           <Stack.Screen name="index" options={{ title: 'Home' }} />
           <Stack.Screen name="onboarding" options={{ title: 'Welcome' }} />
@@ -57,6 +63,7 @@ export default function RootLayout() {
             options={{ presentation: 'card', headerShown: false, title: 'Item' }}
           />
         </Stack>
+        </View>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

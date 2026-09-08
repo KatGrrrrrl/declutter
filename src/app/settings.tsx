@@ -50,7 +50,11 @@ export default function SettingsScreen() {
   const state = useStore();
   const ent = selectEntitlement(state);
   const { households, activeHouseholdId, householdName, userName, isDemo } = state;
-  const { switchHousehold, addHousehold, startFresh, signOut } = state;
+  const { switchHousehold, addHousehold, startFresh, signOut, setDefaultDecider } = state;
+  // Default decision-maker: only a choice worth making with >1 decider here.
+  const activeHousehold = households.find((h) => h.id === activeHouseholdId);
+  const deciders = activeHousehold?.deciderNames ?? [];
+  const defaultDecider = activeHousehold ? state.defaultDeciders[activeHousehold.id] : undefined;
 
   const [addingHousehold, setAddingHousehold] = useState(false);
   const [newHouseholdName, setNewHouseholdName] = useState('');
@@ -393,6 +397,52 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        {/* ---------- default decision-maker (per user, per household) ---------- */}
+        {activeHousehold && deciders.length > 1 && (
+          <>
+            <Label>Decisions</Label>
+            <Card>
+              <Heading style={styles.cardTitle}>Default decision-maker</Heading>
+              <Body style={styles.cardBody}>
+                Things you add to {activeHousehold.name} are flagged as this
+                person&rsquo;s call first. You can still change it on any item.
+              </Body>
+              <Row style={styles.deciderRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !defaultDecider }}
+                  onPress={() => setDefaultDecider(activeHousehold.id, undefined)}
+                  style={[styles.deciderChip, !defaultDecider && styles.deciderChipOn]}
+                >
+                  <Text style={[styles.deciderChipText, !defaultDecider && styles.deciderChipTextOn]}>
+                    Anyone
+                  </Text>
+                </Pressable>
+                {deciders.map((name) => {
+                  const on = defaultDecider === name;
+                  return (
+                    <Pressable
+                      key={name}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      onPress={() => setDefaultDecider(activeHousehold.id, on ? undefined : name)}
+                      style={[styles.deciderChip, on && styles.deciderChipOn]}
+                    >
+                      <Text style={[styles.deciderChipText, on && styles.deciderChipTextOn]}>
+                        {name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </Row>
+              <Muted style={styles.deciderHint}>
+                Everyone with the final say still sees every item — this is just
+                whose call it is first.
+              </Muted>
+            </Card>
+          </>
+        )}
+
         {/* ---------- plan ---------- */}
         <Label>Your plan</Label>
         {ent.pro ? (
@@ -624,7 +674,20 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: 15 },
 
   addBox: { paddingVertical: Spacing.two },
-  deciderHint: { fontSize: 12.5, marginTop: Spacing.two },
+  deciderHint: { fontSize: 12.5, marginTop: Spacing.two, lineHeight: 17 },
+  deciderRow: { flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.three },
+  deciderChip: {
+    minHeight: 40,
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+    paddingHorizontal: Spacing.three,
+  },
+  deciderChipOn: { borderColor: T.brass, backgroundColor: T.brassTint },
+  deciderChipText: { fontSize: 14.5, fontWeight: '600', color: T.inkSoft },
+  deciderChipTextOn: { color: T.brassDeep },
   input: {
     backgroundColor: T.surface,
     borderWidth: 1.5,

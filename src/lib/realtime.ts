@@ -7,8 +7,17 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-import { useStore } from '@/lib/store';
+import { usePresence } from '@/lib/presence';
+import { selectViewerName, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+
+import type { PresentPerson } from '@/lib/presence';
+
+/** What each device announces on the household's presence channel. */
+interface PresenceMeta {
+  uid: string;
+  name: string;
+}
 
 /** The `items` columns realtime replicates. */
 interface ItemRow {
@@ -32,9 +41,34 @@ export function startRealtime(cloudHouseholdId: string) {
   if (activeFor === cloudHouseholdId && channel) return;
   stopRealtime();
   activeFor = cloudHouseholdId;
+  // Presence needs to know who "me" is; the session is already resolved by
+  // the time CloudBridge calls this, so the async hop is cheap. If the
+  // household changed while we waited, the newer call wins.
+  void supabase.auth.getSession().then(({ data }) => {
+    if (activeFor !== cloudHouseholdId || channel) return;
+    openChannel(cloudHouseholdId, data.session?.user.id);
+  });
+}
+
+function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
+  const me: PresenceMeta = { uid: myUid ?? 'anon', name: selectViewerName(useStore.getState()) };
 
   channel = supabase
-    .channel(`household-${cloudHouseholdId}`)
+    .channel(`household-${cloudHouseholdId}`, { config: { presence: { key: me.uid } } })
+    // Who else has this household open. Keyed by user id, so the same person
+    // on a phone AND a laptop shows once — and never shows to themselves.
+    .on('presence', { event: 'sync' }, () => {
+      if (!channel) return;
+      const seen = new Map<string, PresentPerson>();
+      for (const metas of Object.values(channel.presenceState<PresenceMeta>())) {
+        for (const p of metas) {
+          if (p.uid && p.uid !== me.uid && !seen.has(p.uid)) {
+            seen.set(p.uid, { uid: p.uid, name: p.name || 'Someone' });
+          }
+        }
+      }
+      usePresence.getState().setOthers([...seen.values()]);
+    })
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'item_messages' },
@@ -93,7 +127,10 @@ export function startRealtime(cloudHouseholdId: string) {
         });
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      // Announce ourselves once the socket is up; re-announce on reconnect.
+      if (status === 'SUBSCRIBED') void channel?.track(me);
+    });
 }
 
 export function stopRealtime() {
@@ -102,4 +139,5 @@ export function stopRealtime() {
     channel = null;
   }
   activeFor = null;
+  usePresence.getState().clear();
 }
