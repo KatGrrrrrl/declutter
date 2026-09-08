@@ -8,12 +8,12 @@ _Last updated: Sep 8, 2026_
 | # | Thread | Status | Last activity | Latest work |
 |---|--------|--------|---------------|-------------|
 | 1 | Menu visibility on iPhone with bottom menu | ✅ Shipped | Sep 7, 11:00 PM | Family tab "+" / per-family cards (068a166) — verified live |
-| 2 | Mobile site logout | ✅ Shipped | Sep 7, 9:01 PM | Account tab → Log out (55b4e32) |
+| 2 | Mobile site logout | ✅ Retired | Sep 8 | Account tab on both mobile bars → Log out reachable anywhere (55b4e32); Heirs to the Keepsakes pill; desktop unchanged. Deployed, verified in-browser, nothing to carry forward. |
 | 3 | Default decider, sync e2e & presence banner | ✅ Retired | Sep 8 | Default decider per household + presence banner + e2e scripts (ffd9583); `decided_by_name` (migration 0009), nightly digest via pg_cron + Vault (0010), photo upload waits for the item row (the upload-photo 404 cause), email ping only after a successful push (6cb81cb); free sync / Pro = AI (7c08b4e); header Account pill removed (5bc182e); desktop sign-in loop fix (88717b8). Nothing uncommitted. |
 | 4 | Household inventory app (main) | ✅ Retired | Sep 8 | Retired after verifying everything shipped. Landing page + Welcome front door, AI valuation & group-photo split, cross-device item sync (add/edit/delete/archive), the wrong-household write fix, and the pricing doc. One item handed back: re-run the Stripe probe (below) |
 | 5 | Collections family grouping | ✅ Retired | Sep 8 | Retired with everything shipped AND deployed (bundle verified). Collections end-to-end (app, spec §Collections, mockup, e2e 23/23 vs prod incl. realtime both ways); household rename/remove/delete-everywhere; migrations `0011` (collections) + `0012` (household delete un-blocked) applied; refresh sync on every load (8b72d3b); "Your backup is waiting — Load it" prompt (68aa6ff); sticky no-photo capture. New tools: `e2e-collections.mjs` (SERVICE_KEY or preset-credential mode) |
 
-Summary: 5 threads — 0 running, 2 idle, 3 retired. Everything committed, pushed and live; the restore prompt was confirmed in the deployed bundle (`entry-d6e386c…`) before retiring (Sep 8, afternoon).
+Summary: 5 threads — 0 running, 1 idle (thread 1), 4 retired. Everything committed, pushed and live; the restore prompt was confirmed in the deployed bundle (`entry-d6e386c…`) before retiring (Sep 8, afternoon).
 
 > ⚠️ Incident, resolved: commit `375797a` (the `completeOnboarding` fix) accidentally swept ~150 lines of thread 5's uncommitted `store.ts` work along with it, leaving `main` type-broken for four minutes. Thread 5 resolved it by committing the rest of the feature (`8910ac7`). Root cause is the standing cross-cutting risk below — multiple sessions editing the same files. **Rule going forward: `git add -p` or a diff check before any commit touching `store.ts`, `sync.ts`, or `realtime.ts`.**
 
