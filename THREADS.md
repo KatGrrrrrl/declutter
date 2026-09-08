@@ -9,11 +9,11 @@ _Last updated: Sep 8, 2026_
 |---|--------|--------|---------------|-------------|
 | 1 | Menu visibility on iPhone with bottom menu | ✅ Shipped | Sep 7, 11:00 PM | Family tab "+" / per-family cards (068a166) — verified live |
 | 2 | Mobile site logout | ✅ Shipped | Sep 7, 9:01 PM | Account tab → Log out (55b4e32) |
-| 3 | Default decider, sync e2e & presence banner | ✅ Shipped | Sep 7, 10:56 PM | Fixed desktop sign-in loop; signing in with no home now loads your household (88717b8) |
+| 3 | Default decider, sync e2e & presence banner | ✅ Retired | Sep 8 | Default decider per household + presence banner + e2e scripts (ffd9583); `decided_by_name` (migration 0009), nightly digest via pg_cron + Vault (0010), photo upload waits for the item row (the upload-photo 404 cause), email ping only after a successful push (6cb81cb); free sync / Pro = AI (7c08b4e); header Account pill removed (5bc182e); desktop sign-in loop fix (88717b8). Nothing uncommitted. |
 | 4 | Household inventory app (main) | ✅ Retired | Sep 8 | Retired after verifying everything shipped. Landing page + Welcome front door, AI valuation & group-photo split, cross-device item sync (add/edit/delete/archive), the wrong-household write fix, and the pricing doc. One item handed back: re-run the Stripe probe (below) |
 | 5 | Collections family grouping | ✅ Retired | Sep 8 | Retired with everything shipped AND deployed (bundle verified). Collections end-to-end (app, spec §Collections, mockup, e2e 23/23 vs prod incl. realtime both ways); household rename/remove/delete-everywhere; migrations `0011` (collections) + `0012` (household delete un-blocked) applied; refresh sync on every load (8b72d3b); "Your backup is waiting — Load it" prompt (68aa6ff); sticky no-photo capture. New tools: `e2e-collections.mjs` (SERVICE_KEY or preset-credential mode) |
 
-Summary: 5 threads — 0 running, 3 idle, 2 retired. Everything committed, pushed and live; the restore prompt was confirmed in the deployed bundle (`entry-d6e386c…`) before retiring (Sep 8, afternoon).
+Summary: 5 threads — 0 running, 2 idle, 3 retired. Everything committed, pushed and live; the restore prompt was confirmed in the deployed bundle (`entry-d6e386c…`) before retiring (Sep 8, afternoon).
 
 > ⚠️ Incident, resolved: commit `375797a` (the `completeOnboarding` fix) accidentally swept ~150 lines of thread 5's uncommitted `store.ts` work along with it, leaving `main` type-broken for four minutes. Thread 5 resolved it by committing the rest of the feature (`8910ac7`). Root cause is the standing cross-cutting risk below — multiple sessions editing the same files. **Rule going forward: `git add -p` or a diff check before any commit touching `store.ts`, `sync.ts`, or `realtime.ts`.**
 
@@ -40,10 +40,14 @@ Summary: 5 threads — 0 running, 3 idle, 2 retired. Everything committed, pushe
 - [x] Noise left uncommitted: `supabase/.temp/cli-latest`, `.claude/launch.json`, `THREADS.md`.
 
 ### 🟡 Follow-ups (not blocking)
-- [ ] Run the two-user e2e script: `SERVICE_KEY=<key> node tools/e2e-sync-live.mjs`
+- [ ] Run the two-user e2e script: `SERVICE_KEY=<key> node tools/e2e-sync-live.mjs` — **caveat from thread 3:** it was written against pre-Collections / pre-`cloudLinkedAt` row shapes and has never been executed. Check its row builders and subscription shapes against current `sync.ts` before trusting a run. (`tools/e2e-collections.mjs` has a preset-credential mode that needs no SERVICE_KEY if users are minted via SQL.)
+- [ ] Presence banner: only the transport was verified (two Node clients). See it with two real signed-in devices — do it in the same session as the signed-in collection-decide run.
+- [x] ~~`tools/cleanup-orphans.sql`~~ — deleted Sep 8: obsolete after the wipe; every id in it was gone, and running it against the fresh Millrun would have been a mistake waiting to happen.
 - [x] ~~"Daily summary" setting is dead~~ — **wrong, verified live Sep 8:** migration `20260908000010` applied, `cron.job` `daily-digest` active at `0 23 * * *`, function deployed with `verify_jwt: false`. Keep it deployed `--no-verify-jwt`.
 - [x] ~~Clear 5 leftover July test households + orphan Millrun.~~ — gone in the Sep 8 wipe.
-- [ ] Cosmetic: realtime decisions arrive nameless; chat realtime has no household filter.
+- [x] ~~Cosmetic: realtime decisions arrive nameless~~ — done in 6cb81cb (`items.decided_by_name`, migration 0009 applied). Chat realtime's missing household filter remains: engineering #8.
+- [ ] FYI (no action): daily digest fires **23:00 UTC** fixed (7pm EDT / 6pm EST); Resend sandbox sender delivers only to the owner's address until the domain is verified.
+- [ ] FYI (informational, from Supabase advisors): `accept_invite` / `my_pending_invites` are SECURITY DEFINER callable by `authenticated` — intentional; leaked-password protection is off; one MFA factor enabled. Review before launch, not blocking.
 
 ### 🔍 E2E + static audit findings (Sep 8) — not yet fixed unless ticked
 Live-site pass on desktop and mobile (demo role), plus a read-only code audit. Everything below was verified in code, not assumed.
@@ -54,7 +58,7 @@ Live-site pass on desktop and mobile (demo role), plus a read-only code audit. E
 - [x] ~~**The backup guard has a gap:** `switchHousehold`/`addHousehold`/`startFresh` clear `cloudHouseholdId`, destroying the "was linked, now gone" evidence~~ — **obsolete Sep 8.** The v5→v6 persist migration moved the link onto the household record (`Household.cloudLinkedAt`) and `linkedCloudId` derives from the open household, so there is no top-level id left to clear: the evidence now survives switching and `pushHousehold`'s guard reads it. Verified — no `cloudHouseholdId: undefined` writes remain in `store.ts`.
 - [x] ~~`pullHousehold()` with no id picks the *oldest* household~~ — **fixed Sep 8.** `pickMyHousehold()`: one home → load; several → prefer the one open on this device if the account belongs to it, else **ask** (pickers on sign-in and Restore). `pullHousehold()` no longer guesses. Millrun recovery is no longer order-sensitive.
 - [x] ~~`restoreSnapshot` replaces `households` with a single element~~ — **fixed Sep 8.** The restored home is merged (replace-or-append, keeping original `createdAt`/link time); other homes stay; only the demo is dropped. The Account & sync promise is now true.
-- [ ] `signOut`/`resetAll` `set({...initial})` doesn't clear `cloudHouseholdId`/`lastAccountEmail` (initial lacks the keys; zustand merges). Masked by `isDemo` today.
+- [x] ~~`signOut`/`resetAll` doesn't clear `cloudHouseholdId`~~ — closed by #1 (no such field; `initial.households` replaces the list, links included). `lastAccountEmail` still survives a reset — harmless (it only drives the sign-in gate), noted.
 - [ ] `login.tsx` `finish()` error path shows the sign-in form to an already-signed-in user with no retry — dead end.
 - [ ] `item_messages` realtime has no household filter (table lacks `household_id`); client drops unknown items, silently losing messages for items not yet pulled.
 - [x] `Btn` had no accessible name — fixed `11025f8`.
