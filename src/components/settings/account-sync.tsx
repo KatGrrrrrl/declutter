@@ -124,6 +124,7 @@ export function AccountSync() {
       householdName: state.householdName,
       items: state.items,
       people: state.people,
+      collections: state.collections,
       messages: state.messages,
       members: state.members,
       deciderNames: household?.deciderNames ?? [state.ownerName],

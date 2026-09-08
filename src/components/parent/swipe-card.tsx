@@ -34,15 +34,31 @@ export interface SwipeCardHandle {
   fling: (decision: SwipeDecision) => void;
 }
 
+/** When set, the card is a whole collection decided in one swipe. */
+export interface CollectionCardMeta {
+  name: string;
+  /** Undecided members this swipe will decide. */
+  undecided: number;
+  /** All members, decided or not. */
+  total: number;
+  /** Sum of member values (shown when > 0; the screen gates by role). */
+  value: number;
+  /** Members some family member has quietly asked about. */
+  requests: number;
+}
+
 const THRESHOLD = 90;
 const FLING_MS = 300;
 
 export function SwipeCard({
   item,
+  collection,
   onCommit,
   ref,
 }: {
+  /** The item — or, for a collection card, the member whose photo fronts it. */
   item: Item;
+  collection?: CollectionCardMeta;
   onCommit: (id: string, decision: SwipeDecision) => void;
   ref?: Ref<SwipeCardHandle>;
 }) {
@@ -143,18 +159,50 @@ export function SwipeCard({
         style={[styles.card, cardStyle]}
         onLayout={(e) => setCardH(e.nativeEvent.layout.height)}
       >
-        <PhotoBox title={item.title} photoUri={item.photoUri} height={photoHeight} />
-        <View style={styles.meta}>
-          <Text style={styles.title} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.sub}>
-            {item.room} · added by {item.addedBy}
-          </Text>
-          {item.mainDeciderName ? (
-            <Text style={styles.flag}>{item.mainDeciderName}&rsquo;s to decide</Text>
-          ) : null}
-        </View>
+        <PhotoBox
+          title={collection?.name ?? item.title}
+          photoUri={item.photoUri}
+          height={photoHeight}
+        />
+        {collection ? (
+          <View style={styles.meta}>
+            <View style={styles.setBadge}>
+              <Text style={styles.setBadgeText}>WHOLE COLLECTION</Text>
+            </View>
+            <Text style={styles.title} numberOfLines={2}>
+              {collection.name}
+            </Text>
+            <Text style={styles.sub}>
+              {collection.undecided === collection.total
+                ? `${collection.total} items · one decision for all of them`
+                : `${collection.undecided} of ${collection.total} items still to decide`}
+            </Text>
+            {(collection.value > 0 || collection.requests > 0) && (
+              <Text style={styles.flag}>
+                {[
+                  collection.value > 0 ? `$${collection.value.toLocaleString()} documented` : null,
+                  collection.requests > 0
+                    ? `${collection.requests} family request${collection.requests === 1 ? '' : 's'}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            )}
+          </View>
+        ) : (
+          <View style={styles.meta}>
+            <Text style={styles.title} numberOfLines={2}>
+              {item.title}
+            </Text>
+            <Text style={styles.sub}>
+              {item.room} · added by {item.addedBy}
+            </Text>
+            {item.mainDeciderName ? (
+              <Text style={styles.flag}>{item.mainDeciderName}&rsquo;s to decide</Text>
+            ) : null}
+          </View>
+        )}
 
         {/* verdict overlays — fade in with drag distance */}
         <Animated.View
@@ -231,6 +279,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 12,
     overflow: 'hidden',
+  },
+  setBadge: {
+    backgroundColor: T.brassTint,
+    borderWidth: 1,
+    borderColor: T.brass,
+    borderRadius: 999,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+  },
+  setBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    color: T.brassDeep,
   },
   verdict: {
     position: 'absolute',

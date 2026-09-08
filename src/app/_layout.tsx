@@ -62,6 +62,10 @@ export default function RootLayout() {
             name="item/[id]"
             options={{ presentation: 'card', headerShown: false, title: 'Item' }}
           />
+          <Stack.Screen
+            name="collection/[id]"
+            options={{ presentation: 'card', headerShown: false, title: 'Collection' }}
+          />
         </Stack>
         </View>
       </ThemeProvider>

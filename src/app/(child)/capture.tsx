@@ -21,9 +21,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { notify, ROOMS } from '@/components/child/shared';
+import { CollectionPicker } from '@/components/collection-picker';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import { SplitReview } from '@/components/split-review';
 import {
@@ -44,7 +45,7 @@ import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { splitGroupPhoto } from '@/lib/split-photo';
 import { pushItem } from '@/lib/sync';
-import { linkedCloudId, useCanDecide, useEntitlement, useStore } from '@/lib/store';
+import { linkedCloudId, useCanDecide, useCollection, useEntitlement, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ProposedItem } from '@/lib/split-photo';
@@ -90,6 +91,34 @@ export default function CaptureScreen() {
   return <NativeCapture />;
 }
 
+/**
+ * Sticky per-session collection: once picked, every shot files into it until
+ * it's cleared — that's the "add a whole coin collection in one sweep" flow.
+ * Seeded by ?collectionId= (the "Add items" button on a collection screen).
+ */
+function useStickyCollection() {
+  const { collectionId: param } = useLocalSearchParams<{ collectionId?: string }>();
+  const [collectionId, setCollectionId] = useState<string | undefined>(undefined);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Adopt a new deep-link param during render (the sanctioned
+  // "adjust state when props change" pattern — no effect needed).
+  const normalized = typeof param === 'string' && param ? param : undefined;
+  const [adopted, setAdopted] = useState<string | undefined>(undefined);
+  if (normalized !== adopted) {
+    setAdopted(normalized);
+    if (normalized) setCollectionId(normalized);
+  }
+  const collection = useCollection(collectionId);
+  return {
+    // A collection deleted mid-session must not keep filing into a ghost id.
+    collectionId: collection ? collectionId : undefined,
+    collectionName: collection?.name,
+    setCollectionId,
+    pickerOpen,
+    setPickerOpen,
+  };
+}
+
 /* ================= native camera ================= */
 
 function NativeCapture() {
@@ -102,6 +131,7 @@ function NativeCapture() {
   const split = useSplitPhoto();
 
   const cameraRef = useRef<CameraView>(null);
+  const sticky = useStickyCollection();
   const [room, setRoom] = useState<string>(ROOMS[0]);
   const [shots, setShots] = useState<string[]>([]); // session uris, newest first
   const [count, setCount] = useState(0);
@@ -128,6 +158,7 @@ function NativeCapture() {
         <SplitReview
           proposals={split.proposals}
           room={room}
+          collectionId={sticky.collectionId}
           onClose={(added) => {
             split.setProposals(null);
             if (added > 0) setCount((n) => n + added);
@@ -193,6 +224,7 @@ function NativeCapture() {
       photoUri: pendingUri,
       addedBy: userName,
       tags: [],
+      collectionId: sticky.collectionId,
       ...(canDecide ? { decision: 'keep' as const, decidedAt: new Date().toISOString() } : null),
     });
     // Never fail silently: the shot they just took wasn't saved.
@@ -260,6 +292,45 @@ function NativeCapture() {
               ))}
             </View>
           </ScrollView>
+        </View>
+
+        {/* sticky collection chip — every shot files into it until cleared */}
+        <View style={styles.collectionRow} pointerEvents="box-none">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              sticky.collectionName
+                ? `Shooting into ${sticky.collectionName}. Change collection`
+                : 'Shoot into a collection'
+            }
+            onPress={() => sticky.setPickerOpen(true)}
+            style={[styles.collectionChip, sticky.collectionId != null && styles.collectionChipOn]}
+          >
+            <Ionicons
+              name="albums-outline"
+              size={13}
+              color={sticky.collectionId ? '#FFFFFF' : '#F4ECDC'}
+            />
+            <Text
+              style={[
+                styles.collectionChipText,
+                sticky.collectionId != null && styles.collectionChipTextOn,
+              ]}
+              numberOfLines={1}
+            >
+              {sticky.collectionName ?? 'Collection…'}
+            </Text>
+          </Pressable>
+          {sticky.collectionId != null && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Stop shooting into this collection"
+              onPress={() => sticky.setCollectionId(undefined)}
+              style={styles.collectionClear}
+            >
+              <Ionicons name="close" size={14} color="#F4ECDC" />
+            </Pressable>
+          )}
         </View>
 
         {/* session count badge */}
@@ -346,8 +417,24 @@ function NativeCapture() {
 
       <Text style={styles.batchNote}>
         <Text style={styles.batchNoteStrong}>Batch mode</Text> ·{' '}
-        {canDecide ? 'saved as keepsakes as you go.' : 'keep shooting, decide later.'}
+        {sticky.collectionName
+          ? `everything lands in ${sticky.collectionName}.`
+          : canDecide
+            ? 'saved as keepsakes as you go.'
+            : 'keep shooting, decide later.'}
       </Text>
+
+      <CollectionPicker
+        visible={sticky.pickerOpen}
+        onClose={() => sticky.setPickerOpen(false)}
+        onPick={(id) => {
+          sticky.setCollectionId(id);
+          sticky.setPickerOpen(false);
+        }}
+        currentId={sticky.collectionId}
+        allowNone={sticky.collectionId != null}
+        title="Shoot into which collection?"
+      />
     </SafeAreaView>
   );
 }
@@ -362,6 +449,7 @@ function WebCapture() {
   const canDecide = useCanDecide();
   const split = useSplitPhoto();
 
+  const sticky = useStickyCollection();
   const [room, setRoom] = useState<string>(ROOMS[0]);
   const [title, setTitle] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -381,6 +469,7 @@ function WebCapture() {
       photoUri: !withoutPhoto && photoUri ? photoUri : undefined,
       addedBy: userName,
       tags: [],
+      collectionId: sticky.collectionId,
       ...(canDecide ? { decision: 'keep' as const, decidedAt: new Date().toISOString() } : null),
     });
     // Refused at the free cap — say so rather than clearing the field silently.
@@ -432,6 +521,7 @@ function WebCapture() {
         <SplitReview
           proposals={split.proposals}
           room={room}
+          collectionId={sticky.collectionId}
           onClose={(count) => {
             split.setProposals(null);
             if (count > 0) {
@@ -531,6 +621,40 @@ function WebCapture() {
             <Text style={[styles.webChipText, r === room && styles.webChipTextOn]}>{r}</Text>
           </Pressable>
         ))}
+        {/* sticky collection — every add files into it until cleared */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            sticky.collectionName
+              ? `Adding into ${sticky.collectionName}. Change collection`
+              : 'Add into a collection'
+          }
+          onPress={() => sticky.setPickerOpen(true)}
+          style={[styles.webChip, styles.webCollectionChip, sticky.collectionId != null && styles.webChipOn]}
+        >
+          <Ionicons
+            name="albums-outline"
+            size={13}
+            color={sticky.collectionId ? T.surface : T.brassDeep}
+          />
+          <Text
+            style={[styles.webChipText, sticky.collectionId != null && styles.webChipTextOn]}
+            numberOfLines={1}
+          >
+            {sticky.collectionName ?? 'Collection…'}
+          </Text>
+          {sticky.collectionId != null && (
+            <Ionicons
+              name="close"
+              size={13}
+              color={T.surface}
+              onPress={(e) => {
+                (e as unknown as { stopPropagation?: () => void }).stopPropagation?.();
+                sticky.setCollectionId(undefined);
+              }}
+            />
+          )}
+        </Pressable>
       </View>
       <Well style={styles.webWell}>
         <TextInput
@@ -551,10 +675,24 @@ function WebCapture() {
       />
       {added > 0 && (
         <Muted style={styles.webAdded}>
-          {canDecide ? 'Kept ✓' : 'Added ✓'} · {added} this session · find{' '}
-          {canDecide ? 'them in Keepsakes' : 'them in Inventory'}
+          {canDecide ? 'Kept ✓' : 'Added ✓'} · {added} this session ·{' '}
+          {sticky.collectionName
+            ? `filed in ${sticky.collectionName}`
+            : `find ${canDecide ? 'them in Keepsakes' : 'them in Inventory'}`}
         </Muted>
       )}
+
+      <CollectionPicker
+        visible={sticky.pickerOpen}
+        onClose={() => sticky.setPickerOpen(false)}
+        onPick={(id) => {
+          sticky.setCollectionId(id);
+          sticky.setPickerOpen(false);
+        }}
+        currentId={sticky.collectionId}
+        allowNone={sticky.collectionId != null}
+        title="Add into which collection?"
+      />
     </Screen>
   );
 }
@@ -614,6 +752,36 @@ const styles = StyleSheet.create({
   roomChipOn: { backgroundColor: T.brass },
   roomChipText: { color: '#F4ECDC', fontSize: 12.5, fontWeight: '600' },
   roomChipTextOn: { color: '#FFFFFF' },
+  collectionRow: {
+    position: 'absolute',
+    top: 54,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  collectionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(20,16,12,0.6)',
+    borderRadius: Radius.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    maxWidth: '80%',
+  },
+  collectionChipOn: { backgroundColor: T.brassDeep },
+  collectionChipText: { color: '#F4ECDC', fontSize: 12.5, fontWeight: '600' },
+  collectionChipTextOn: { color: '#FFFFFF', fontWeight: '700' },
+  collectionClear: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(20,16,12,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   countBadge: {
     position: 'absolute',
     right: 12,
@@ -734,6 +902,14 @@ const styles = StyleSheet.create({
   webChipOn: { backgroundColor: T.ink, borderColor: T.ink },
   webChipText: { fontSize: 12.5, fontWeight: '600', color: T.inkSoft },
   webChipTextOn: { color: T.surface },
+  webCollectionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderColor: T.brass,
+    backgroundColor: T.brassTint,
+    maxWidth: 260,
+  },
   webWell: { marginBottom: Spacing.three, paddingVertical: 4 },
   webInput: { fontSize: 15, color: T.ink, paddingVertical: 10 },
   webAdded: { marginTop: Spacing.three, textAlign: 'center' },

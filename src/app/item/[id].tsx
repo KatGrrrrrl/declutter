@@ -30,6 +30,7 @@ import {
   View,
 } from 'react-native';
 
+import { CollectionPicker } from '@/components/collection-picker';
 import { DonateTo } from '@/components/donate-to';
 import { ItemChat } from '@/components/item-chat';
 import { notify, ROOMS } from '@/components/child/shared';
@@ -48,7 +49,7 @@ import {
 import { Fonts, Spacing, T } from '@/constants/theme';
 import { estimateItemValue } from '@/lib/estimate-value';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
-import { useActiveHousehold, useCanDecide, useStore } from '@/lib/store';
+import { useActiveHousehold, useCanDecide, useCollection, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ValueEstimate } from '@/lib/estimate-value';
@@ -86,6 +87,8 @@ export default function ItemDetailScreen() {
   const undoDecision = useStore((s) => s.undoDecision);
   const setMainDecider = useStore((s) => s.setMainDecider);
   const setArchived = useStore((s) => s.setArchived);
+  const setItemCollection = useStore((s) => s.setItemCollection);
+  const collection = useCollection(item?.collectionId);
   const canDecide = useCanDecide();
   const household = useActiveHousehold();
   const deciders = household?.deciderNames ?? [];
@@ -106,6 +109,7 @@ export default function ItemDetailScreen() {
   const [editTitle, setEditTitle] = useState('');
   const [editRoom, setEditRoom] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [collectionSheet, setCollectionSheet] = useState(false);
 
   const startEdit = () => {
     if (!item) return;
@@ -466,6 +470,39 @@ export default function ItemDetailScreen() {
           ))}
         </Row>
       ) : null}
+
+      {/* Collection membership — any member may file/re-file (like rooms),
+          via the same canManage gate as name/room edits. */}
+      {(collection || canManage) && (
+        <Pressable
+          accessibilityRole={canManage ? 'button' : undefined}
+          accessibilityLabel={
+            collection
+              ? `Part of ${collection.name}${canManage ? '. Change collection' : ''}`
+              : 'Add to a collection'
+          }
+          disabled={!canManage}
+          onPress={() => setCollectionSheet(true)}
+          style={({ pressed }) => [styles.collectionRow, pressed && canManage && styles.pressed]}
+        >
+          <Ionicons name="albums-outline" size={15} color={T.brassDeep} />
+          <Text style={styles.collectionRowText} numberOfLines={1}>
+            {collection ? `Part of ${collection.name}` : 'Add to a collection'}
+          </Text>
+          {canManage && <Ionicons name="chevron-forward" size={15} color={T.inkFaint} />}
+        </Pressable>
+      )}
+      <CollectionPicker
+        visible={collectionSheet}
+        onClose={() => setCollectionSheet(false)}
+        onPick={(cid) => {
+          setItemCollection(item.id, cid);
+          setCollectionSheet(false);
+        }}
+        currentId={item.collectionId}
+        allowNone={!!item.collectionId}
+        title={`File “${item.title}” into…`}
+      />
       {isOwner && item.requestedBy ? (
         <Muted style={styles.requestedNote}>
           {item.requestedBy} has quietly asked about this one.
@@ -848,6 +885,20 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   tagRow: { marginTop: Spacing.two, flexWrap: 'wrap', gap: Spacing.two },
+  collectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 44,
+    marginTop: Spacing.two,
+    borderWidth: 1,
+    borderColor: T.brass,
+    backgroundColor: T.brassTint,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.three,
+    alignSelf: 'flex-start',
+  },
+  collectionRowText: { fontSize: 14, fontWeight: '700', color: T.brassDeep, flexShrink: 1 },
   requestedNote: {
     marginTop: Spacing.two,
     fontSize: 14,

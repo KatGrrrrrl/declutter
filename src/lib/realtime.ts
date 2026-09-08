@@ -32,6 +32,7 @@ interface ItemRow {
   donate_to: string | null;
   donate_to_kind: 'charity' | 'person' | null;
   archived: boolean | null;
+  collection_id: string | null;
   created_at: string;
 }
 
@@ -130,6 +131,7 @@ function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
           donateTo: r.donate_to ?? undefined,
           donateToKind: r.donate_to_kind ?? undefined,
           archived: r.archived ?? false,
+          collectionId: r.collection_id ?? undefined,
           createdAt: r.created_at,
         });
       }

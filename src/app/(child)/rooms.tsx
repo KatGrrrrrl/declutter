@@ -4,17 +4,19 @@
  * inventory filtered to it.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { MiniChip, ROOMS } from '@/components/child/shared';
 import { Heading, Label, Muted, Screen, Title } from '@/components/ui';
 import { Spacing, T } from '@/constants/theme';
-import { useStore } from '@/lib/store';
+import { useCollections, useStore } from '@/lib/store';
 
 export default function RoomsScreen() {
   const router = useRouter();
   const items = useStore((s) => s.items);
+  const collections = useCollections();
 
   // Canonical rooms first, then any extra rooms items have accumulated.
   const extraRooms = [...new Set(items.map((i) => i.room))].filter(
@@ -63,6 +65,45 @@ export default function RoomsScreen() {
           );
         })}
       </View>
+
+      {/* collections — sets that cut across rooms (coins, wine, tools…) */}
+      {collections.length > 0 && (
+        <>
+          <Label style={styles.collectionsLabel} asHeading>
+            Collections
+          </Label>
+          <View style={styles.grid}>
+            {collections.map((c) => {
+              const inSet = items.filter((i) => i.collectionId === c.id && !i.archived);
+              const undecided = inSet.filter((i) => i.decision === 'undecided').length;
+              return (
+                <Pressable
+                  key={c.id}
+                  accessibilityRole="button"
+                  onPress={() =>
+                    router.push({ pathname: '/collection/[id]', params: { id: c.id } })
+                  }
+                  style={({ pressed }) => [styles.card, styles.collectionCard, pressed && styles.pressed]}
+                >
+                  <View style={styles.collectionHead}>
+                    <Ionicons name="albums-outline" size={15} color={T.brassDeep} />
+                    <Heading style={styles.roomName} numberOfLines={1}>
+                      {c.name}
+                    </Heading>
+                  </View>
+                  <Muted style={styles.count}>
+                    {inSet.length === 1 ? '1 item' : `${inSet.length} items`}
+                  </Muted>
+                  <View style={styles.chips}>
+                    {undecided > 0 && <MiniChip label={`${undecided} undecided`} />}
+                    {inSet.length === 0 && <MiniChip label="Nothing yet" color={T.inkFaint} />}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
     </Screen>
   );
 }
@@ -93,4 +134,7 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: Spacing.two,
   },
+  collectionsLabel: { marginTop: Spacing.five },
+  collectionCard: { borderColor: T.brass, backgroundColor: T.brassTint },
+  collectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 });

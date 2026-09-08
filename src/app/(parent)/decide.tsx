@@ -7,7 +7,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -17,9 +17,27 @@ import {
 } from '@/components/parent/swipe-card';
 import { Btn, DECISION_META, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
-import { useActiveHousehold, useCanDecide, useQueue, useStore } from '@/lib/store';
+import {
+  Collection,
+  Item,
+  useActiveHousehold,
+  useCanDecide,
+  useCollections,
+  useQueue,
+  useStore,
+} from '@/lib/store';
 
 const UNDO_MS = 6000;
+
+/**
+ * One entry in the deck: a lone item, or a whole collection collapsed into a
+ * single card — forty coins should be one swipe, not forty. A collection
+ * collapses only while it has ≥2 undecided members and the parent hasn't
+ * chosen "decide one by one" for it this session.
+ */
+type DeckCard =
+  | { kind: 'item'; key: string; item: Item }
+  | { kind: 'collection'; key: string; collection: Collection; members: Item[]; face: Item };
 
 /** "Rose", "Rose and Arthur", "Rose, Arthur and June". */
 function joinNames(names: string[]) {
@@ -35,8 +53,10 @@ function successHaptic() {
 export default function DecideScreen() {
   const router = useRouter();
   const queue = useQueue();
+  const collections = useCollections();
   const decide = useStore((s) => s.decide);
   const undoDecision = useStore((s) => s.undoDecision);
+  const bulkDecide = useStore((s) => s.bulkDecide);
   const canDecide = useCanDecide();
   const household = useActiveHousehold();
   const setRole = useStore((s) => s.setRole);
@@ -45,8 +65,10 @@ export default function DecideScreen() {
   const busyRef = useRef(false);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sessionDone, setSessionDone] = useState(0);
+  /** Collections the parent chose to decide item-by-item (this session only). */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const [lastDecided, setLastDecided] = useState<{
-    id: string;
+    ids: string[];
     title: string;
     decision: SwipeDecision;
   } | null>(null);
@@ -58,15 +80,50 @@ export default function DecideScreen() {
     []
   );
 
-  const current = queue[0];
-  const next = queue[1];
+  // Collapse collections into single cards, placed where their best-ranked
+  // member sits so the queue's ordering (whose call it is) still holds.
+  const cards = useMemo<DeckCard[]>(() => {
+    const byId = new Map(collections.map((c) => [c.id, c]));
+    const grouped = new Map<string, Item[]>();
+    for (const it of queue) {
+      if (it.collectionId && byId.has(it.collectionId) && !expandedIds.has(it.collectionId)) {
+        grouped.set(it.collectionId, [...(grouped.get(it.collectionId) ?? []), it]);
+      }
+    }
+    const emitted = new Set<string>();
+    const out: DeckCard[] = [];
+    for (const it of queue) {
+      const cid = it.collectionId;
+      const members = cid ? grouped.get(cid) : undefined;
+      if (cid && members && members.length >= 2) {
+        if (!emitted.has(cid)) {
+          emitted.add(cid);
+          const face = members.find((m) => m.photoUri || m.remotePhotoPath) ?? members[0];
+          out.push({ kind: 'collection', key: cid, collection: byId.get(cid)!, members, face });
+        }
+        continue;
+      }
+      out.push({ kind: 'item', key: it.id, item: it });
+    }
+    return out;
+  }, [queue, collections, expandedIds]);
 
-  const handleCommit = (id: string, decision: SwipeDecision) => {
+  const current = cards[0];
+  const next = cards[1];
+  const allItems = useStore((s) => s.items);
+
+  const handleCommit = (card: DeckCard, decision: SwipeDecision) => {
     busyRef.current = false;
-    const item = queue.find((i) => i.id === id);
-    decide(id, decision);
-    setSessionDone((n) => n + 1);
-    setLastDecided({ id, title: item?.title ?? 'that one', decision });
+    if (card.kind === 'collection') {
+      const ids = card.members.map((m) => m.id);
+      bulkDecide(ids, decision);
+      setSessionDone((n) => n + 1);
+      setLastDecided({ ids, title: card.collection.name, decision });
+    } else {
+      decide(card.item.id, decision);
+      setSessionDone((n) => n + 1);
+      setLastDecided({ ids: [card.item.id], title: card.item.title, decision });
+    }
     successHaptic();
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setLastDecided(null), UNDO_MS);
@@ -84,14 +141,16 @@ export default function DecideScreen() {
   const handleUndo = () => {
     if (!lastDecided) return;
     if (undoTimer.current) clearTimeout(undoTimer.current);
-    undoDecision(lastDecided.id);
+    if (lastDecided.ids.length === 1) undoDecision(lastDecided.ids[0]);
+    else bulkDecide(lastDecided.ids, 'undecided');
     setSessionDone((n) => Math.max(0, n - 1));
     setLastDecided(null);
     busyRef.current = false;
   };
 
-  // Gentle progress: dots fill as today's pile shrinks.
-  const total = queue.length + sessionDone;
+  // Gentle progress: dots fill as today's pile shrinks (one dot-step per card,
+  // so a forty-coin collection counts as the single decision it is).
+  const total = cards.length + sessionDone;
   const dotsOn = total === 0 ? 5 : Math.round((sessionDone / total) * 5);
 
   // Reachable edge: viewing as owner without holding the final say in the
@@ -132,7 +191,7 @@ export default function DecideScreen() {
         <Row style={styles.headRight}>
           {current ? (
             <Text style={styles.togo}>
-              <Text style={styles.togoNum}>{queue.length}</Text> to go
+              <Text style={styles.togoNum}>{cards.length}</Text> to go
             </Text>
           ) : null}
           <Pressable
@@ -155,17 +214,42 @@ export default function DecideScreen() {
       <View style={styles.deck}>
         {next ? (
           <View style={[styles.nextCard]} pointerEvents="none">
-            <PhotoBox title={next.title} photoUri={next.photoUri} height={170} />
+            <PhotoBox
+              title={next.kind === 'collection' ? next.collection.name : next.item.title}
+              photoUri={next.kind === 'collection' ? next.face.photoUri : next.item.photoUri}
+              height={170}
+            />
           </View>
         ) : null}
 
         {current ? (
-          <SwipeCard
-            key={current.id}
-            ref={cardRef}
-            item={current}
-            onCommit={handleCommit}
-          />
+          current.kind === 'collection' ? (
+            <SwipeCard
+              key={current.key}
+              ref={cardRef}
+              item={current.face}
+              collection={(() => {
+                const all = allItems.filter(
+                  (i) => i.collectionId === current.collection.id && !i.archived
+                );
+                return {
+                  name: current.collection.name,
+                  undecided: current.members.length,
+                  total: all.length,
+                  value: all.reduce((sum, i) => sum + (i.marketValue ?? 0), 0),
+                  requests: all.filter((i) => i.requestedBy).length,
+                };
+              })()}
+              onCommit={(_, decision) => handleCommit(current, decision)}
+            />
+          ) : (
+            <SwipeCard
+              key={current.key}
+              ref={cardRef}
+              item={current.item}
+              onCommit={(_, decision) => handleCommit(current, decision)}
+            />
+          )
         ) : (
           <View style={styles.allCaught}>
             <Ionicons name="checkmark-circle-outline" size={58} color={T.keep} />
@@ -241,16 +325,44 @@ export default function DecideScreen() {
             </View>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              router.push({ pathname: '/item/[id]', params: { id: current.id } })
-            }
-            style={({ pressed }) => [styles.tellBar, pressed && styles.pressed]}
-          >
-            <Ionicons name="mic-outline" size={19} color={T.brassDeep} />
-            <Text style={styles.tellText}>Tell me about this one</Text>
-          </Pressable>
+          {current.kind === 'collection' ? (
+            <Row style={styles.setBars}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  router.push({
+                    pathname: '/collection/[id]',
+                    params: { id: current.collection.id },
+                  })
+                }
+                style={({ pressed }) => [styles.tellBar, styles.setBar, pressed && styles.pressed]}
+              >
+                <Ionicons name="albums-outline" size={18} color={T.brassDeep} />
+                <Text style={styles.tellText}>Look inside</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  setExpandedIds((prev) => new Set(prev).add(current.collection.id))
+                }
+                style={({ pressed }) => [styles.tellBar, styles.setBar, pressed && styles.pressed]}
+              >
+                <Ionicons name="layers-outline" size={18} color={T.brassDeep} />
+                <Text style={styles.tellText}>One by one</Text>
+              </Pressable>
+            </Row>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                router.push({ pathname: '/item/[id]', params: { id: current.item.id } })
+              }
+              style={({ pressed }) => [styles.tellBar, pressed && styles.pressed]}
+            >
+              <Ionicons name="mic-outline" size={19} color={T.brassDeep} />
+              <Text style={styles.tellText}>Tell me about this one</Text>
+            </Pressable>
+          )}
         </>
       ) : (
         <View style={styles.footerSpacer} />
@@ -412,6 +524,8 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   tellText: { fontSize: 15, fontWeight: '600', color: T.brassDeep },
+  setBars: { gap: Spacing.two },
+  setBar: { flex: 1 },
   footerSpacer: { height: Spacing.three },
   pressed: { opacity: 0.7 },
 });

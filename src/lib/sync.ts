@@ -14,7 +14,7 @@
  *   and carries `remotePhotoPath` back on pulls.
  */
 
-import type { Item, ItemMessage, Member, Person } from '@/lib/store';
+import type { Collection, Item, ItemMessage, Member, Person } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 export interface SyncInput {
@@ -23,10 +23,80 @@ export interface SyncInput {
   householdName: string;
   items: Item[];
   people: Person[];
+  collections: Collection[];
   messages: ItemMessage[];
   members: Member[];
   deciderNames: string[];
   userName: string;
+}
+
+/**
+ * Upload collection rows so item rows may reference them (items.collection_id
+ * is a FK). Called LAZILY — only with collections at least one uploadable item
+ * actually points at — so a collection holding nothing but localOnly items
+ * never reaches the cloud, not even its name. Contributor upserts never
+ * overwrite (`ignoreDuplicates`), matching the items convention.
+ */
+async function upsertCollections(
+  collections: Collection[],
+  householdId: string,
+  userId: string,
+  isOwner: boolean
+): Promise<{ error?: string }> {
+  if (!collections.length) return {};
+  const { error } = await supabase.from('collections').upsert(
+    collections.map((c) => ({
+      id: c.id,
+      household_id: householdId,
+      name: c.name,
+      note: c.note ?? null,
+      created_by: userId,
+      created_by_name: c.createdBy || null,
+      created_at: c.createdAt,
+    })),
+    { ignoreDuplicates: !isOwner }
+  );
+  return error ? { error: error.message } : {};
+}
+
+/** The collections a given set of item rows references. */
+const referencedCollections = (collections: Collection[], items: Item[]): Collection[] => {
+  const ids = new Set(items.map((i) => i.collectionId).filter(Boolean));
+  return collections.filter((c) => ids.has(c.id));
+};
+
+/**
+ * Before a single item row referencing a collection goes up, make sure the
+ * collection row exists (items.collection_id is a FK). Reads the local store
+ * lazily — the dynamic import avoids a static store↔sync cycle. Unknown ids
+ * are fine: the cloud row may already exist from another device.
+ */
+async function ensureCollectionUploaded(
+  collectionId: string,
+  householdId: string,
+  userId: string,
+  isOwner: boolean
+): Promise<void> {
+  const { useStore } = await import('@/lib/store');
+  const c = useStore.getState().collections.find((x) => x.id === collectionId);
+  if (c) await upsertCollections([c], householdId, userId, isOwner);
+}
+
+/**
+ * Mirror a collection rename / note edit. A plain UPDATE on purpose: a
+ * collection that was never uploaded (it only ever held localOnly items)
+ * stays off-cloud — renaming it must not create the row.
+ */
+export async function pushCollectionUpdate(
+  c: Collection
+): Promise<{ ok: boolean; error?: string }> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return { ok: false, error: 'Not signed in.' };
+  const { error } = await supabase
+    .from('collections')
+    .update({ name: c.name, note: c.note ?? null })
+    .eq('id', c.id);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 export interface SyncResult {
@@ -132,12 +202,18 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
       : uploadable.filter((i) => i.addedBy === input.userName && i.decision === 'undecided');
 
     if (mine.length) {
+      // Collections referenced by pushed items go first (FK on the item rows).
+      const cols = referencedCollections(input.collections, mine);
+      const colErr = await upsertCollections(cols, hid, user.id, isOwner);
+      if (colErr.error) throw new Error(colErr.error);
+
       const rows = mine.map((i) => ({
         id: i.id,
         household_id: hid,
         created_by: user.id,
         title: i.title,
         room: i.room || null,
+        collection_id: i.collectionId ?? null,
         decision: isOwner ? i.decision : 'undecided',
         decided_by: isOwner && i.decision !== 'undecided' ? user.id : null,
         decided_by_name: isOwner && i.decision !== 'undecided' ? (i.decidedBy ?? null) : null,
@@ -239,6 +315,7 @@ export interface PullResult {
     cloudHouseholdId: string;
     items: Item[];
     people: Person[];
+    collections: Collection[];
     messages: ItemMessage[];
     members: Member[];
     /** Ids of items this account captured — the store restores their addedBy. */
@@ -260,15 +337,17 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
     if (hhErr) throw hhErr;
     if (!hh) return { ok: false, error: 'No household found on this account yet.' };
 
-    const [items, tags, stories, people, roster, photos] = await Promise.all([
+    const [items, tags, stories, people, roster, photos, collections] = await Promise.all([
       supabase.from('items').select('*').eq('household_id', hh.id),
       supabase.from('item_tags').select('*'),
       supabase.from('stories').select('*'),
       supabase.from('people').select('*').eq('household_id', hh.id),
       supabase.from('roster_entries').select('*').eq('household_id', hh.id),
       supabase.from('item_photos').select('item_id, storage_path, is_primary, created_at'),
+      supabase.from('collections').select('*').eq('household_id', hh.id),
     ]);
-    for (const r of [items, tags, stories, people, roster, photos]) if (r.error) throw r.error;
+    for (const r of [items, tags, stories, people, roster, photos, collections])
+      if (r.error) throw r.error;
 
     const itemIds = (items.data ?? []).map((i) => i.id);
     const { data: msgs, error: msgErr } = itemIds.length
@@ -313,6 +392,7 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
       donateToKind: i.donate_to_kind ?? undefined,
       remotePhotoPath: photoByItem.get(i.id),
       archived: i.archived ?? false,
+      collectionId: i.collection_id ?? undefined,
       createdAt: i.created_at,
     }));
 
@@ -320,6 +400,14 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
       id: p.id,
       displayName: p.display_name,
       relationship: p.relationship ?? '',
+    }));
+
+    const localCollections: Collection[] = (collections.data ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      note: c.note ?? undefined,
+      createdBy: c.created_by_name ?? 'Family',
+      createdAt: c.created_at,
     }));
 
     const localMessages: ItemMessage[] = (msgs ?? []).map((m) => ({
@@ -353,6 +441,7 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
         cloudHouseholdId: hh.id,
         items: localItems,
         people: localPeople,
+        collections: localCollections,
         messages: localMessages,
         members: localMembers,
         selfItemIds: (items.data ?? [])
@@ -399,6 +488,10 @@ export async function pushItem(
   // Contributors may not decide; the DB's items_guard enforces this too.
   const decided = isOwner && item.decision !== 'undecided';
 
+  if (item.collectionId) {
+    await ensureCollectionUploaded(item.collectionId, cloudHouseholdId, user.id, isOwner);
+  }
+
   const { error } = await supabase.from('items').upsert(
     {
       id: item.id,
@@ -406,6 +499,7 @@ export async function pushItem(
       created_by: user.id,
       title: item.title,
       room: item.room || null,
+      collection_id: item.collectionId ?? null,
       decision: isOwner ? item.decision : 'undecided',
       decided_by: decided ? user.id : null,
       decided_by_name: decided ? (item.decidedBy ?? null) : null,
@@ -453,9 +547,14 @@ export async function pushItemUpdate(
   }
   const isOwner = role === 'owner' || role === 'co_owner';
 
+  if (item.collectionId) {
+    await ensureCollectionUploaded(item.collectionId, cloudHouseholdId, auth.user.id, isOwner);
+  }
+
   const patch: Record<string, unknown> = {
     title: item.title,
     room: item.room || null,
+    collection_id: item.collectionId ?? null,
     market_value_cents: item.marketValue != null ? Math.round(item.marketValue * 100) : null,
     is_sentimental: item.isSentimental,
     donate_to: item.donateTo ?? null,
@@ -528,6 +627,11 @@ export async function reconcileHousehold(
   const decidedAt = (i: Item) =>
     isOwner && i.decision !== 'undecided' ? (i.decidedAt ?? new Date().toISOString()) : null;
 
+  // Collections the backlog references must exist before the item FKs land.
+  for (const c of new Set(mine.map((i) => i.collectionId).filter((x): x is string => !!x))) {
+    await ensureCollectionUploaded(c, householdId, user.id, isOwner);
+  }
+
   const { error } = await supabase.from('items').upsert(
     mine.map((i) => ({
       id: i.id,
@@ -535,6 +639,7 @@ export async function reconcileHousehold(
       created_by: user.id,
       title: i.title,
       room: i.room || null,
+      collection_id: i.collectionId ?? null,
       decision: isOwner ? i.decision : 'undecided',
       decided_by: isOwner && i.decision !== 'undecided' ? user.id : null,
       decided_by_name: isOwner && i.decision !== 'undecided' ? (i.decidedBy ?? null) : null,

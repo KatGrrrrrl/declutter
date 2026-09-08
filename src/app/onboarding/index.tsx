@@ -214,6 +214,7 @@ export default function OnboardingScreen() {
           householdName: s.householdName,
           items: s.items,
           people: s.people,
+          collections: s.collections,
           messages: s.messages,
           members: s.members,
           deciderNames: h?.deciderNames ?? [s.ownerName],

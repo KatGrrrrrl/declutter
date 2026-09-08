@@ -20,6 +20,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ROOMS } from '@/components/child/shared';
+import { CollectionPicker } from '@/components/collection-picker';
 import { ItemQuotaMeter } from '@/components/limit-banner';
 import { DecisionPill, Heading, Label, Muted, PhotoBox, Screen, Title, useIsDesktop } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
@@ -28,6 +29,7 @@ import {
   isRecentlyDecided,
   Item,
   useCanDecide,
+  useCollections,
   useDuplicateIds,
   useMessageCount,
   useStore,
@@ -138,6 +140,8 @@ export function InventoryView() {
   const bulkDecide = useStore((s) => s.bulkDecide);
   const bulkSetRoom = useStore((s) => s.bulkSetRoom);
   const bulkArchive = useStore((s) => s.bulkArchive);
+  const bulkSetCollection = useStore((s) => s.bulkSetCollection);
+  const collections = useCollections();
   const canDecide = useCanDecide();
   const isDesktop = useIsDesktop();
   const duplicateIds = useDuplicateIds();
@@ -148,6 +152,7 @@ export function InventoryView() {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [roomSheet, setRoomSheet] = useState(false);
+  const [collectionSheet, setCollectionSheet] = useState(false);
   /** In-screen room filter, used when the user didn't arrive from Rooms. */
   const [roomPick, setRoomPick] = useState<string | undefined>(undefined);
   const [showRooms, setShowRooms] = useState(false);
@@ -161,6 +166,19 @@ export function InventoryView() {
   // ?room= (from Rooms) wins; the in-screen picker is the fallback.
   const room = roomParam || roomPick || undefined;
   const dupSet = useMemo(() => new Set(duplicateIds), [duplicateIds]);
+  const collectionName = useMemo(
+    () => new Map(collections.map((c) => [c.id, c.name])),
+    [collections]
+  );
+  const collectionCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    items.forEach((i) => {
+      if (i.collectionId && !i.archived) {
+        m.set(i.collectionId, (m.get(i.collectionId) ?? 0) + 1);
+      }
+    });
+    return m;
+  }, [items]);
 
   /** Every room actually in use, plus the canonical capture rooms. */
   const allRooms = useMemo(() => {
@@ -249,6 +267,7 @@ export function InventoryView() {
     setSelecting(false);
     setSelected([]);
     setRoomSheet(false);
+    setCollectionSheet(false);
   };
 
   const applyDecision = (decision: Decision) => {
@@ -260,6 +279,12 @@ export function InventoryView() {
   const applyRoom = (r: string) => {
     if (selected.length === 0) return;
     bulkSetRoom(selected, r);
+    endSelect();
+  };
+
+  const applyCollection = (collectionId: string | undefined) => {
+    if (selected.length === 0) return;
+    bulkSetCollection(selected, collectionId);
     endSelect();
   };
 
@@ -525,6 +550,33 @@ export function InventoryView() {
         </View>
       )}
 
+      {/* collections strip — each opens its own screen */}
+      {collections.length > 0 && (
+        <View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.collectionsStrip}>
+              {collections.map((c) => (
+                <Pressable
+                  key={c.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open the ${c.name} collection`}
+                  onPress={() =>
+                    router.push({ pathname: '/collection/[id]', params: { id: c.id } })
+                  }
+                  style={({ pressed }) => [styles.cchip, pressed && styles.pressed]}
+                >
+                  <Ionicons name="albums-outline" size={14} color={T.brassDeep} />
+                  <Text style={styles.cchipText} numberOfLines={1}>
+                    {c.name}
+                  </Text>
+                  <Text style={styles.cchipCount}>{collectionCounts.get(c.id) ?? 0}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
       {/* rows — a single column on phones, a wrapped 2-up grid on desktop so
           the wide content area doesn't leave items stranded in one thin column.
           The whole screen shares one scroll (below), so the header scrolls away
@@ -581,6 +633,14 @@ export function InventoryView() {
                 </Heading>
                 <View style={styles.subRow}>
                   <Muted style={styles.roomText}>{it.room}</Muted>
+                  {it.collectionId && collectionName.has(it.collectionId) && (
+                    <View style={styles.collectionTag}>
+                      <Ionicons name="albums-outline" size={10} color={T.brassDeep} />
+                      <Text style={styles.collectionTagText} numberOfLines={1}>
+                        {collectionName.get(it.collectionId)}
+                      </Text>
+                    </View>
+                  )}
                   {it.tags.map((t) => (
                     <Text key={t} style={styles.tagText}>
                       #{t}
@@ -730,6 +790,14 @@ export function InventoryView() {
                 <Pressable
                   accessibilityRole="button"
                   disabled={selected.length === 0}
+                  onPress={() => setCollectionSheet(true)}
+                  style={[styles.bulkBtn, styles.plainBtn, selected.length === 0 && styles.bulkOff]}
+                >
+                  <Text style={[styles.bulkBtnText, styles.plainText]}>Collection…</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={selected.length === 0}
                   onPress={applyArchive}
                   style={[styles.bulkBtn, styles.plainBtn, selected.length === 0 && styles.bulkOff]}
                 >
@@ -749,6 +817,15 @@ export function InventoryView() {
           )}
         </View>
       )}
+
+      {/* bulk "file into collection" sheet */}
+      <CollectionPicker
+        visible={collectionSheet}
+        onClose={() => setCollectionSheet(false)}
+        onPick={applyCollection}
+        allowNone
+        title={`File ${selected.length} item${selected.length === 1 ? '' : 's'} into…`}
+      />
     </Screen>
   );
 }
@@ -907,6 +984,34 @@ const styles = StyleSheet.create({
   rpickOn: { backgroundColor: T.heading, borderColor: T.heading },
   rpickText: { fontSize: 15, fontWeight: '600', color: T.inkSoft },
   rpickTextOn: { color: '#FFFFFF' },
+
+  collectionsStrip: { flexDirection: 'row', gap: 7, paddingVertical: Spacing.two },
+  cchip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: T.brass,
+    backgroundColor: T.brassTint,
+    borderRadius: Radius.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    maxWidth: 240,
+  },
+  cchipText: { fontSize: 14.5, fontWeight: '700', color: T.brassDeep },
+  cchipCount: { fontSize: 12.5, fontWeight: '600', color: T.inkSoft },
+  collectionTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: T.brassTint,
+    borderRadius: Radius.pill,
+    paddingVertical: 1,
+    paddingHorizontal: 7,
+    maxWidth: 150,
+  },
+  collectionTagText: { fontSize: 12, fontWeight: '700', color: T.brassDeep },
 
   row: {
     flexDirection: 'row',

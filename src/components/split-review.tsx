@@ -30,10 +30,13 @@ interface Row extends ProposedItem {
 export function SplitReview({
   proposals,
   room,
+  collectionId,
   onClose,
 }: {
   proposals: ProposedItem[];
   room: string;
+  /** Capture's sticky collection — approved items are filed into it too. */
+  collectionId?: string;
   /** Called when the review ends, with how many items were added (0 = cancelled). */
   onClose: (added: number) => void;
 }) {
@@ -60,6 +63,7 @@ export function SplitReview({
         photoUri: r.photoUri,
         addedBy: userName,
         tags: [],
+        collectionId,
         ...(canDecide ? { decision: 'keep' as const, decidedAt: new Date().toISOString() } : null),
       });
       if (!res.ok) break;
