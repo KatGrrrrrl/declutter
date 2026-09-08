@@ -277,6 +277,21 @@ interface AppState {
      */
     selfItemIds?: string[];
   }) => void;
+  /**
+   * Merge a cloud pull into local state WITHOUT replacing it — the refresh
+   * sync CloudBridge runs on every connect/load. Adds items, collections and
+   * chat this device has never seen, and overlays the CLOUD-OWNED fields on
+   * items it already holds (device-local state — photo uri, story, heirs,
+   * main decider, localOnly — is never touched). Deliberately deletes
+   * nothing: live deletions arrive over realtime, and a full Restore remains
+   * the reset button.
+   */
+  mergeCloudData: (snap: {
+    items: Item[];
+    collections: Collection[];
+    messages: ItemMessage[];
+    selfItemIds?: string[];
+  }) => void;
   /** Merge one realtime row from another family member's device. */
   applyRemoteMessage: (m: ItemMessage) => void;
   /** Apply an item INSERT/UPDATE arriving from another device. */
@@ -1119,6 +1134,53 @@ export const useStore = create<AppState>()(
             collections: snap.collections,
             messages: snap.messages,
             members: snap.members,
+          };
+        }),
+
+      mergeCloudData: ({ items, collections, messages, selfItemIds }) =>
+        set((s) => {
+          const cloudById = new Map(items.map((i) => [i.id, i]));
+          const localIds = new Set(s.items.map((i) => i.id));
+          const mine = new Set(selfItemIds ?? []);
+          // Items this device holds: overlay only what the cloud row owns —
+          // the same field set realtime merges — plus the photo path.
+          const merged = s.items.map((local) => {
+            const cloud = cloudById.get(local.id);
+            if (!cloud) return local; // localOnly, or pushed after this pull
+            return {
+              ...local,
+              title: cloud.title,
+              room: cloud.room,
+              decision: cloud.decision,
+              decidedAt: cloud.decidedAt,
+              decidedBy: cloud.decidedBy,
+              marketValue: cloud.marketValue,
+              isSentimental: cloud.isSentimental,
+              donateTo: cloud.donateTo,
+              donateToKind: cloud.donateToKind,
+              archived: cloud.archived,
+              collectionId: cloud.collectionId,
+              remotePhotoPath: cloud.remotePhotoPath ?? local.remotePhotoPath,
+              story: local.story ?? cloud.story,
+            };
+          });
+          // Items the cloud has that this device has never seen.
+          const fresh = items
+            .filter((i) => !localIds.has(i.id))
+            .map((i) => (mine.has(i.id) ? { ...i, addedBy: s.userName } : i));
+          // Collections: the cloud copy wins on name/note; collections only
+          // this device knows (e.g. holding localOnly items) survive.
+          const cloudColIds = new Set(collections.map((c) => c.id));
+          const mergedCols = [
+            ...collections,
+            ...s.collections.filter((c) => !cloudColIds.has(c.id)),
+          ];
+          const msgIds = new Set(s.messages.map((m) => m.id));
+          const freshMsgs = messages.filter((m) => !msgIds.has(m.id));
+          return {
+            items: [...fresh, ...merged],
+            collections: mergedCols,
+            messages: [...s.messages, ...freshMsgs],
           };
         }),
 

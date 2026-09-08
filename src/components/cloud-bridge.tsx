@@ -48,13 +48,28 @@ export function CloudBridge() {
     if (!hasSession || !activeHouseholdId || isDemo) return;
     void (async () => {
       try {
-        const { reconcileHousehold } = await import('@/lib/sync');
+        const { reconcileHousehold, pullHousehold } = await import('@/lib/sync');
         const s = useStore.getState();
         const res = await reconcileHousehold(activeHouseholdId, s.items, s.collections, s.userName);
         // Only adopt the link if that household is still the one open — the
         // user may have switched while this was in flight.
         if (res.linked && useStore.getState().activeHouseholdId === activeHouseholdId) {
           useStore.getState().markCloudLinked(activeHouseholdId);
+          // Refresh sync: pull what the cloud has and merge it in, so a
+          // reload catches everything added elsewhere while this device was
+          // closed. Realtime only covers changes made while we're listening;
+          // without this, an item added from the phone overnight never
+          // appeared on the laptop until a manual Restore. Push (reconcile)
+          // runs first so the merge sees the union. Additive only — see
+          // store.mergeCloudData.
+          const pull = await pullHousehold(activeHouseholdId);
+          if (
+            pull.ok &&
+            pull.snapshot &&
+            useStore.getState().activeHouseholdId === activeHouseholdId
+          ) {
+            useStore.getState().mergeCloudData(pull.snapshot);
+          }
         }
       } catch {
         /* offline — the next load, or a manual backup, catches up */

@@ -504,7 +504,9 @@ function WebCapture() {
     })();
     setTitle('');
     setPhotoUri(null);
-    setNoPhoto(false); // photo-first again for the next item
+    // noPhoto is deliberately STICKY: someone typing in a shelf of coins or
+    // books shouldn't re-tick the box for every entry. Untick it to go back
+    // to photo-first capture.
     setAdded((n) => n + 1);
   };
 
