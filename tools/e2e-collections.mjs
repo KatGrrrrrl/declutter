@@ -28,15 +28,28 @@ import { randomUUID } from 'crypto';
 
 const URL = 'https://xkzuoogmcfrxicmoybzp.supabase.co';
 const PUBLISHABLE = 'sb_publishable_jvgjfZky19YKaFVrH29OWw_6srBfiP1';
-const SERVICE = process.env.SERVICE_KEY;
-if (!SERVICE) { console.error('SERVICE_KEY env required'); process.exit(1); }
 
-const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+// Two ways to get the throwaway users:
+//   SERVICE_KEY=…           — the script creates and deletes them itself.
+//   E2E_OWNER_EMAIL=… E2E_HELPER_EMAIL=… E2E_PASSWORD=…
+//                           — pre-created elsewhere (e.g. SQL over MCP);
+//                             the household is then cleaned up BY THE OWNER
+//                             (which live-tests the delete-household path),
+//                             and the auth users are deleted externally.
+const SERVICE = process.env.SERVICE_KEY;
+const PRESET =
+  process.env.E2E_OWNER_EMAIL && process.env.E2E_HELPER_EMAIL && process.env.E2E_PASSWORD;
+if (!SERVICE && !PRESET) {
+  console.error('Need SERVICE_KEY, or E2E_OWNER_EMAIL + E2E_HELPER_EMAIL + E2E_PASSWORD');
+  process.exit(1);
+}
+
+const admin = SERVICE ? createClient(URL, SERVICE, { auth: { persistSession: false } }) : null;
 const anon = () => createClient(URL, PUBLISHABLE, { auth: { persistSession: false } });
 const stamp = Date.now();
-const pw = `Test-${randomUUID()}`;
-const ownerEmail = `e2e-coll-owner-${stamp}@example.com`;
-const helperEmail = `e2e-coll-helper-${stamp}@example.com`;
+const pw = PRESET ? process.env.E2E_PASSWORD : `Test-${randomUUID()}`;
+const ownerEmail = PRESET ? process.env.E2E_OWNER_EMAIL : `e2e-coll-owner-${stamp}@example.com`;
+const helperEmail = PRESET ? process.env.E2E_HELPER_EMAIL : `e2e-coll-helper-${stamp}@example.com`;
 
 const results = [];
 const check = (name, ok, detail = '') => {
@@ -104,16 +117,20 @@ const itemRow = (item, hid, uid, isOwner) => {
 };
 
 let ownerId, helperId, hid;
+let owner;
 try {
-  const o = await admin.auth.admin.createUser({ email: ownerEmail, password: pw, email_confirm: true });
-  const h = await admin.auth.admin.createUser({ email: helperEmail, password: pw, email_confirm: true });
-  ownerId = o.data.user?.id;
-  helperId = h.data.user?.id;
-  check('create test users', Boolean(ownerId && helperId), o.error?.message ?? h.error?.message);
+  if (admin) {
+    const o = await admin.auth.admin.createUser({ email: ownerEmail, password: pw, email_confirm: true });
+    const h = await admin.auth.admin.createUser({ email: helperEmail, password: pw, email_confirm: true });
+    ownerId = o.data.user?.id;
+    helperId = h.data.user?.id;
+    check('create test users', Boolean(ownerId && helperId), o.error?.message ?? h.error?.message);
+  }
 
-  const owner = anon();
+  owner = anon();
   const os = await owner.auth.signInWithPassword({ email: ownerEmail, password: pw });
   check('owner signs in', !os.error, os.error?.message);
+  ownerId ??= os.data.user?.id;
   owner.realtime.setAuth(os.data.session.access_token);
 
   hid = randomUUID();
@@ -124,6 +141,7 @@ try {
   const helper = anon();
   const hs = await helper.auth.signInWithPassword({ email: helperEmail, password: pw });
   check('helper signs in', !hs.error, hs.error?.message);
+  helperId ??= hs.data.user?.id;
   helper.realtime.setAuth(hs.data.session.access_token);
   const acc = await helper.rpc('accept_invite', { p_household_id: hid });
   check('helper accepts invite', !acc.error, acc.error?.message);
@@ -235,15 +253,30 @@ try {
 } catch (e) {
   check('unexpected exception', false, e.stack ?? e.message);
 } finally {
-  if (hid) {
+  if (hid && admin) {
     const d = await admin.from('households').delete().eq('id', hid);
     const left = await admin.from('households').select('id').eq('id', hid);
     check('cleanup: household deleted', !d.error && (left.data ?? []).length === 0, d.error?.message);
+  } else if (hid && owner) {
+    // No service key: the OWNER deletes their own household — which is also a
+    // live test of the Settings "Delete everywhere" path (migration 0012 lets
+    // the last-owner guard yield to the household cascade).
+    const d = await owner.from('households').delete().eq('id', hid).select('id');
+    const left = await owner.from('households').select('id').eq('id', hid);
+    check(
+      'cleanup: OWNER deletes own household (Delete-everywhere path)',
+      !d.error && (d.data ?? []).length === 1 && (left.data ?? []).length === 0,
+      d.error?.message ?? `deleted=${(d.data ?? []).length}`
+    );
   }
-  for (const id of [ownerId, helperId]) {
-    if (!id) continue;
-    const r = await admin.auth.admin.deleteUser(id);
-    check(`cleanup: user ${id.slice(0, 8)} deleted`, !r.error, r.error?.message);
+  if (admin) {
+    for (const id of [ownerId, helperId]) {
+      if (!id) continue;
+      const r = await admin.auth.admin.deleteUser(id);
+      check(`cleanup: user ${id.slice(0, 8)} deleted`, !r.error, r.error?.message);
+    }
+  } else {
+    console.log('NOTE  preset-credential mode: delete the two auth users externally.');
   }
 }
 const failed = results.filter((r) => !r.ok);
