@@ -179,6 +179,8 @@
   .card-meta{padding:14px 4px 4px; text-align:center}
   .card-meta h3{font-family:var(--serif); font-size:22px; margin:0; font-weight:600}
   .card-meta p{margin:5px 0 0; font-size:12.5px; color:var(--ink-soft)}
+  .set-badge{display:inline-block; font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; font-weight:700; color:var(--brass-deep); background:var(--brass-tint); border:1px solid var(--brass); border-radius:999px; padding:4px 11px; margin-bottom:7px}
+  .card-meta .set-sub{font-size:11px; color:var(--ink-faint); margin-top:6px}
   .swipe-card.leave-right{transform:translateX(130%) rotate(9deg); opacity:0}
   .swipe-card.leave-left{transform:translateX(-130%) rotate(-9deg); opacity:0}
   .swipe-card.leave-down{transform:translateY(120%) rotate(-3deg); opacity:0}
@@ -293,12 +295,21 @@
   .shutter:active{transform:scale(.9)}
   .batch-note{text-align:center; font-size:11.5px; color:var(--ink-soft); padding:2px 20px 14px; font-weight:600}
   .batch-note b{color:var(--brass-deep)}
+  .coll-pill{position:absolute; top:54px; left:50%; transform:translateX(-50%); background:var(--brass-deep); color:#fff; padding:6px 13px; border-radius:999px; font-size:11.5px; font-weight:600; display:flex; align-items:center; gap:6px; white-space:nowrap}
+  .coll-pill svg{width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.7}
+  .coll-pill .x{opacity:.65; font-weight:700; margin-left:2px}
 
   /* ================= INVENTORY ================= */
   .filters{display:flex; gap:7px; overflow-x:auto; padding:2px 0 12px; -ms-overflow-style:none; scrollbar-width:none}
   .filters::-webkit-scrollbar{display:none}
   .fchip{flex:none; font-size:12px; font-weight:600; padding:7px 13px; border-radius:999px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink-soft); cursor:pointer; transition:.18s}
   .fchip[aria-pressed="true"]{background:var(--ink); color:var(--surface-2); border-color:transparent}
+  .coll-strip{display:flex; gap:7px; overflow-x:auto; padding:0 0 12px; -ms-overflow-style:none; scrollbar-width:none}
+  .coll-strip::-webkit-scrollbar{display:none}
+  .cchip{flex:none; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 13px; border-radius:999px; border:1px solid var(--brass); background:var(--brass-tint); color:var(--brass-deep); cursor:pointer; font-family:inherit; transition:.15s}
+  .cchip:hover{background:var(--brass); color:#fff}
+  .cchip .n{font-weight:600; opacity:.75}
+  .cchip svg{width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.6}
   .searchbar{display:flex; align-items:center; gap:9px; background:var(--sunken); border:1px solid var(--line); border-radius:12px; padding:10px 13px; margin-bottom:12px; color:var(--ink-faint); font-size:13px}
   .searchbar svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.7}
   .irow{display:flex; align-items:center; gap:12px; padding:11px 4px; border-bottom:1px solid var(--line-soft); cursor:pointer; transition:.15s}
@@ -663,6 +674,7 @@
               <div class="cam">
                 <div class="frame-corners"><i></i></div>
                 <div class="room-pill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Kitchen ▾</div>
+                <div class="coll-pill"><svg viewBox="0 0 24 24"><use href="#i-coins"/></svg>Coin collection<span class="x">×</span></div>
                 <div class="sync-pill"><svg viewBox="0 0 24 24"><path d="M4 14a5 5 0 0 1 4-8 6 6 0 0 1 11 2 4 4 0 0 1-1 8H7"/><path d="M12 12v6M9 15l3 3 3-3"/></svg>8</div>
                 <div class="subject"><svg viewBox="0 0 24 24"><use href="#i-vase"/></svg></div>
                 <div class="ai-hint"><svg class="spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>Looks like glassware · #vase</div>
@@ -676,13 +688,13 @@
                 <button class="shutter" aria-label="Take photo"></button>
                 <div style="width:76px"></div>
               </div>
-              <div class="batch-note"><b>Batch mode</b> · keep shooting, decide later. Works offline in the basement.</div>
+              <div class="batch-note"><b>Batch mode</b> · every shot files into Coin collection. Works offline in the basement.</div>
             </section>
 
             <!-- ===== CHILD: INVENTORY ===== -->
             <section class="screen" data-mode="child" data-tab="inventory">
               <div class="scr-head">
-                <div class="scr-eyebrow">247 items · 6 rooms</div>
+                <div class="scr-eyebrow">247 items · 6 rooms · 2 collections</div>
                 <h2 class="scr-title">Inventory</h2>
               </div>
               <div class="scr-body">
@@ -693,6 +705,15 @@
                   <button class="fchip" aria-pressed="false">Donate</button>
                   <button class="fchip" aria-pressed="false">Let go</button>
                   <button class="fchip" aria-pressed="false">Undecided</button>
+                </div>
+                <div class="coll-strip">
+                  <button class="cchip" onclick="showTab('child','collection')"><svg viewBox="0 0 24 24"><use href="#i-coins"/></svg>Coin collection<span class="n">12</span></button>
+                  <button class="cchip" onclick="showTab('child','collection')"><svg viewBox="0 0 24 24"><use href="#i-wine"/></svg>Wine cellar<span class="n">28</span></button>
+                </div>
+                <div class="irow" onclick="showTab('child','collection')">
+                  <div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-coins"/></svg></div>
+                  <div class="imain"><h4>1964 Kennedy half dollar</h4><div class="isub"><span class="chip">Undecided</span><span class="chip tag">Coin collection</span></div></div>
+                  <div class="iend"><span class="val">$18</span></div>
                 </div>
                 <div class="irow" onclick="showTab('child','crequest')">
                   <div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-teapot"/></svg></div>
@@ -713,6 +734,49 @@
                   <div class="photo ithumb"><svg viewBox="0 0 24 24"><use href="#i-clock"/></svg></div>
                   <div class="imain"><h4>Mantel clock</h4><div class="isub"><span class="chip">Undecided</span><span class="chip tag">#decor</span></div></div>
                   <div class="iend"><span class="val">$340</span></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== CHILD: COLLECTION DETAIL ===== -->
+            <section class="screen" data-mode="child" data-tab="collection">
+              <button class="detail-back" onclick="showTab('child','inventory')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Inventory</button>
+              <div class="scr-head">
+                <div class="scr-eyebrow">Collection · 12 items · $410 documented</div>
+                <h2 class="scr-title">Coin collection</h2>
+                <p class="scr-sub">Dad's coins — the folder with the papers is in the study.</p>
+              </div>
+              <div class="scr-body">
+                <button class="btn primary" style="width:100%;padding:13px;margin-bottom:14px" onclick="showTab('child','capture')">Add items — every shot files in here</button>
+                <div class="grid2">
+                  <button class="kcard" onclick="showTab('child','crequest')">
+                    <div class="photo"><svg viewBox="0 0 24 24"><use href="#i-coins"/></svg></div>
+                    <div class="kbody"><h4>1964 Kennedy half</h4>
+                      <div class="krow"><span class="chip">Undecided</span><span class="val">$18</span></div>
+                    </div>
+                  </button>
+                  <button class="kcard" onclick="showTab('child','crequest')">
+                    <div class="photo"><svg viewBox="0 0 24 24"><use href="#i-coins"/></svg></div>
+                    <div class="kbody"><h4>1922 Peace dollar</h4>
+                      <div class="krow"><span class="chip">Undecided</span><span class="val">$34</span></div>
+                    </div>
+                  </button>
+                  <button class="kcard" onclick="showTab('child','crequest')">
+                    <div class="photo"><svg viewBox="0 0 24 24"><use href="#i-coins"/></svg></div>
+                    <div class="kbody"><h4>Buffalo nickel</h4>
+                      <div class="krow"><span class="chip">Undecided</span><span class="val">$6</span></div>
+                    </div>
+                  </button>
+                  <button class="kcard" onclick="showTab('child','crequest')">
+                    <div class="photo"><svg viewBox="0 0 24 24"><use href="#i-coins"/></svg></div>
+                    <div class="kbody"><h4>Mercury dime</h4>
+                      <div class="krow"><span class="chip">Undecided</span><span class="val">$4</span></div>
+                    </div>
+                  </button>
+                </div>
+                <div class="reveal-note" style="margin-top:14px">
+                  <svg viewBox="0 0 24 24"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></svg>
+                  <span>Mom sees this whole set as <b>one card in her deck</b> — one swipe decides all twelve, or she opens it up and goes coin by coin. Deleting the collection only un-groups; the coins stay.</span>
                 </div>
               </div>
             </section>
@@ -926,6 +990,7 @@
         <li><span class="mk">01</span><span><b>One object, one decision.</b> No inbox of 247 things. Gentle "12 to go," never a guilt-inducing backlog.</span></li>
         <li><span class="mk">02</span><span><b>Voice over typing.</b> The most valuable legacy isn't the teapot — it's why it mattered. Auto-transcribed, no keyboard.</span></li>
         <li><span class="mk">03</span><span><b>The parent is the only authority.</b> Heir choices are hers alone, private until she decides to reveal — per item.</span></li>
+        <li><span class="mk">04</span><span><b>A collection is one swipe.</b> Dad's twelve coins arrive as a single card — decide the set together, or open it up and go coin by coin.</span></li>
       </ul>
       <div class="rail-foot">
         <div class="rf-label">Built to be trusted</div>
@@ -944,6 +1009,8 @@
   <symbol id="i-books" viewBox="0 0 24 24"><path d="M5 4h4v16H5zM9 4h4v16H9zM13 5l4-1 3 15-4 1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
   <symbol id="i-drill" viewBox="0 0 24 24"><path d="M4 9h9v5H4zM4 14v3h4v-3M13 10h4l4-2v4l-4-2M8 9V7h3v2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
   <symbol id="i-vase" viewBox="0 0 24 24"><path d="M8 3h8l-1 4a6 6 0 0 1 3 5c0 4-3 7-6 7s-6-3-6-7a6 6 0 0 1 3-5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-coins" viewBox="0 0 24 24"><circle cx="9.5" cy="9.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M13.2 6.2a5.5 5.5 0 1 1-1.4 11M9.5 7.2v4.6M7.4 9.5h4.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-wine" viewBox="0 0 24 24"><path d="M9 3h6v3a3 3 0 0 1-1.5 2.6c-.4.3-.5.6-.5 1V19h2v2H9v-2h2v-9.4c0-.4-.1-.7-.5-1A3 3 0 0 1 9 6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
 </svg>
 
 <script>
@@ -973,7 +1040,7 @@
       var btns = bar.querySelectorAll('button');
       var map = mode==='parent'
         ? {decide:0,keepsakes:1,heirs:2,export:3,detail:1,legacy:3}
-        : {capture:0,inventory:1,requests:2,family:3,crequest:1};
+        : {capture:0,inventory:1,requests:2,family:3,crequest:1,collection:1};
       for (var j=0;j<btns.length;j++) btns[j].setAttribute('aria-selected', j===map[tab]);
     }
     updateRail();
@@ -987,6 +1054,9 @@
   var deckItems = [
     {t:'Blue china teapot', s:'Kitchen · added by Sam', icon:'i-teapot'},
     {t:'Cordless drill', s:'Garage · added by Sam', icon:'i-drill'},
+    // A collection collapses to ONE card: forty coins, one swipe.
+    {t:'Coin collection', s:'12 items · one decision for all of them', icon:'i-coins', set:true,
+     sub:'Or tap “Tell me about this one” to open it up and go coin by coin'},
     {t:'Crystal vase', s:'Dining room · added by Maya', icon:'i-vase'},
     {t:'Mantel clock', s:'Living room · added by Sam', icon:'i-clock'}
   ];
@@ -1016,7 +1086,11 @@
       card.innerHTML =
         '<div class="verdict keep">Keep</div><div class="verdict donate">Donate</div><div class="verdict toss">Let go</div>'+
         '<div class="photo"><svg viewBox="0 0 24 24"><use href="#'+it.icon+'"/></svg></div>'+
-        '<div class="card-meta"><h3>'+it.t+'</h3><p>'+it.s+'</p></div>';
+        '<div class="card-meta">'+
+          (it.set?'<div class="set-badge">Whole collection</div>':'')+
+          '<h3>'+it.t+'</h3><p>'+it.s+'</p>'+
+          (it.sub?'<p class="set-sub">'+it.sub+'</p>':'')+
+        '</div>';
       deck.insertBefore(card, document.getElementById('allcaught'));
     }
   }
@@ -1100,7 +1174,8 @@
     child:{
       eyebrow:'Child experience',
       capture:{t:'Photograph a whole room in two minutes', l:'The helper\'s job is fast, batch capture — shoot everything, decide nothing. AI pre-tags each object, photos queue offline, and the parent gets a tidy deck to swipe later.'},
-      inventory:{t:'The power tool under the calm surface', l:'Same database, denser UI. Filter by decision, room, tag, or value. Heir assignments show as a lock — the child can see an heir exists, never who, unless revealed.'},
+      inventory:{t:'The power tool under the calm surface', l:'Same database, denser UI. Filter by decision, room, tag, or value — and now by collection: the sets that cut across rooms. Heir assignments show as a lock — the child can see an heir exists, never who, unless revealed.'},
+      collection:{t:'A set is one thing, not forty', l:'Coins, wine, fishing gear — pin the collection while shooting and every photo files itself in. Mom sees the whole set as a single card in her deck: one swipe decides all of it, with an open-it-up escape hatch. Deleting a collection only un-groups; the items stay.'},
       crequest:{t:'Ask, without starting a fight', l:'A child can raise a hand for an item. Only the parent sees requests — siblings never see each other\'s. Interest, not entitlement.'},
       requests:{t:'A gentle back-channel with Mom', l:'Every request and its status in one place. No group-chat negotiations over the good china — it stays between each child and the parent.'},
       family:{t:'One household, unmistakable authority', l:'Roles are explicit: the parent owns everything, children are helpers, an executor unlocks read-only access later. The ethics are the architecture.'}
