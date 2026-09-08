@@ -89,7 +89,7 @@ Four-angle review (reuse / simplification / efficiency / altitude) of every comm
 - [x] `ui.tsx` rail card reuses `linkedCloudId()`; Decide grouping is O(n) not O(n²); three Decide bars get a11y labels; collection grid uses `DECISION_META`; unused `T` import removed (lint now 0 warnings).
 
 Deferred — real, but architecture changes or refactors of another session's fresh feature code, not tonight:
-- [ ] **`cloudHouseholdId` is a boolean wearing a uuid, hand-cleared in 6 places.** Deeper fix: persist `Household.cloudLinkedAt` on the household record and derive the link — removes all six clears *and* makes the backup guard hold across switches (the audit's guard-gap bug). Recommended next.
+- [x] ~~`cloudHouseholdId` is a boolean wearing a uuid, hand-cleared in 6 places.~~ **Done Sep 8.** `Household.cloudLinkedAt` / `lastBackupAt` live on the record; `linkedCloudId()` derives from the open household; all six clears removed; `markCloudLinked` / `unlinkHousehold` replace `setCloudMeta`; persist v6 migrates old devices. Also closes: the backup-guard gap (guard now keys off `wasBackedUp` from the record) and `signOut`/`resetAll` leaving a stale link.
 - [ ] `pushItemChange` fans out one-swipe collection decides into N sequential chains (~7 round trips per item; 40 coins ≈ 280 requests). Batch rows + resolve user/role once.
 - [ ] `ensureCollectionUploaded` re-upserts the same collection once per photographed item in a sweep — needs a session memo.
 - [ ] Derive `CLOUD_ITEM_KEYS` from `RemoteItemFields` so the compiler catches a missing synced column (four hand-kept copies today).
