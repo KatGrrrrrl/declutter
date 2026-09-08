@@ -17,6 +17,7 @@ import { Btn, Heading, Label, Muted } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
 import { pingItemAdded } from '@/lib/notifications';
 import { uploadItemPhoto } from '@/lib/photo-sync';
+import { pushItem } from '@/lib/sync';
 import { useCanDecide, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -68,13 +69,17 @@ export function SplitReview({
       pingItemAdded(s.items[0]);
       if (s.cloudHouseholdId) {
         const fresh = s.items[0];
-        if (fresh?.photoUri === r.photoUri && !fresh.localOnly) {
-          supabase.auth
-            .getSession()
-            .then(({ data }) => {
-              if (data.session) return uploadItemPhoto(fresh);
-            })
-            .catch(() => {});
+        if (fresh && !fresh.localOnly) {
+          // Item first, so the rest of the family sees it without a backup.
+          void pushItem(fresh, s.cloudHouseholdId).catch(() => {});
+          if (fresh.photoUri === r.photoUri) {
+            supabase.auth
+              .getSession()
+              .then(({ data }) => {
+                if (data.session) return uploadItemPhoto(fresh);
+              })
+              .catch(() => {});
+          }
         }
       }
     }

@@ -345,3 +345,57 @@ export const restoreHousehold = (householdId?: string) => pullHousehold(househol
 export type BackupInput = SyncInput;
 export type BackupResult = SyncResult;
 export type RestoreResult = PullResult;
+
+/**
+ * Push ONE freshly-captured item to the cloud straight away, so other devices
+ * see it without waiting for a manual backup (realtime delivers the INSERT).
+ *
+ * Fire-and-forget by design: every failure is silent and non-fatal, because
+ * the item is already saved locally and the next full `pushHousehold` will
+ * carry it regardless. Honours the same contracts as the bulk push —
+ * `localOnly` never leaves the device, and only owners set decision fields.
+ */
+export async function pushItem(
+  item: Item,
+  cloudHouseholdId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (item.localOnly) return { ok: false, error: 'This item never leaves the device.' };
+
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) return { ok: false, error: 'Not signed in.' };
+
+  const role = await cloudRole(cloudHouseholdId);
+  if (role === 'none' || role === 'executor') {
+    return { ok: false, error: 'Not a contributing member of this household.' };
+  }
+  const isOwner = role === 'owner' || role === 'co_owner';
+  // Contributors may not decide; the DB's items_guard enforces this too.
+  const decided = isOwner && item.decision !== 'undecided';
+
+  const { error } = await supabase.from('items').upsert(
+    {
+      id: item.id,
+      household_id: cloudHouseholdId,
+      created_by: user.id,
+      title: item.title,
+      room: item.room || null,
+      decision: isOwner ? item.decision : 'undecided',
+      decided_by: decided ? user.id : null,
+      decided_at: decided ? (item.decidedAt ?? new Date().toISOString()) : null,
+      market_value_cents: item.marketValue != null ? Math.round(item.marketValue * 100) : null,
+      is_sentimental: item.isSentimental,
+      donate_to: item.donateTo ?? null,
+      donate_to_kind: item.donateToKind ?? null,
+      created_at: item.createdAt,
+    },
+    { ignoreDuplicates: !isOwner }
+  );
+  if (error) return { ok: false, error: error.message };
+
+  // Tags ride along so a later pull doesn't find the item bare.
+  if (item.tags.length) {
+    await supabase.from('item_tags').insert(item.tags.map((tag) => ({ item_id: item.id, tag })));
+  }
+  return { ok: true };
+}

@@ -44,6 +44,7 @@ import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { splitGroupPhoto } from '@/lib/split-photo';
+import { pushItem } from '@/lib/sync';
 import { useCanDecide, useEntitlement, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -215,13 +216,18 @@ function NativeCapture() {
     pingItemAdded(s.items[0]); // fire-and-forget instant-email ping (guards inside)
     if (s.cloudHouseholdId) {
       const added = s.items[0]; // addItem prepends, so newest is first
-      if (added?.photoUri === pendingUri && !added.localOnly) {
-        supabase.auth
-          .getSession()
-          .then(({ data }) => {
-            if (data.session) return uploadItemPhoto(added);
-          })
-          .catch(() => {});
+      if (added && !added.localOnly) {
+        // The item first — realtime delivers it to other devices immediately,
+        // so nobody has to press Back up to see it.
+        void pushItem(added, s.cloudHouseholdId).catch(() => {});
+        if (added.photoUri === pendingUri) {
+          supabase.auth
+            .getSession()
+            .then(({ data }) => {
+              if (data.session) return uploadItemPhoto(added);
+            })
+            .catch(() => {});
+        }
       }
     }
   };
@@ -382,14 +388,19 @@ function WebCapture() {
     }
     pingItemAdded(useStore.getState().items[0]); // fire-and-forget instant-email ping (guards inside)
     // Same fire-and-forget upload as native capture, when cloud-linked.
-    if (!withoutPhoto && photoUri) {
-      void (async () => {
-        const { data } = await supabase.auth.getSession();
-        if (!data.session || !useStore.getState().cloudHouseholdId) return;
-        const fresh = useStore.getState().items[0];
-        if (fresh?.photoUri === photoUri) void uploadItemPhoto(fresh);
-      })();
-    }
+    // Push the item itself whether or not it has a photo, so the other devices
+    // see it at once; the photo follows when there is one.
+    void (async () => {
+      const { data } = await supabase.auth.getSession();
+      const hid = useStore.getState().cloudHouseholdId;
+      if (!data.session || !hid) return;
+      const fresh = useStore.getState().items[0];
+      if (!fresh || fresh.localOnly) return;
+      await pushItem(fresh, hid).catch(() => {});
+      if (!withoutPhoto && photoUri && fresh.photoUri === photoUri) {
+        void uploadItemPhoto(fresh);
+      }
+    })();
     setTitle('');
     setPhotoUri(null);
     setNoPhoto(false); // photo-first again for the next item
