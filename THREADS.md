@@ -24,7 +24,14 @@ Summary: 5 threads — 1 running (Collections), 3 idle, 1 retired. Everything co
 ### 🔴 Urgent (runtime / data)
 - [x] ~~Confirm Amplify build for 28bbfce (reconcile-on-connect) is **live**~~ — **confirmed Sep 8.** The deployed bundle carries a string from 7606910, the newest code commit at the time, so every commit through it is out. Phone captures reach the cloud now.
 - [ ] **Re-run the Stripe probe.** Probed Sep 7: `STRIPE_SECRET_KEY` held the literal placeholder `sk_test_...`, so `create-checkout` returned `500 Invalid API Key` — nobody could subscribe. A real **test** key was set afterwards but never re-verified. Confirm with `$env:SERVICE_KEY="<service_role>"; node tools/probe-checkout.mjs` — want `status: 200` and a `checkout.stripe.com` URL. `docs/PRICING.md` still records the failing state until this passes.
-- [ ] **Duplicate "Millrun" households** — corrected picture: the July one (`942f5389`) has the 3 invites but 0 items; the one created tonight (`8974781a`) has your 2 paintings but no invites. This is a **merge, not a delete** (see recovery sequence below).
+- [x] ~~Duplicate "Millrun" households~~ — **superseded by a full wipe, run Sep 8 ~11:20.** Verified: 0 households, 0 items, 0 members; 4 auth users remain (you + the 3 relatives). The 7 July test households and 11 throwaway users went with it.
+
+### Post-wipe sequence (phone, after the `8b72d3b` build is live)
+1. **Do not tap "Back up now" on the old local Millrun.** Its record still says it was backed up (`cloudLinkedAt`), and the cloud copy is gone — so the guard refuses and points at Restore, and Restore finds nothing. That's the guard working, not a bug.
+2. **Settings → Start my real household** (or add a new household): name it Millrun. A fresh record has no link, so its first backup creates the cloud household cleanly.
+3. **Back up now.** This is the moment the cloud gets its first household again; every other device syncs from here.
+4. **Re-invite** Jesvina, Joseph, dmistry2 (their accounts still exist; a normal invite).
+5. Re-photograph the two paintings. Then the refresh sync (`8b72d3b`) means they appear on the laptop on its next load — no Restore needed.
 
 ### Millrun recovery sequence (do in this exact order)
 1. **Merge** the 2 items into the invited household, then **delete** the duplicate (SQL blocked by the harness classifier — run in Supabase SQL editor):
@@ -53,7 +60,7 @@ Summary: 5 threads — 1 running (Collections), 3 idle, 1 retired. Everything co
 ### 🟡 Follow-ups (not blocking)
 - [ ] Run the two-user e2e script: `SERVICE_KEY=<key> node tools/e2e-sync-live.mjs`
 - [x] ~~"Daily summary" setting is dead~~ — **wrong, verified live Sep 8:** migration `20260908000010` applied, `cron.job` `daily-digest` active at `0 23 * * *`, function deployed with `verify_jwt: false`. Keep it deployed `--no-verify-jwt`.
-- [ ] Clear 5 leftover July test households + orphan Millrun.
+- [x] ~~Clear 5 leftover July test households + orphan Millrun.~~ — gone in the Sep 8 wipe.
 - [ ] Cosmetic: realtime decisions arrive nameless; chat realtime has no household filter.
 
 ### 🔍 E2E + static audit findings (Sep 8) — not yet fixed unless ticked

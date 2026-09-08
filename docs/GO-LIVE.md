@@ -49,7 +49,7 @@ Then do one real end-to-end purchase (a live card, small amount, refundable) and
 |---|---------|-------|-----------------------|
 | 1 | **Stripe live key** (see §0) | user | `npx supabase secrets set STRIPE_SECRET_KEY=sk_live_…`; `node tools/probe-checkout.mjs`; one real purchase; confirm the auto-created live catalog in the dashboard |
 | 2 | **Resend domain verification** for `inventoryourhouse.com` | user | Add DNS records in Route 53; until verified, instant emails deliver **only to the owner's gmail** |
-| 3 | **Millrun duplicate-household cleanup** (data integrity) | user + Claude | Follow the recovery sequence in [`THREADS.md`](../THREADS.md): merge items → delete duplicate → **Restore** on the phone (not Back up) |
+| 3 | ~~Millrun duplicate-household cleanup~~ | done | Superseded by a full DB wipe on Sep 8 (0 households; 4 real auth users kept). Fresh onboarding sequence in [`THREADS.md`](../THREADS.md) → *Post-wipe sequence*. |
 | 4 | **Testing Pro grants reverted** | user + Claude | Any household flipped to Pro without paying keeps the AI features free in production. Run `node tools/make-household-pro.mjs --free "<name>"` for every entry in the grant log in [`PRICING.md`](PRICING.md) §5, then confirm a free household still gets `pro_required` |
 
 ✅ **No longer a blocker:** `ANTHROPIC_API_KEY` is set (Sep 7, 2026) and both AI features are live. Still worth a real run of each before launch, since that's what paying customers get — see the smoke test in §5.
