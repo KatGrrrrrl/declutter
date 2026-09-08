@@ -11,8 +11,11 @@ _Last updated: Sep 8, 2026_
 | 2 | Mobile site logout | ✅ Shipped | Sep 7, 9:01 PM | Account tab → Log out (55b4e32) |
 | 3 | Default decider, sync e2e & presence banner | ✅ Shipped | Sep 7, 10:56 PM | Fixed desktop sign-in loop; signing in with no home now loads your household (88717b8) |
 | 4 | Household inventory app (main) | ✅ Retired | Sep 8 | Retired after verifying everything shipped. Landing page + Welcome front door, AI valuation & group-photo split, cross-device item sync (add/edit/delete/archive), the wrong-household write fix, and the pricing doc. One item handed back: re-run the Stripe probe (below) |
+| 5 | Collections family grouping | ✅ Shipped | Sep 8, 12:32 AM | Named item sets with en-masse capture and one-swipe deciding (8910ac7); migration `20260908000011` applied |
 
-Summary: 4 threads — 0 running, 3 idle, 1 retired. Everything committed and pushed; `main` is level with origin.
+Summary: 5 threads — 1 running (Collections), 3 idle, 1 retired. Everything committed and pushed; `main` is level with origin and typechecks in isolation (verified Sep 8, 12:35 AM).
+
+> ⚠️ Incident, resolved: commit `375797a` (the `completeOnboarding` fix) accidentally swept ~150 lines of thread 5's uncommitted `store.ts` work along with it, leaving `main` type-broken for four minutes. Thread 5 resolved it by committing the rest of the feature (`8910ac7`). Root cause is the standing cross-cutting risk below — multiple sessions editing the same files. **Rule going forward: `git add -p` or a diff check before any commit touching `store.ts`, `sync.ts`, or `realtime.ts`.**
 
 > ✅ Resolved: as of Sep 7 cloud backup/sharing/multi-home are **free**; Pro = the AI layer only (value estimates + photo splitting). `docs/GO-LIVE.md` reconciled to match `docs/PRICING.md`, and `ANTHROPIC_API_KEY` is confirmed set (no longer a blocker).
 
@@ -58,7 +61,7 @@ Live-site pass on desktop and mobile (demo role), plus a read-only code audit. E
 
 **Bugs**
 - [ ] **React #418 hydration mismatch ×4 per load, desktop and mobile, pre-existing.** `web.output: "static"` pre-renders, but `useIsDesktop()` reads live width and the store hydrates client-side. React recovers, so nothing looks broken, but every load throws in prod and discards the pre-render. Fix = gate layout on a `mounted` flag, or switch to `web.output: "single"` (product call — changes deep-link serving).
-- [ ] **`completeOnboarding` never clears `cloudHouseholdId`** (`store.ts` ~505–554) unlike `startFresh`/`addHousehold` → onboarding after a prior link pushes the new home's items into the **old** cloud household. Wrong-household write.
+- [x] ~~`completeOnboarding` never clears `cloudHouseholdId`~~ — **fixed, shipped Sep 8.** Onboarding now drops the old link like `startFresh`/`addHousehold`, so a fresh home can't write into a prior cloud household or trip the missing-household guard after a wipe.
 - [ ] **The new backup guard has a gap:** `switchHousehold`/`addHousehold`/`startFresh` clear `cloudHouseholdId`, destroying the "was linked, now gone" evidence, so `pushHousehold` can still re-insert a deleted household. Needs a persisted breadcrumb of known cloud ids.
 - [ ] **`pullHousehold()` with no id picks the *oldest* household** (`order created_at limit 1`). Multi-home is free now, so Restore / sign-in-with-no-home can land in the wrong home. This also affects the Millrun recovery: with two Millruns, Restore picks the **July** one — which is the correct target *after* the merge, but only because the duplicate gets deleted first. Keep that order.
 - [ ] **`restoreSnapshot` replaces `households` with a single element** — wipes every other local home, reachable via `acceptInvite`, beside copy promising "your own data stays untouched."
