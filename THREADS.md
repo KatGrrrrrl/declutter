@@ -70,13 +70,14 @@ Live-site pass on desktop and mobile (demo role), plus a read-only code audit. E
 - [ ] `item_messages` realtime has no household filter (table lacks `household_id`); client drops unknown items, silently losing messages for items not yet pulled.
 - [x] `Btn` had no accessible name — fixed `11025f8`.
 
-**Stale copy (free-sync change not propagated)**
-- [ ] **`welcome.tsx:98-99` — the first screen still says backup and sharing are "from $39 a year."** Launch-visible.
-- [ ] `account-sync.tsx:279-281` says photos aren't backed up — they are (`uploadPendingPhotos` runs on every backup). Only voice audio isn't.
-- [ ] `upgrade.tsx` native CTA says "Start free trial" / "after your trial" — there is no trial in `create-checkout`.
-- [ ] `settings.tsx:466-469` promises "manage your subscription in the App Store / Play / web" — no billing portal exists.
-- [ ] `split-photo.ts:49-50` tells a Pro user with a cleared cloud link "A Pro feature" instead of "back up first."
-- [ ] Stale comments: `store.ts:142-150` (paywall at cloud), `ui.tsx:218` ("paid"), `limit-banner.tsx:2-4`, `upgrade.tsx:37` ("PLACEHOLDER PRICING"), `store.ts:183` (RevenueCat).
+**Stale copy (free-sync change not propagated)** — all fixed Sep 8
+- [x] Welcome screen: now "free and unlimited everywhere; Pro adds a little AI from $4.99/mo" (verified rendering on a dev server).
+- [x] Account & sync: photos are backed up; only voice audio stays local. Header comment too.
+- [x] `upgrade.tsx` native: "Start free trial" → "Preview Pro on this device", with an honest note (no native checkout; subscribe on the web). **Finding:** `doNativePreview` just flips the local plan — fine for a preview, but native must not ship with it reachable.
+- [x] Settings Pro card: no longer promises App Store / Play / web management.
+- [x] `split-photo`: new `needs_backup` reason; capture says "back this home up first" instead of sending a subscriber to the paywall.
+- [x] Stale comments in `store.ts`, `ui.tsx`, `limit-banner.tsx`, `upgrade.tsx`.
+- [ ] **New:** there is **no support / contact address anywhere in the app** — the Pro card now says "get in touch" with nowhere to go. Decide an address (e.g. hello@inventoryourhouse.com, once Resend verifies the domain) and add it to Settings and the Pro card. Launch item.
 
 **Docs behind the code**
 - [ ] **`HANDOFF.md`** ("read this first") still states the old cloud paywall as shipped (§7), lists `ANTHROPIC_API_KEY` as unset, says 7 migrations / 7 functions (actual 10 / 9), and describes tab layouts that no longer exist.
