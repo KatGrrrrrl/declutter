@@ -6,6 +6,9 @@
  * Acceptance: the 0001 accept_invite() RPC flips their membership to active
  * (server-validated against the same email), after which normal RLS opens the
  * household and we pull it into local state as a contributor.
+ * Refusal: the 0015 decline_invite() RPC is the other exit — it revokes the
+ * invitation and the roster line together, and the app then asks the
+ * notify-invite-declined function to tell the household's administrators.
  *
  * The other side: createCloudInvite() is called when a decider approves a
  * member locally — it creates the cloud membership row the invitee will find.
@@ -145,6 +148,42 @@ export async function acceptInvite(
 }
 
 /**
+ * Turn an invitation down.
+ *
+ * The RPC (migration 0015) revokes the membership invitation, revokes the
+ * matching roster line so the family's devices stop showing the person as
+ * "waiting to join", and writes the audit line — all as one server-side step,
+ * matched against the caller's own verified email.
+ *
+ * The email to the household's administrators is fired afterwards and is
+ * deliberately best-effort: the decline is already recorded either way, and a
+ * mail provider having a bad afternoon must never leave someone stuck on a
+ * screen they've said no to. `notified` reports whether it went out.
+ */
+export async function declineInvite(
+  householdId: string
+): Promise<{ ok: boolean; notified?: boolean; error?: string }> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return { ok: false, error: 'Not signed in.' };
+
+  const { error } = await supabase.rpc('decline_invite', {
+    p_household_id: householdId,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  let notified = false;
+  try {
+    const { data } = await supabase.functions.invoke('notify-invite-declined', {
+      body: { householdId },
+    });
+    notified = Boolean(data?.ok && data.sent > 0);
+  } catch {
+    /* email is an enhancement, never a dependency */
+  }
+  return { ok: true, notified };
+}
+
+/**
  * Decider side: mirror an approved local member into a cloud membership
  * invitation, so the person can actually join when they sign in.
  * Requires the caller to be signed in and the household backed up.
@@ -161,14 +200,20 @@ export async function createCloudInvite(
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) return { ok: false, error: 'Sign in first (Settings → Account & sync).' };
 
+  // Live rows only. A 'revoked' row is a finished invitation — one the
+  // household withdrew, or one the person declined — and treating it as
+  // "already invited" is what would make asking them again do nothing at all.
+  // The partial unique index only covers status='invited', so a fresh row is
+  // free to land alongside it.
   const email = member.email.toLowerCase();
   const { data: existing } = await supabase
     .from('household_members')
     .select('id, status')
     .eq('household_id', cloudHouseholdId)
     .eq('invited_email', email)
-    .maybeSingle();
-  if (existing) return { ok: true }; // already invited/joined
+    .in('status', ['invited', 'active'])
+    .limit(1);
+  if (existing?.length) return { ok: true }; // already invited/joined
 
   const isDecider = (s.households.find((h) => h.id === s.activeHouseholdId)?.deciderNames ?? [])
     .some((d) => d.toLowerCase() === member.name.toLowerCase());

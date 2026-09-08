@@ -15,7 +15,13 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { notify } from '@/components/child/shared';
 import { Btn, Card, Heading, Label, Muted, Row } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
-import { acceptInvite, listPendingInvites, PendingInvite, pickMyHousehold } from '@/lib/join';
+import {
+  acceptInvite,
+  declineInvite,
+  listPendingInvites,
+  PendingInvite,
+  pickMyHousehold,
+} from '@/lib/join';
 import { uploadPendingPhotos } from '@/lib/photo-sync';
 import { useActiveHousehold, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -69,6 +75,28 @@ export function AccountSync() {
     setInvites((v) => v.filter((x) => x.householdId !== inv.householdId));
     notify('Welcome in', `You’ve joined “${res.householdName}”.`);
     router.replace('/');
+  };
+
+  /**
+   * Turn it down. Says no on the server and tells that household's
+   * administrators, so an invitation nobody accepted stops looking like an
+   * invitation nobody received.
+   */
+  const declineHousehold = async (inv: PendingInvite) => {
+    setBusy(true);
+    const res = await declineInvite(inv.householdId);
+    setBusy(false);
+    if (!res.ok) {
+      notify('Couldn’t decline yet', res.error ?? 'Try again in a moment.');
+      return;
+    }
+    setInvites((v) => v.filter((x) => x.householdId !== inv.householdId));
+    notify(
+      'Invitation declined',
+      res.notified
+        ? `Whoever looks after “${inv.householdName}” has been told, so they’re not left waiting.`
+        : `“${inv.householdName}” will see that you’ve declined.`
+    );
   };
 
   /** OAuth sign-in (web). Buttons work once the provider is configured in
@@ -293,6 +321,13 @@ export function AccountSync() {
                     disabled={busy}
                   />
                 </View>
+                <Text
+                  accessibilityRole="button"
+                  style={styles.linkText}
+                  onPress={() => declineHousehold(inv)}
+                >
+                  No thanks &mdash; decline this invitation
+                </Text>
               </View>
             ))}
             <Muted style={styles.lede}>

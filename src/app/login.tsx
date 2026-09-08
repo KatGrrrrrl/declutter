@@ -24,7 +24,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Btn, CONTENT_MAX, DecorativeIcon, Muted, Row } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
-import { loadHouseholdById, loadMyHousehold } from '@/lib/join';
+import {
+  acceptInvite,
+  declineInvite,
+  listPendingInvites,
+  loadHouseholdById,
+  loadMyHousehold,
+  type PendingInvite,
+} from '@/lib/join';
 import { linkedCloudId, useStore } from '@/lib/store';
 
 import type { CloudHouseholdSummary } from '@/lib/sync';
@@ -77,6 +84,10 @@ export default function LoginScreen() {
   // open: the person picks. Never guessed (the old "oldest wins" rule put a
   // member of two homes in the wrong house).
   const [homeChoices, setHomeChoices] = useState<CloudHouseholdSummary[]>([]);
+  // A family is already expecting this address. Shown INSTEAD of onboarding:
+  // the commonest sign-in on a fresh device is the invited child, and sending
+  // them off to name a household of their own is the wrong first question.
+  const [invites, setInvites] = useState<PendingInvite[]>([]);
 
   // This screen does not use the `Screen` kit component, so it carries its own
   // `main` landmark. Gated on focus so it can never coexist with the landmark
@@ -101,16 +112,27 @@ export default function LoginScreen() {
     }
     setLoadingHome(true);
     const res = await loadMyHousehold();
-    setLoadingHome(false);
     if (res.ok) {
+      setLoadingHome(false);
       router.replace('/');
-    } else if (res.choices) {
-      setHomeChoices(res.choices);
-    } else if (res.error) {
-      setError(`Signed in, but your home couldn’t be loaded: ${res.error}`);
-    } else {
-      router.replace('/onboarding');
+      return;
     }
+    if (res.choices) {
+      setLoadingHome(false);
+      setHomeChoices(res.choices);
+      return;
+    }
+    if (res.error) {
+      setLoadingHome(false);
+      setError(`Signed in, but your home couldn’t be loaded: ${res.error}`);
+      return;
+    }
+    // No household of their own — but a family may be holding a place for
+    // this address. Ask about that before offering to start a new home.
+    const waiting = await listPendingInvites();
+    setLoadingHome(false);
+    if (waiting.length) setInvites(waiting);
+    else router.replace('/onboarding');
   };
 
   /** The person chose one of several homes: load that one. */
@@ -121,6 +143,37 @@ export default function LoginScreen() {
     setLoadingHome(false);
     if (res.ok) router.replace('/');
     else setError(`Signed in, but your home couldn’t be loaded: ${res.error ?? 'unknown error'}`);
+  };
+
+  /** Yes: accept the invitation and open the family's home on this device. */
+  const acceptWaitingInvite = async (inv: PendingInvite) => {
+    setInvites([]);
+    setLoadingHome(true);
+    const res = await acceptInvite(inv.householdId);
+    setLoadingHome(false);
+    if (res.ok) {
+      router.replace('/');
+      return;
+    }
+    setInvites([inv]);
+    setError(res.error ?? 'The invitation could not be accepted.');
+  };
+
+  /**
+   * No: start a home of their own instead. Every invitation on the screen is
+   * declined — the answer to "do you want to join a family?" is one answer,
+   * not one per household — and each one's administrators are told, so an
+   * invitation nobody accepted stops looking like an invitation nobody
+   * received. A decline that fails is not allowed to trap them here: the
+   * refusal was the point, so onboarding opens regardless.
+   */
+  const declineAndStartOwn = async () => {
+    const waiting = invites;
+    setInvites([]);
+    setLoadingHome(true);
+    await Promise.all(waiting.map((inv) => declineInvite(inv.householdId)));
+    setLoadingHome(false);
+    router.replace('/onboarding');
   };
 
   /**
@@ -270,6 +323,62 @@ export default function LoginScreen() {
               }}
             />
           </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ---------- a family is waiting for this address ---------- */
+  // Shown before onboarding is ever offered. Declining is a first-class
+  // answer, not a way out of a modal: it says no on the server, tells the
+  // household's administrators, and only then opens the "start a home" flow.
+  if (invites.length > 0) {
+    const one = invites.length === 1 ? invites[0] : null;
+    return (
+      <SafeAreaView style={styles.screen} role={mainRole}>
+        <View style={styles.body}>
+          <Text style={styles.wordmark}>Inventory Our Home</Text>
+          <DecorativeIcon style={styles.glyph}>
+            <Ionicons name="home" size={30} color={T.brassDeep} />
+          </DecorativeIcon>
+          <Text role="heading" aria-level={1} style={styles.title}>
+            {one ? `Join “${one.householdName}”?` : 'Your family is expecting you'}
+          </Text>
+          <Muted style={styles.sub}>
+            {one
+              ? `${one.householdName} invited this email address to help with their home. Joining brings their inventory onto this device — you can add photos and stories straight away.`
+              : 'These homes have invited this email address. Join one to bring its inventory onto this device.'}
+          </Muted>
+          <View style={styles.cta}>
+            {invites.map((inv) => (
+              <Btn
+                key={inv.householdId}
+                label={one ? `Yes — join “${inv.householdName}”` : `Join “${inv.householdName}”`}
+                kind="brass"
+                big
+                onPress={() => acceptWaitingInvite(inv)}
+              />
+            ))}
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              one
+                ? `No thanks, start my own home instead of joining ${one.householdName}`
+                : 'No thanks, start my own home'
+            }
+            onPress={declineAndStartOwn}
+            style={styles.link}
+          >
+            <Text style={styles.linkText}>
+              No thanks &mdash; start a home of my own
+            </Text>
+          </Pressable>
+          <Muted style={styles.declineNote}>
+            {one
+              ? `We’ll let whoever looks after “${one.householdName}” know you’ve declined, so they’re not left waiting.`
+              : 'We’ll let each household know you’ve declined, so nobody is left waiting.'}
+          </Muted>
         </View>
       </SafeAreaView>
     );
@@ -614,4 +723,5 @@ const styles = StyleSheet.create({
   },
   errorBannerText: { flex: 1, fontSize: 14, lineHeight: 20, color: T.ink, fontWeight: '600' },
   eraseBlock: { marginTop: Spacing.five },
+  declineNote: { textAlign: 'center', fontSize: 12.5, marginTop: Spacing.one },
 });
