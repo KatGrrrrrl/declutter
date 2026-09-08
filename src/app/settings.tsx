@@ -51,6 +51,7 @@ export default function SettingsScreen() {
   const ent = selectEntitlement(state);
   const { households, activeHouseholdId, householdName, userName, isDemo } = state;
   const { switchHousehold, addHousehold, startFresh, signOut, setDefaultDecider } = state;
+  const { renameHousehold, removeHousehold, setCloudMeta } = state;
   // Default decision-maker: only a choice worth making with >1 decider here.
   const activeHousehold = households.find((h) => h.id === activeHouseholdId);
   const deciders = activeHousehold?.deciderNames ?? [];
@@ -64,6 +65,10 @@ export default function SettingsScreen() {
   const [addingHousehold, setAddingHousehold] = useState(false);
   const [newHouseholdName, setNewHouseholdName] = useState('');
   const [newDeciderNames, setNewDeciderNames] = useState('');
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [cloudDeleteArmed, setCloudDeleteArmed] = useState(false);
   const [freshName, setFreshName] = useState(householdName);
   const [confirmFresh, setConfirmFresh] = useState(false);
   const [confirmErase, setConfirmErase] = useState(false);
@@ -137,6 +142,64 @@ export default function SettingsScreen() {
   const doStartFresh = () => {
     startFresh(freshName.trim() || householdName);
     router.replace('/');
+  };
+
+  const startRename = (id: string, current: string) => {
+    setRemovingId(null);
+    setCloudDeleteArmed(false);
+    setRenamingId(id);
+    setRenameText(current);
+  };
+
+  const saveRename = () => {
+    if (renamingId && renameText.trim()) renameHousehold(renamingId, renameText);
+    setRenamingId(null);
+    setRenameText('');
+  };
+
+  /** Remove from this device only — the cloud copy (if any) is untouched. */
+  const doRemoveFromDevice = (id: string) => {
+    const res = removeHousehold(id);
+    if (!res.ok) {
+      notify(
+        'This is your only household',
+        'Add another household first — or use “Start fresh” below to empty this one instead.'
+      );
+    }
+    setRemovingId(null);
+    setCloudDeleteArmed(false);
+  };
+
+  /**
+   * Delete the FAMILY copy: removes the cloud household and everything in it
+   * for every member. RLS makes this owner-only — for anyone else the delete
+   * touches zero rows and we say so instead of pretending.
+   */
+  const doDeleteEverywhere = async (id: string) => {
+    const { data, error } = await supabase
+      .from('households')
+      .delete()
+      .eq('id', id)
+      .select('id');
+    if (error || !data?.length) {
+      notify(
+        'The cloud copy wasn’t deleted',
+        'Only an owner can delete the family copy — and this household may not be in the cloud at all. Nothing was changed.'
+      );
+      setCloudDeleteArmed(false);
+      return;
+    }
+    const res = removeHousehold(id);
+    if (!res.ok) {
+      // It was the only household: keep it on the device, now local-only.
+      setCloudMeta({ cloudHouseholdId: undefined, lastBackupAt: undefined });
+      notify(
+        'Deleted from the cloud',
+        'The family copy is gone. Your device copy stays, as a local-only household.'
+      );
+    }
+    setRemovingId(null);
+    setCloudDeleteArmed(false);
   };
 
   const doSignOut = () => {
@@ -321,35 +384,133 @@ export default function SettingsScreen() {
             {ent.itemsUsed} {ent.itemsUsed === 1 ? 'item' : 'items'} catalogued
           </Muted>
           <Muted style={styles.cardMeta}>
-            Renaming a household is coming soon — for now the name is set when you
-            create it.
+            Rename or remove any household from the list below.
           </Muted>
         </Card>
 
         <View style={styles.list}>
           {households.map((h) => {
             const active = h.id === activeHouseholdId;
-            return (
-              <Pressable
-                key={h.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                onPress={() => switchHousehold(h.id)}
-                style={({ pressed }) => [styles.rowItem, pressed && styles.pressed]}
-              >
-                <Ionicons
-                  name={active ? 'radio-button-on' : 'radio-button-off'}
-                  size={20}
-                  color={active ? T.brass : T.inkFaint}
-                />
-                <View style={styles.cardMain}>
-                  <Text style={styles.rowTitle}>{h.name}</Text>
-                  <Muted style={styles.rowMeta}>
-                    Final say: {h.deciderNames.join(', ')}
-                  </Muted>
-                  {active && <Muted style={styles.rowMeta}>Currently open</Muted>}
+            if (h.id === renamingId) {
+              return (
+                <View key={h.id} style={styles.manageBox}>
+                  <Label style={styles.manageLabel}>Rename household</Label>
+                  <TextInput
+                    style={styles.input}
+                    value={renameText}
+                    onChangeText={setRenameText}
+                    selectTextOnFocus
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={saveRename}
+                    accessibilityLabel={`New name for ${h.name}`}
+                  />
+                  <View style={styles.cta}>
+                    <Btn label="Save name" onPress={saveRename} />
+                    <View style={styles.ctaGap} />
+                    <Btn label="Cancel" kind="quiet" onPress={() => setRenamingId(null)} />
+                  </View>
                 </View>
-              </Pressable>
+              );
+            }
+            return (
+              <View key={h.id}>
+                <View style={styles.rowItem}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Open ${h.name}`}
+                    onPress={() => switchHousehold(h.id)}
+                    style={({ pressed }) => [styles.rowSwitch, pressed && styles.pressed]}
+                  >
+                    <Ionicons
+                      name={active ? 'radio-button-on' : 'radio-button-off'}
+                      size={20}
+                      color={active ? T.brass : T.inkFaint}
+                    />
+                    <View style={styles.cardMain}>
+                      <Text style={styles.rowTitle}>{h.name}</Text>
+                      <Muted style={styles.rowMeta}>
+                        Final say: {h.deciderNames.join(', ')}
+                      </Muted>
+                      {active && <Muted style={styles.rowMeta}>Currently open</Muted>}
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Rename ${h.name}`}
+                    onPress={() => startRename(h.id, h.name)}
+                    style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="pencil-outline" size={17} color={T.inkSoft} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${h.name}`}
+                    onPress={() => {
+                      setRenamingId(null);
+                      setCloudDeleteArmed(false);
+                      setRemovingId(removingId === h.id ? null : h.id);
+                    }}
+                    style={({ pressed }) => [styles.manageBtn, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="trash-outline" size={17} color={T.toss} />
+                  </Pressable>
+                </View>
+                {removingId === h.id && (
+                  <Well style={styles.removeWell}>
+                    <Muted style={styles.removeNote}>
+                      {sessionEmail
+                        ? 'Removing takes it off this device only — a synced copy stays in your account, and other family devices keep theirs.'
+                        : 'Removing takes it off this device. With no account backup, anything only stored here is gone for good.'}
+                    </Muted>
+                    <View style={styles.cta}>
+                      <Btn
+                        label="Remove from this device"
+                        onPress={() => doRemoveFromDevice(h.id)}
+                      />
+                      {sessionEmail && (
+                        <>
+                          <View style={styles.ctaGap} />
+                          <Pressable
+                            accessibilityRole="button"
+                            onPress={() =>
+                              cloudDeleteArmed
+                                ? doDeleteEverywhere(h.id)
+                                : setCloudDeleteArmed(true)
+                            }
+                            style={({ pressed }) => [
+                              styles.dangerBtn,
+                              cloudDeleteArmed && styles.dangerBtnArmed,
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.dangerText,
+                                cloudDeleteArmed && styles.dangerTextArmed,
+                              ]}
+                            >
+                              {cloudDeleteArmed
+                                ? 'Tap again — delete for the whole family'
+                                : 'Delete everywhere (owners only)'}
+                            </Text>
+                          </Pressable>
+                        </>
+                      )}
+                      <View style={styles.ctaGap} />
+                      <Btn
+                        label="Keep it"
+                        kind="quiet"
+                        onPress={() => {
+                          setRemovingId(null);
+                          setCloudDeleteArmed(false);
+                        }}
+                      />
+                    </View>
+                  </Well>
+                )}
+              </View>
             );
           })}
 
@@ -691,6 +852,25 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: 15 },
 
   addBox: { paddingVertical: Spacing.two },
+  rowSwitch: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  manageBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: T.line,
+    backgroundColor: T.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manageBox: {
+    paddingVertical: Spacing.two,
+    borderBottomWidth: 1,
+    borderBottomColor: T.lineSoft,
+  },
+  manageLabel: { marginTop: 0 },
+  removeWell: { marginTop: Spacing.one, marginBottom: Spacing.two, backgroundColor: T.tossTint },
+  removeNote: { fontSize: 13, lineHeight: 18 },
   deciderHint: { fontSize: 12.5, marginTop: Spacing.two, lineHeight: 17 },
   deciderRow: { flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.three },
   deciderChip: {

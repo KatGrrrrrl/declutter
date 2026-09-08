@@ -297,6 +297,16 @@ interface AppState {
     deciderNames?: string[]
   ) => { ok: boolean; reason?: 'limit' };
   switchHousehold: (id: string) => void;
+  /** Rename a household; mirrors to the cloud when it's the linked one (owner-only there, via RLS). */
+  renameHousehold: (id: string, name: string) => void;
+  /**
+   * Remove a household from THIS DEVICE. Never touches the cloud — a synced
+   * copy stays in the account (Settings offers the owner-only cloud delete
+   * separately). Removing the open household clears the local data arrays,
+   * which belong to it, and lands in the next household. Refuses to remove
+   * the last one.
+   */
+  removeHousehold: (id: string) => { ok: boolean; reason?: 'last' };
   /** Post a chat message on an item, authored by the current user. */
   addMessage: (itemId: string, text: string) => void;
   setPlan: (plan: Plan) => void;
@@ -737,6 +747,61 @@ export const useStore = create<AppState>()(
             ? { activeHouseholdId: id, householdName: h.name, cloudHouseholdId: undefined }
             : {};
         }),
+
+      renameHousehold: (id, name) => {
+        const s = get();
+        const trimmed = name.trim();
+        if (!trimmed || !s.households.some((h) => h.id === id)) return;
+        set({
+          households: s.households.map((h) => (h.id === id ? { ...h, name: trimmed } : h)),
+          ...(s.activeHouseholdId === id ? { householdName: trimmed } : {}),
+        });
+        // Mirror to the cloud when this is the linked household. RLS makes the
+        // cloud rename owner-only — a contributor's update just touches 0 rows
+        // (and the owner's next backup would restore the family name anyway).
+        if (linkedCloudId(s) === id) {
+          void (async () => {
+            try {
+              const { supabase } = await import('@/lib/supabase');
+              await supabase.from('households').update({ name: trimmed }).eq('id', id);
+            } catch {
+              /* offline — the next owner backup carries the name */
+            }
+          })();
+        }
+      },
+
+      removeHousehold: (id) => {
+        const s = get();
+        if (!s.households.some((h) => h.id === id)) return { ok: true };
+        if (s.households.length <= 1) return { ok: false, reason: 'last' as const };
+        const remaining = s.households.filter((h) => h.id !== id);
+        if (s.activeHouseholdId !== id) {
+          // Not the open one: its data isn't loaded, so only the entry goes.
+          set({ households: remaining });
+          return { ok: true };
+        }
+        // Removing the household that's open: the local arrays hold ITS data,
+        // so they go with it (same shape as startFresh), and we land in the
+        // next household — empty here until CloudBridge restores it if synced.
+        const next = remaining[0];
+        const now = new Date().toISOString();
+        set({
+          households: remaining,
+          activeHouseholdId: next.id,
+          householdName: next.name,
+          items: [],
+          people: [],
+          collections: [],
+          messages: [],
+          members: [
+            { id: uid(), name: s.userName, status: 'active' as const, invitedBy: s.userName, invitedAt: now },
+          ],
+          cloudHouseholdId: undefined,
+          lastBackupAt: undefined,
+        });
+        return { ok: true };
+      },
 
       setPlan: (plan) => set({ plan }),
 
