@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Btn, CONTENT_MAX, DecorativeIcon, Muted, Row } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { loadMyHousehold } from '@/lib/join';
 import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -67,6 +68,9 @@ export default function LoginScreen() {
     return e ? decodeURIComponent(e).replace(/\+/g, ' ') : '';
   });
   const [confirmErase, setConfirmErase] = useState(false);
+  // True while a signed-in account's household is being pulled onto a device
+  // that has no home yet (see finish).
+  const [loadingHome, setLoadingHome] = useState(false);
 
   // This screen does not use the `Screen` kit component, so it carries its own
   // `main` landmark. Gated on focus so it can never coexist with the landmark
@@ -74,10 +78,31 @@ export default function LoginScreen() {
   const isFocused = useIsFocused();
   const mainRole = isFocused ? ('main' as const) : undefined;
 
-  /** Signed in — open the app (unlocking the device if it was locked). */
-  const finish = () => {
+  /**
+   * Signed in — open the app (unlocking the device if it was locked).
+   *
+   * On a device with no home yet (or only the demo), "/" is the Welcome page,
+   * whose "Sign in" link leads straight back here — a loop that made desktop
+   * sign-in look dead. So first bring the account's household down; only an
+   * account with no backup at all is sent to onboarding to start one.
+   */
+  const finish = async () => {
     unlock();
-    router.replace('/');
+    const s = useStore.getState();
+    if (s.onboarded && !s.isDemo) {
+      router.replace('/');
+      return;
+    }
+    setLoadingHome(true);
+    const res = await loadMyHousehold();
+    setLoadingHome(false);
+    if (res.ok) {
+      router.replace('/');
+    } else if (res.error) {
+      setError(`Signed in, but your home couldn’t be loaded: ${res.error}`);
+    } else {
+      router.replace('/onboarding');
+    }
   };
 
   /**
@@ -227,6 +252,21 @@ export default function LoginScreen() {
               }}
             />
           </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ---------- pulling the account's home onto this device ---------- */
+  if (loadingHome) {
+    return (
+      <SafeAreaView style={styles.screen} role={mainRole}>
+        <View style={styles.body}>
+          <Text style={styles.wordmark}>Inventory Our Home</Text>
+          <Text role="heading" aria-level={1} style={styles.title}>
+            Loading your home…
+          </Text>
+          <Muted style={styles.sub}>Bringing your inventory onto this device.</Muted>
         </View>
       </SafeAreaView>
     );

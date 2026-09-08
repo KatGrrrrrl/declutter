@@ -16,6 +16,54 @@ import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { pullHousehold } from '@/lib/sync';
 
+import type { User } from '@supabase/supabase-js';
+import type { PullResult } from '@/lib/sync';
+
+/**
+ * Put a pulled household into local state as THIS user. Their display name
+ * is whatever the roster calls the person with their email (that's who the
+ * family invited or backed up), falling back to the email's local part; they
+ * decide if that name is one of the household's deciders.
+ */
+function adoptSnapshot(snapshot: NonNullable<PullResult['snapshot']>, user: User) {
+  const myEmail = (user.email ?? '').toLowerCase();
+  const me = snapshot.members.find((m) => (m.email ?? '').toLowerCase() === myEmail);
+  const userName = me?.name ?? user.email?.split('@')[0] ?? 'Me';
+  const isDecider = snapshot.deciderNames.some(
+    (d) => d.toLowerCase() === userName.toLowerCase()
+  );
+  useStore.getState().restoreSnapshot({
+    ...snapshot,
+    role: isDecider ? 'owner' : 'contributor',
+    userName,
+  });
+}
+
+/**
+ * Sign-in on a device with no home yet (or only the demo): bring the
+ * account's household down so "Already set up a home? Sign in" actually
+ * lands in it. ok:false with no error means the account has no backup yet —
+ * the caller should offer onboarding, not an error.
+ */
+export async function loadMyHousehold(): Promise<{
+  ok: boolean;
+  householdName?: string;
+  error?: string;
+}> {
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) return { ok: false, error: 'Not signed in.' };
+
+  const pulled = await pullHousehold();
+  if (!pulled.ok || !pulled.snapshot) {
+    // "No household found" is the honest no-backup case; anything else is an error.
+    const noBackup = /no household/i.test(pulled.error ?? '');
+    return { ok: false, error: noBackup ? undefined : pulled.error };
+  }
+  adoptSnapshot(pulled.snapshot, user);
+  return { ok: true, householdName: pulled.snapshot.householdName };
+}
+
 export interface PendingInvite {
   householdId: string;
   householdName: string;
@@ -61,20 +109,7 @@ export async function acceptInvite(
   if (!pulled.ok || !pulled.snapshot) {
     return { ok: false, error: pulled.error ?? 'Joined, but the household could not be loaded.' };
   }
-
-  const myEmail = (user.email ?? '').toLowerCase();
-  const me = pulled.snapshot.members.find((m) => (m.email ?? '').toLowerCase() === myEmail);
-  const userName = me?.name ?? user.email?.split('@')[0] ?? 'Me';
-  const isDecider = pulled.snapshot.deciderNames.some(
-    (d) => d.toLowerCase() === userName.toLowerCase()
-  );
-
-  useStore.getState().restoreSnapshot({
-    ...pulled.snapshot,
-    role: isDecider ? 'owner' : 'contributor',
-    userName,
-  });
-
+  adoptSnapshot(pulled.snapshot, user);
   return { ok: true, householdName: pulled.snapshot.householdName };
 }
 
