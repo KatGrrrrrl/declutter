@@ -11,9 +11,9 @@ _Last updated: Sep 8, 2026_
 | 2 | Mobile site logout | ✅ Shipped | Sep 7, 9:01 PM | Account tab → Log out (55b4e32) |
 | 3 | Default decider, sync e2e & presence banner | ✅ Shipped | Sep 7, 10:56 PM | Fixed desktop sign-in loop; signing in with no home now loads your household (88717b8) |
 | 4 | Household inventory app (main) | ✅ Retired | Sep 8 | Retired after verifying everything shipped. Landing page + Welcome front door, AI valuation & group-photo split, cross-device item sync (add/edit/delete/archive), the wrong-household write fix, and the pricing doc. One item handed back: re-run the Stripe probe (below) |
-| 5 | Collections family grouping | ✅ Shipped | Sep 8, 12:32 AM | Named item sets with en-masse capture and one-swipe deciding (8910ac7); migration `20260908000011` applied |
+| 5 | Collections family grouping | ✅ Retired | Sep 8 | Retired with everything shipped AND deployed (bundle verified). Collections end-to-end (app, spec §Collections, mockup, e2e 23/23 vs prod incl. realtime both ways); household rename/remove/delete-everywhere; migrations `0011` (collections) + `0012` (household delete un-blocked) applied; refresh sync on every load (8b72d3b); "Your backup is waiting — Load it" prompt (68aa6ff); sticky no-photo capture. New tools: `e2e-collections.mjs` (SERVICE_KEY or preset-credential mode) |
 
-Summary: 5 threads — 1 running (Collections), 3 idle, 1 retired. Everything committed and pushed; `main` is level with origin and typechecks in isolation (verified Sep 8, 12:35 AM).
+Summary: 5 threads — 0 running, 3 idle, 2 retired. Everything committed, pushed and live; the restore prompt was confirmed in the deployed bundle (`entry-d6e386c…`) before retiring (Sep 8, afternoon).
 
 > ⚠️ Incident, resolved: commit `375797a` (the `completeOnboarding` fix) accidentally swept ~150 lines of thread 5's uncommitted `store.ts` work along with it, leaving `main` type-broken for four minutes. Thread 5 resolved it by committing the rest of the feature (`8910ac7`). Root cause is the standing cross-cutting risk below — multiple sessions editing the same files. **Rule going forward: `git add -p` or a diff check before any commit touching `store.ts`, `sync.ts`, or `realtime.ts`.**
 
@@ -27,6 +27,7 @@ Summary: 5 threads — 1 running (Collections), 3 idle, 1 retired. Everything co
 - [x] ~~Duplicate "Millrun" households~~ — **superseded by a full wipe, run Sep 8 ~11:20.** Verified: 0 households, 0 items, 0 members; 4 auth users remain (you + the 3 relatives). The 7 July test households and 11 throwaway users went with it.
 
 ### Post-wipe sequence (phone, after the `8b72d3b` build is live)
+> **Mostly done, Sep 8 (verified in DB by thread 5):** the phone backed up a fresh **Millrun** (1 item, "Painting of Greece", in the Paintings collection) and the desktop restored it — auto-sync confirmed working from here. Remaining: re-invites (step 4) and the second painting (step 5).
 1. **Do not tap "Back up now" on the old local Millrun.** Its record still says it was backed up (`cloudLinkedAt`), and the cloud copy is gone — so the guard refuses and points at Restore, and Restore finds nothing. That's the guard working, not a bug.
 2. **Settings → Start my real household** (or add a new household): name it Millrun. A fresh record has no link, so its first backup creates the cloud household cleanly.
 3. **Back up now.** This is the moment the cloud gets its first household again; every other device syncs from here.
