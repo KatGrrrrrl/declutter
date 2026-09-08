@@ -3,16 +3,18 @@
 Running tally of Claude Code sessions in this folder (`C:\Users\kavit\declutter`).
 Statuses: 🟢 Running · ⚪ Idle (not running) · ✅ Done/merged · 🔴 Blocked
 
-_Last updated: Sep 7, 2026 (9:12 PM)_
+_Last updated: Sep 7, 2026 (11:20 PM)_
 
-| # | Thread | Status | Last activity | Committed? |
-|---|--------|--------|---------------|-----------|
-| 1 | Menu visibility on iPhone with bottom menu | ✅ Shipped | Sep 8, 1:03 AM | Yes — f7378cf, live |
-| 2 | Mobile site logout | ✅ Committed | Sep 8, 1:01 AM | Yes — 55b4e32, pushed |
-| 3 | Default decider, sync e2e & presence banner | ✅ Committed | Sep 8, 12:51 AM | Yes — ffd9583, pushed |
-| 4 | Household inventory app (main / sync-on-connect) | ✅ Committed | Sep 8, 12:49 AM | Yes — 28bbfce, pushed |
+| # | Thread | Status | Last activity | Latest work |
+|---|--------|--------|---------------|-------------|
+| 1 | Menu visibility on iPhone with bottom menu | ✅ Shipped | Sep 7, 11:00 PM | Family tab "+" / per-family cards (068a166) — verified live |
+| 2 | Mobile site logout | ✅ Shipped | Sep 7, 9:01 PM | Account tab → Log out (55b4e32) |
+| 3 | Default decider, sync e2e & presence banner | ✅ Shipped | Sep 7, 10:56 PM | Fixed desktop sign-in loop; signing in with no home now loads your household (88717b8) |
+| 4 | Household inventory app (main) | ⏳ Awaiting user | Sep 7, 11:15 PM | Walked user through setting the real Stripe **test** key; probe (`tools/probe-checkout.mjs`) not yet confirmed. Also 2078376, 8737944 (pricing doc vs "free-sync" change) |
 
-Summary: 4 threads — 0 running, 4 idle. All 4 committed and pushed to main.
+Summary: 4 threads — 0 running, 4 idle. Everything committed; all pushed except this session's two commits (7606910 guard, 219514b docs).
+
+> ✅ Resolved: as of Sep 7 cloud backup/sharing/multi-home are **free**; Pro = the AI layer only (value estimates + photo splitting). `docs/GO-LIVE.md` reconciled to match `docs/PRICING.md`, and `ANTHROPIC_API_KEY` is confirmed set (no longer a blocker).
 
 ## What needs to be dealt with
 
