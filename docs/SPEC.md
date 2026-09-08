@@ -47,9 +47,12 @@ A **Household** is the top-level tenant. All row-level security scopes to it.
 ## 2. The core loop (the whole product in one paragraph)
 
 Child walks a room and **batch-captures** 30 items (fast, offline-tolerant). AI
-auto-tags each ("china", "jewelry", "tools") and detects the room. Later, the parent
-opens a **swipe queue** on the couch: right = keep, left = donate, down = toss, tap up =
-"tell me about this" (voice note → transcribed). Kept items flow into the **inventory**,
+auto-tags each ("china", "jewelry", "tools") and detects the room. Sets that belong
+together — Dad's coins, the wine cellar — go into a **collection**: pin it once in
+capture and every shot files itself in. Later, the parent opens a **swipe queue** on
+the couch: right = keep, left = donate, down = toss, tap up = "tell me about this"
+(voice note → transcribed). A collection arrives as **one card** — forty coins is one
+decision, with an "open it up" escape hatch. Kept items flow into the **inventory**,
 where value, heirs, and tags accrete over time. When ready, the parent exports a
 **personal-property memorandum** to bring to their attorney. Donations generate
 **tax-receipt records**. On death/incapacity, the **executor** unlocks it all.
@@ -66,6 +69,32 @@ where value, heirs, and tags accrete over time. When ready, the parent exports a
 - Basic manual value field (market $ and a separate "sentimental" flag).
 - Private storage, **server-side EXIF/GPS stripping**, signed-URL delivery.
 - Passkey / biometric auth; parent-simplified UI mode.
+
+### Collections (shipped Sep 2026)
+Named item sets — "Coin collection", "Wine cellar", "Grandad's fishing gear" — for
+things that are catalogued and decided as a set rather than one by one.
+
+- **Organizational only.** Items keep their own decision, heir, story, and photos; a
+  collection is a grouping, never an authority boundary. Deleting one un-groups its
+  items (DB FK is `ON DELETE SET NULL`) — it never deletes them.
+- **Any active member** may create collections, rename them, and file items in or out
+  (same authority as rooms). Deciding stays with the deciders regardless of grouping.
+- **Two add flows:** *en masse* — pin a collection in capture (sticky chip, both the
+  native camera and web form; AI photo-split items inherit it) and every shot files
+  itself in; *as you go* — a bulk-select "Collection…" action in inventory, and a
+  "Part of…" picker on the item screen.
+- **Decide queue collapse:** a collection's undecided items become one swipe card
+  ("Coin collection · 45 items · one decision for all of them", with documented value
+  and family-request badges). Escape hatches: "Look inside" (the collection screen)
+  and "One by one" (per-session expansion). Undo restores the whole group.
+- **Privacy:** a collection row uploads lazily — only when a synced item references
+  it. A collection holding nothing but `localOnly` items never reaches the cloud,
+  not even its name.
+- Collection members are exempt from duplicate detection (forty near-identical coins
+  are intentional, not re-photographs).
+- Deferred: realtime on the collections table itself (membership already syncs live;
+  new names arrive with the next pull), set-level valuation, collection-level heir
+  assignment.
 
 ### Phase 2 — Estate layer (the paid hook)
 - **Heir assignment** per item, with **parent-controlled visibility**
@@ -102,9 +131,16 @@ people                      -- heirs (may or may not be app users)
   id, household_id, display_name, relationship,
   linked_user_id (nullable auth uid), email (nullable)
 
+collections                 -- named item sets ("Coin collection"); grouping only
+  id, household_id, name, note,
+  created_by, created_by_name, created_at, updated_at
+  -- any-member RLS; delete un-groups (items FK is ON DELETE SET NULL);
+  -- uploaded lazily so a set of localOnly items never reaches the cloud
+
 items
   id, household_id, created_by,
-  title, room, decision enum('undecided','keep','donate','toss'),
+  title, room, collection_id (nullable → collections),
+  decision enum('undecided','keep','donate','toss'),
   decided_by, decided_at,
   market_value_cents (nullable), is_sentimental bool,
   value_source enum('manual','ai_comp'), note,
@@ -157,15 +193,23 @@ Onboarding
   Create or Join Household → Passkey setup → Invite family
 
 CHILD (Organizer) tab bar:  [Capture] [Rooms] [Inventory] [Requests] [Family]
-  Capture         batch camera, offline queue indicator
-  Rooms           grid of rooms → item thumbnails, decision status chips
-  Inventory       filter/search by tag/room/decision/heir/value; item detail
-  Item detail     photos, tags, story, value, "Request this item"
+  Capture         batch camera, offline queue indicator, sticky Collection chip
+  Rooms           grid of rooms → item thumbnails, decision status chips;
+                  collections grid below the rooms
+  Inventory       filter/search by tag/room/decision/heir/value; collection chip
+                  strip; bulk-select incl. "Collection…"; item detail
+  Item detail     photos, tags, story, value, "Part of <collection>" picker,
+                  "Request this item"
+  Collection      /collection/[id] — member grid, counts (+ value for deciders),
+                  rename/note, "Add items" (deep-links into pinned capture),
+                  delete (un-groups). Stack route, reached from Rooms/Inventory —
+                  no tab of its own (the 375px five-label budget is spent)
   Requests        my requests + status
   Family          members, invites, roles
 
 PARENT (Owner) tab bar:  [Decide] [Keepsakes] [Heirs] [Export]
-  Decide          the swipe queue (hero)
+  Decide          the swipe queue (hero); a collection's undecided items collapse
+                  into one "WHOLE COLLECTION" card with Look-inside / One-by-one
   Keepsakes       kept items, big cards, add story / value
   Item detail     big text, voice buttons, heir picker, visibility toggle
   Heirs           people list; per-person "what they'll receive"; reveal controls
