@@ -1,7 +1,13 @@
 /**
  * CloudBridge — invisible component mounted at the root.
  *
- * Two jobs:
+ * Three jobs:
+ * 0. Reconcile on connect: confirm the household we have open is one this
+ *    account belongs to in the cloud, adopt the link, and send up any items
+ *    the cloud has never seen — the backlog from before the household was
+ *    linked, or from being offline. Without this, items only reached the
+ *    cloud if they happened to be added while already linked, so anyone added
+ *    to the household later could not see the earlier ones.
  * 1. While a session and a synced household exist, keep the realtime
  *    subscription alive so family devices stay live with each other.
  * 2. Session enforcement: if this device holds a REAL household that has ever
@@ -22,6 +28,7 @@ import { startRealtime, stopRealtime } from '@/lib/realtime';
 
 export function CloudBridge() {
   const cloudHouseholdId = useStore((s) => s.cloudHouseholdId);
+  const activeHouseholdId = useStore((s) => s.activeHouseholdId);
   const isDemo = useStore((s) => s.isDemo);
   // Tri-state: null = not yet determined. The sign-in gate must never fire
   // before the first getSession() resolves, or every load would flash-lock.
@@ -34,6 +41,26 @@ export function CloudBridge() {
     );
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Reconcile on connect (job 0). Keyed on the household actually open, so
+  // this also runs after switching households or starting a fresh one.
+  useEffect(() => {
+    if (!hasSession || !activeHouseholdId || isDemo) return;
+    void (async () => {
+      try {
+        const { reconcileHousehold } = await import('@/lib/sync');
+        const s = useStore.getState();
+        const res = await reconcileHousehold(activeHouseholdId, s.items, s.userName);
+        // Only adopt the link if that household is still the one open — the
+        // user may have switched while this was in flight.
+        if (res.linked && useStore.getState().activeHouseholdId === activeHouseholdId) {
+          useStore.getState().setCloudMeta({ cloudHouseholdId: activeHouseholdId });
+        }
+      } catch {
+        /* offline — the next load, or a manual backup, catches up */
+      }
+    })();
+  }, [hasSession, activeHouseholdId, isDemo]);
 
   // Realtime lifecycle.
   useEffect(() => {

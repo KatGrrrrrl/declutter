@@ -45,7 +45,7 @@ import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { splitGroupPhoto } from '@/lib/split-photo';
 import { pushItem } from '@/lib/sync';
-import { useCanDecide, useEntitlement, useStore } from '@/lib/store';
+import { linkedCloudId, useCanDecide, useEntitlement, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ProposedItem } from '@/lib/split-photo';
@@ -213,13 +213,19 @@ function NativeCapture() {
     // and a session exists. Failures stay silent here — uploadPendingPhotos
     // retries anything that didn't make it.
     const s = useStore.getState();
-    pingItemAdded(s.items[0]); // fire-and-forget instant-email ping (guards inside)
-    if (s.cloudHouseholdId) {
+    const hid = linkedCloudId(s);
+    if (hid) {
       const added = s.items[0]; // addItem prepends, so newest is first
       if (added && !added.localOnly) {
         // The item first — realtime delivers it to other devices immediately,
-        // so nobody has to press Back up to see it.
-        void pushItem(added, s.cloudHouseholdId).catch(() => {});
+        // so nobody has to press Back up to see it. The instant-email ping
+        // waits for that push: an email about an item the cloud doesn't have
+        // yet would link to nothing.
+        void pushItem(added, hid)
+          .then((r) => {
+            if (r.ok) pingItemAdded(added);
+          })
+          .catch(() => {});
         if (added.photoUri === pendingUri) {
           supabase.auth
             .getSession()
@@ -386,17 +392,18 @@ function WebCapture() {
       );
       return;
     }
-    pingItemAdded(useStore.getState().items[0]); // fire-and-forget instant-email ping (guards inside)
     // Same fire-and-forget upload as native capture, when cloud-linked.
     // Push the item itself whether or not it has a photo, so the other devices
-    // see it at once; the photo follows when there is one.
+    // see it at once; the photo follows when there is one, and the
+    // instant-email ping only goes once the item really is in the cloud.
     void (async () => {
       const { data } = await supabase.auth.getSession();
-      const hid = useStore.getState().cloudHouseholdId;
+      const hid = linkedCloudId(useStore.getState());
       if (!data.session || !hid) return;
       const fresh = useStore.getState().items[0];
       if (!fresh || fresh.localOnly) return;
-      await pushItem(fresh, hid).catch(() => {});
+      const pushed = await pushItem(fresh, hid).catch(() => ({ ok: false }));
+      if (pushed.ok) pingItemAdded(fresh);
       if (!withoutPhoto && photoUri && fresh.photoUri === photoUri) {
         void uploadItemPhoto(fresh);
       }

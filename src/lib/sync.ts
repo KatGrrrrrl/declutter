@@ -223,6 +223,8 @@ export interface PullResult {
     people: Person[];
     messages: ItemMessage[];
     members: Member[];
+    /** Ids of items this account captured — the store restores their addedBy. */
+    selfItemIds: string[];
   };
   error?: string;
 }
@@ -334,6 +336,9 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
         people: localPeople,
         messages: localMessages,
         members: localMembers,
+        selfItemIds: (items.data ?? [])
+          .filter((i) => i.created_by === auth.user.id)
+          .map((i) => i.id),
       },
     };
   } catch (e) {
@@ -452,4 +457,76 @@ export async function pushItemUpdate(
     await supabase.from('item_tags').insert(item.tags.map((tag) => ({ item_id: item.id, tag })));
   }
   return { ok: true };
+}
+
+/**
+ * Bring a household's cloud copy up to date the moment this device can reach
+ * it — on sign-in, on app load, and as soon as a household becomes linked.
+ *
+ * Answers two questions at once: is `householdId` a cloud household this user
+ * belongs to (local ids double as cloud ids, so the id *is* the question), and
+ * if so, send up every local item the cloud has never seen. That backlog is
+ * what lets somebody added later read the whole history rather than only what
+ * arrived after they joined.
+ *
+ * INSERT-ONLY on purpose: it never rewrites a row that already exists, so a
+ * device holding stale local state cannot overwrite a newer edit made
+ * somewhere else. Ongoing edits travel through pushItemUpdate instead.
+ */
+export async function reconcileHousehold(
+  householdId: string,
+  items: Item[],
+  userName: string
+): Promise<{ linked: boolean; pushed: number; error?: string }> {
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) return { linked: false, pushed: 0, error: 'Not signed in.' };
+
+  const role = await cloudRole(householdId);
+  if (role === 'none' || role === 'executor') return { linked: false, pushed: 0 };
+  const isOwner = role === 'owner' || role === 'co_owner';
+
+  const { data: existing, error: readErr } = await supabase
+    .from('items')
+    .select('id')
+    .eq('household_id', householdId);
+  if (readErr) return { linked: true, pushed: 0, error: readErr.message };
+  const known = new Set((existing ?? []).map((r) => r.id));
+
+  const missing = items.filter((i) => !i.localOnly && !known.has(i.id));
+  // Contributors may only introduce their own still-undecided captures; the
+  // INSERT policy and items_guard enforce the same rule server-side.
+  const mine = isOwner
+    ? missing
+    : missing.filter((i) => i.addedBy === userName && i.decision === 'undecided');
+  if (!mine.length) return { linked: true, pushed: 0 };
+
+  const decidedAt = (i: Item) =>
+    isOwner && i.decision !== 'undecided' ? (i.decidedAt ?? new Date().toISOString()) : null;
+
+  const { error } = await supabase.from('items').upsert(
+    mine.map((i) => ({
+      id: i.id,
+      household_id: householdId,
+      created_by: user.id,
+      title: i.title,
+      room: i.room || null,
+      decision: isOwner ? i.decision : 'undecided',
+      decided_by: isOwner && i.decision !== 'undecided' ? user.id : null,
+      decided_at: decidedAt(i),
+      market_value_cents: i.marketValue != null ? Math.round(i.marketValue * 100) : null,
+      is_sentimental: i.isSentimental,
+      donate_to: i.donateTo ?? null,
+      donate_to_kind: i.donateToKind ?? null,
+      archived: i.archived ?? false,
+      created_at: i.createdAt,
+    })),
+    { ignoreDuplicates: true }
+  );
+  if (error) return { linked: true, pushed: 0, error: error.message };
+
+  const tagRows = mine.flatMap((i) => i.tags.map((tag) => ({ item_id: i.id, tag })));
+  if (tagRows.length) await supabase.from('item_tags').insert(tagRows);
+
+  return { linked: true, pushed: mine.length };
 }

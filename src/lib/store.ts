@@ -175,6 +175,12 @@ interface AppState {
   messages: ItemMessage[];
   /** Household roster: active members + pending invitations. */
   members: Member[];
+  /**
+   * This user's default decision-maker per household (household id → decider
+   * name). New items they add are flagged as that person's call first. A
+   * personal preference, so it lives on the device and is never synced.
+   */
+  defaultDeciders: Record<string, string>;
 
   /** Cloud backup linkage (set after the first successful backup). */
   cloudHouseholdId?: string;
@@ -213,6 +219,12 @@ interface AppState {
     role?: Role;
     /** The joining user's own display name (kept if provided). */
     userName?: string;
+    /**
+     * Items this account captured (cloud `created_by` = me). Restored with
+     * addedBy = the user's own name, so their edit/remove rights survive a
+     * restore instead of every item reading as "Family".
+     */
+    selfItemIds?: string[];
   }) => void;
   /** Merge one realtime row from another family member's device. */
   applyRemoteMessage: (m: ItemMessage) => void;
@@ -256,6 +268,8 @@ interface AppState {
   undoDecision: (id: string) => void;
   /** Flag one of the household's deciders as this item's primary decider (or clear). */
   setMainDecider: (id: string, name: string | undefined) => void;
+  /** This user's default decider for a household — applied to items they add (undefined = anyone). */
+  setDefaultDecider: (householdId: string, name: string | undefined) => void;
   /** Returns ok:false when the free item limit is reached. */
   addItem: (
     item: Omit<Item, 'id' | 'createdAt' | 'decision' | 'heirVisibility' | 'isSentimental' | 'tags'> &
@@ -426,7 +440,21 @@ const initial = {
   items: seedItems,
   messages: seedMessages,
   members: seedMembers,
+  defaultDeciders: {} as Record<string, string>,
 };
+
+/**
+ * The cloud household this device may write to right now.
+ *
+ * Local household ids double as cloud ids, so a link that doesn't match the
+ * household actually open means the open one is different (and possibly not
+ * linked at all) — writing then would file items into another family's
+ * household. Undefined means "don't write".
+ */
+export const linkedCloudId = (s: AppState): string | undefined =>
+  !s.isDemo && s.cloudHouseholdId && s.cloudHouseholdId === s.activeHouseholdId
+    ? s.cloudHouseholdId
+    : undefined;
 
 /**
  * Mirror an item edit to the cloud so other devices see it without a manual
@@ -437,8 +465,8 @@ const initial = {
  * and `localOnly` items, which never leave the device.
  */
 function pushItemChange(s: AppState, ...ids: string[]) {
-  const hid = s.cloudHouseholdId;
-  if (!hid || s.isDemo) return;
+  const hid = linkedCloudId(s);
+  if (!hid) return;
   const changed = ids
     .map((id) => s.items.find((i) => i.id === id))
     .filter((i): i is Item => !!i && !i.localOnly);
@@ -569,6 +597,11 @@ export const useStore = create<AppState>()(
             ],
             activeHouseholdId: id,
             ownerName: s.role === 'owner' ? s.userName : s.ownerName,
+            // A brand-new household is not the linked one. Leaving the old
+            // link in place would file its items into the previous
+            // household; CloudBridge re-adopts a link once it verifies one.
+            cloudHouseholdId: undefined,
+            lastBackupAt: undefined,
           };
         }),
 
@@ -591,6 +624,9 @@ export const useStore = create<AppState>()(
           ],
           activeHouseholdId: id,
           householdName: name,
+          // Same reason as startFresh: the new household is not the linked one.
+          cloudHouseholdId: undefined,
+          lastBackupAt: undefined,
         });
         return { ok: true };
       },
@@ -633,7 +669,12 @@ export const useStore = create<AppState>()(
       switchHousehold: (id) =>
         set((s) => {
           const h = s.households.find((x) => x.id === id);
-          return h ? { activeHouseholdId: id, householdName: h.name } : {};
+          // Drop the cloud link on the way out: it belongs to the household we
+          // are leaving. CloudBridge re-adopts one for the household we open
+          // if it turns out to be linked too.
+          return h
+            ? { activeHouseholdId: id, householdName: h.name, cloudHouseholdId: undefined }
+            : {};
         }),
 
       setPlan: (plan) => set({ plan }),
@@ -659,6 +700,14 @@ export const useStore = create<AppState>()(
           items: s.items.map((it) => (it.id === id ? { ...it, mainDeciderName: name } : it)),
         })),
 
+      setDefaultDecider: (householdId, name) =>
+        set((s) => {
+          const next = { ...s.defaultDeciders };
+          if (name) next[householdId] = name;
+          else delete next[householdId];
+          return { defaultDeciders: next };
+        }),
+
       undoDecision: (id) => {
         set((s) => ({
           items: s.items.map((it) =>
@@ -675,6 +724,8 @@ export const useStore = create<AppState>()(
         if (s.plan === 'free' && s.items.length >= FREE_ITEM_LIMIT) {
           return { ok: false, reason: 'limit' as const };
         }
+        // Route it to this user's default decider unless the caller said otherwise.
+        const mainDeciderName = item.mainDeciderName ?? selectDefaultDecider(s);
         set({
           items: [
             {
@@ -683,6 +734,7 @@ export const useStore = create<AppState>()(
               isSentimental: false,
               tags: [],
               ...item,
+              mainDeciderName,
               id: uid(),
               createdAt: new Date().toISOString(),
             } as Item,
@@ -803,11 +855,16 @@ export const useStore = create<AppState>()(
         set((s) => {
           // Local household id mirrors the cloud id (they're the same row).
           const id = snap.cloudHouseholdId;
+          const userName = snap.userName ?? s.userName;
+          const mine = new Set(snap.selfItemIds ?? []);
+          const items = mine.size
+            ? snap.items.map((i) => (mine.has(i.id) ? { ...i, addedBy: userName } : i))
+            : snap.items;
           return {
             onboarded: true,
             isDemo: false,
             role: snap.role ?? s.role,
-            userName: snap.userName ?? s.userName,
+            userName,
             householdName: snap.householdName,
             households: [
               {
@@ -821,7 +878,7 @@ export const useStore = create<AppState>()(
             activeHouseholdId: id,
             ownerName: snap.deciderNames[0] ?? snap.createdBy,
             cloudHouseholdId: snap.cloudHouseholdId,
-            items: snap.items,
+            items,
             people: snap.people,
             messages: snap.messages,
             members: snap.members,
@@ -952,8 +1009,9 @@ export const isRecentlyDecided = (i: Item): boolean =>
   !!i.decidedAt &&
   Date.now() - new Date(i.decidedAt).getTime() < RECENTLY_DECIDED_MS;
 
-/** The current viewer's decider display name (owner or member). */
+/** The current viewer's display name (owner or member). */
 const viewerName = (s: AppState) => (s.role === 'owner' ? s.ownerName : s.userName);
+export const selectViewerName = viewerName;
 
 /** Undecided items, with the viewer's own flagged items surfaced first. */
 export const selectQueue = (s: AppState) => {
@@ -1011,6 +1069,20 @@ export const selectCanDecide = (s: AppState) => {
 };
 
 export const useCanDecide = () => useStore(selectCanDecide);
+
+/**
+ * This user's default decider for the ACTIVE household, or undefined for
+ * "anyone". Only honoured while that person still has the final say there and
+ * there is actually a choice to make (more than one decider).
+ */
+export const selectDefaultDecider = (s: AppState): string | undefined => {
+  const h = selectActiveHousehold(s);
+  if (!h || h.deciderNames.length < 2) return undefined;
+  const name = s.defaultDeciders[h.id];
+  return name && h.deciderNames.includes(name) ? name : undefined;
+};
+
+export const useDefaultDecider = () => useStore(selectDefaultDecider);
 
 /** Full roster (stable reference). Filter by status at the call site. */
 export const useMembers = () => useStore(useShallow((s: AppState) => s.members));

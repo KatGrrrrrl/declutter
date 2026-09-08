@@ -18,7 +18,7 @@ import { Radius, Spacing, T } from '@/constants/theme';
 import { pingItemAdded } from '@/lib/notifications';
 import { uploadItemPhoto } from '@/lib/photo-sync';
 import { pushItem } from '@/lib/sync';
-import { useCanDecide, useStore } from '@/lib/store';
+import { linkedCloudId, useCanDecide, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ProposedItem } from '@/lib/split-photo';
@@ -66,12 +66,17 @@ export function SplitReview({
       added += 1;
       // Same fire-and-forget cloud upload as capture, per item.
       const s = useStore.getState();
-      pingItemAdded(s.items[0]);
-      if (s.cloudHouseholdId) {
+      const hid = linkedCloudId(s);
+      if (hid) {
         const fresh = s.items[0];
         if (fresh && !fresh.localOnly) {
-          // Item first, so the rest of the family sees it without a backup.
-          void pushItem(fresh, s.cloudHouseholdId).catch(() => {});
+          // Item first, so the rest of the family sees it without a backup;
+          // the instant-email ping follows only once it's really there.
+          void pushItem(fresh, hid)
+            .then((r) => {
+              if (r.ok) pingItemAdded(fresh);
+            })
+            .catch(() => {});
           if (fresh.photoUri === r.photoUri) {
             supabase.auth
               .getSession()
