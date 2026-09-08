@@ -34,7 +34,7 @@ const IS_WEB = Platform.OS === 'web';
 
 type PlanKey = 'monthly' | 'yearly';
 
-/** PLACEHOLDER PRICING — replace with live store products when payments ship. */
+/** Live prices. Keep in step with create-checkout's lookup keys and docs/PRICING.md. */
 const PLANS: {
   key: PlanKey;
   name: string;
@@ -203,7 +203,7 @@ export default function UpgradeScreen() {
               ? busy
                 ? 'Opening secure checkout…'
                 : 'Continue to secure checkout'
-              : 'Start free trial'
+              : 'Preview Pro on this device'
           }
           big
           disabled={busy}
@@ -216,9 +216,9 @@ export default function UpgradeScreen() {
           ? selected === 'yearly'
             ? 'Yearly · $39 billed once a year. Secure payment by Stripe.'
             : 'Monthly · $4.99 billed each month. Secure payment by Stripe.'
-          : selected === 'yearly'
-            ? 'Yearly · billed once a year after your trial.'
-            : 'Monthly · billed each month after your trial.'}
+          : // Native has no checkout yet: the button only previews the Pro
+            // screens locally. There is no trial, and nothing is charged.
+            'Checkout isn’t available in the app yet — subscribe on the web at inventoryourhouse.com. This button only previews the Pro screens here.'}
       </Muted>
 
       <Label>What you get</Label>

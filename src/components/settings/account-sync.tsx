@@ -1,9 +1,9 @@
 /**
- * Account & sync (beta) — email-code sign-in (no passwords, elder-friendly),
- * cloud backup of the household catalog, and restore onto a fresh device.
- * Honest scope for v1: photos/audio aren't uploaded yet (they wait on the
- * EXIF-stripping pipeline); everything else — items, decisions, stories,
- * chat, roster, donation destinations — is covered.
+ * Account & sync — sign-in, cloud backup of the household catalog, and
+ * restore onto a fresh device. Backup covers items, decisions, stories, chat,
+ * roster, donation destinations, and photos (EXIF-stripped server-side by the
+ * upload-photo function, swept on every backup). Voice audio is the one thing
+ * that still stays on the device.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -297,8 +297,9 @@ export function AccountSync() {
                   {household?.lastBackupAt
                     ? `Last backup ${new Date(household.lastBackupAt).toLocaleString()}.`
                     : 'No backup yet from this device.'}{' '}
-                  Photos and voice audio aren’t included yet — the catalog,
-                  decisions, stories, chat, and family roster are.
+                  Photos, the catalog, decisions, stories, chat, and the family
+                  roster are all included. Voice recordings stay on this device
+                  for now.
                 </Muted>
                 <View style={styles.cta}>
                   <Btn label={busy ? 'Backing up…' : 'Back up now'} onPress={runBackup} disabled={busy} />

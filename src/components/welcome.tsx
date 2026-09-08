@@ -95,8 +95,8 @@ export function Welcome() {
       <View style={styles.reassure}>
         <Ionicons name="phone-portrait-outline" size={15} color={T.inkSoft} />
         <Muted style={styles.reassureText}>
-          Free and unlimited on your device. Cloud backup and sharing are
-          optional, from $39 a year.
+          Free and unlimited — on your device, backed up, and shared with your
+          family. Pro adds a little AI, from $4.99 a month.
         </Muted>
       </View>
     </Screen>

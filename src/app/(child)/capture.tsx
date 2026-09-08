@@ -77,6 +77,11 @@ function useSplitPhoto() {
       notify('One item, then', 'No separate objects were found — add it as a single item.');
     } else if (r.reason === 'needs_account') {
       notify('Sign in first', 'Sign in to use AI photo splitting.');
+    } else if (r.reason === 'needs_backup') {
+      notify(
+        'Back this home up first',
+        'AI photo splitting works on a home that is backed up to your account. Turn on backup in Settings → Account & sync, then try again.'
+      );
     } else {
       notify('Couldn’t split the photo', r.error ?? 'Please try again in a moment.');
     }

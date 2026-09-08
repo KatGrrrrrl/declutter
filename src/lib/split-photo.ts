@@ -23,7 +23,14 @@ export interface ProposedItem {
   photoUri: string;
 }
 
-export type SplitReason = 'pro_required' | 'not_configured' | 'no_items' | 'needs_account' | 'error';
+export type SplitReason =
+  | 'pro_required'
+  | 'not_configured'
+  | 'no_items'
+  | 'needs_account'
+  /** Signed in, but this household has never been backed up — Pro lives on the cloud household. */
+  | 'needs_backup'
+  | 'error';
 
 export type SplitResult =
   | { ok: true; items: ProposedItem[] }
@@ -46,8 +53,10 @@ export async function splitGroupPhoto(photoUri: string): Promise<SplitResult> {
   const { data: sess } = await supabase.auth.getSession();
   if (!sess?.session) return { ok: false, reason: 'needs_account' };
   const householdId = linkedCloudId(useStore.getState());
-  // Pro is a property of a cloud household — no cloud household means free.
-  if (!householdId) return { ok: false, reason: 'pro_required' };
+  // Pro is a property of a CLOUD household. An unlinked home isn't "not Pro"
+  // — it's not in the cloud yet, which is a different ask (back up, not pay).
+  // Telling a paying subscriber "A Pro feature" here sent them to the paywall.
+  if (!householdId) return { ok: false, reason: 'needs_backup' };
 
   let imageBase64: string;
   try {

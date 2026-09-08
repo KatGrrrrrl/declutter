@@ -157,11 +157,10 @@ export interface Member {
 }
 
 /**
- * Pricing model: the local inventory is free and UNLIMITED — items and
- * households cost nothing to store on the device, and decluttering is
- * episodic, so we don't wall it. The paywall is at the CLOUD: backup,
- * cross-device family sharing, and (later) the memorandum export — the
- * features that carry an ongoing server cost. `Pro` unlocks the cloud.
+ * Pricing model: the inventory is free and UNLIMITED everywhere — on the
+ * device, backed up, and shared across the family (free since 2026-09-07).
+ * The only paid layer is AI: value estimates and group-photo splitting,
+ * gated server-side on household_plans.plan = 'pro'. See docs/PRICING.md.
  *
  * These constants are kept (Infinity) only so existing call sites that guard
  * on them never refuse a local action.
@@ -210,7 +209,7 @@ interface AppState {
   households: Household[];
   /** Which household the app is currently showing. */
   activeHouseholdId: string;
-  /** Subscription state. Real entitlement comes from RevenueCat later. */
+  /** Subscription state, mirrored from household_plans by billing.refreshPlan(). */
   plan: Plan;
   /** True while the seeded sample household is loaded. */
   isDemo: boolean;

@@ -1,10 +1,11 @@
 /**
  * Settings — the account screen for both roles.
  *
- * Covers the two things the app was missing: a way to leave the seeded demo
- * household and start a real inventory, and a way to sign out. Everything here
- * is honest about the current (local-only, no-cloud) reality: signing out
- * erases the device copy because there is nowhere else for it to live yet.
+ * Households (switch, add, rename, remove), the account bar, notification
+ * preferences, the Pro card, and the exits. Every "on this device" message
+ * below branches on whether the open household is actually in the cloud
+ * (`linked`): a synced household survives signing out; a local-only one is
+ * erased by it, and is told so.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -626,8 +627,8 @@ export default function SettingsScreen() {
                   backup and family sharing are included for everyone.
                 </Body>
                 <Muted style={styles.cardMeta}>
-                  Manage your subscription in the App Store, Google Play, or on the
-                  web.
+                  Renews automatically. A cancel button is on its way — until
+                  then, get in touch and we&rsquo;ll stop the next charge.
                 </Muted>
               </View>
             </Row>

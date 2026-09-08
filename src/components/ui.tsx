@@ -217,7 +217,7 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
       {/* Account actions live at the bottom of the rail, away from the primary
           sections. marginTop:auto pushes this block to the foot of the column. */}
       <View style={styles.railFooter}>
-        {/* Backup status — makes the paid, invisible cloud protection visible. */}
+        {/* Backup status — makes the invisible cloud protection visible. */}
         {linked ? (
           <View style={[styles.backupCard, styles.backupOk]}>
             <Ionicons name="cloud-done" size={16} color={T.keep} />
