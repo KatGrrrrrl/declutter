@@ -10,7 +10,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AccountButton } from '@/components/account-button';
 import {
   SwipeCard,
   SwipeCardHandle,
@@ -145,7 +144,6 @@ export default function DecideScreen() {
             <Ionicons name="add" size={17} color={T.brassDeep} />
             <Text style={styles.addBtnText}>Add</Text>
           </Pressable>
-          <AccountButton compact />
         </Row>
       </Row>
       <Row style={styles.dotsRow}>

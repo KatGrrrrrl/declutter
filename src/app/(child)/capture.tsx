@@ -23,7 +23,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useRouter } from 'expo-router';
 
-import { AccountButton } from '@/components/account-button';
 import { notify, ROOMS } from '@/components/child/shared';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import { SplitReview } from '@/components/split-review';
@@ -449,13 +448,8 @@ function WebCapture() {
 
   return (
     <Screen>
-      <View style={styles.webHead}>
-        <View style={styles.flex}>
-          <Label>Batch capture</Label>
-          <Title>Capture</Title>
-        </View>
-        <AccountButton />
-      </View>
+      <Label>Batch capture</Label>
+      <Title>Capture</Title>
 
       {ent.nearItemLimit && <ItemQuotaMeter style={styles.webQuota} />}
 
@@ -726,7 +720,6 @@ const styles = StyleSheet.create({
   splitBtnText: { fontSize: 13.5, fontWeight: '700', color: T.brassDeep },
 
   /* web fallback */
-  webHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.two },
   webQuota: { marginTop: Spacing.two },
   webCard: { marginTop: Spacing.two, alignItems: 'center' },
   webChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.three },
