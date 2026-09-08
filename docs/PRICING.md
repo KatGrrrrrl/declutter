@@ -101,3 +101,41 @@ a heavy user could invert it. There is no per-household usage cap today.
   server-side gate (e.g. the `household_plans.plan = 'pro'` check in
   `estimate-value`).
 - **Verify Stripe is live:** `node tools/probe-checkout.mjs`.
+
+---
+
+## 5. Turning Pro on and off for testing (no Stripe)
+
+Pro is a property of a **cloud household**, stored in `household_plans` and read
+server-side by `estimate-value` and `split-photo`. That row is the only switch
+that matters. Flipping the app's own `plan` — the Upgrade screen's native
+preview button, or the persisted store in a browser — changes what the UI shows
+and nothing else: both AI functions still answer `pro_required`.
+
+Grant and revoke with the service-role key (Supabase dashboard → Project
+settings → API keys → `service_role`; never commit it):
+
+```bash
+# grant — the household must already exist in the cloud (sign in + back up first)
+SERVICE_KEY=<service_role> node tools/make-household-pro.mjs "The Cottage"
+```
+
+```bash
+# revoke
+SERVICE_KEY=<service_role> node tools/make-household-pro.mjs --free "The Cottage"
+```
+
+Omit the name to act on a household called `test`. The app notices on the next
+plan refresh, which runs when **Settings** opens (signed in, household linked).
+
+### Every grant must be reverted before launch
+
+A household left on `pro` keeps the paid features for free in production, and it
+hides a broken paywall from the smoke test in [`GO-LIVE.md`](GO-LIVE.md) §5 —
+that test only proves the gate holds if the household it runs on is genuinely
+free. Log grants here so none is forgotten:
+
+| Household | Granted | Reverted |
+|---|---|---|
+| _none outstanding_ | | |
+
