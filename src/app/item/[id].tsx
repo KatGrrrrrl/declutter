@@ -116,18 +116,13 @@ export default function ItemDetailScreen() {
 
   const saveEdit = () => {
     if (!item) return;
-    const title = editTitle.trim() || item.title;
-    updateItem(item.id, { title, room: editRoom || item.room });
+    // updateItem mirrors the change to the cloud itself now, with the role
+    // and localOnly checks the hand-rolled write here used to skip.
+    updateItem(item.id, {
+      title: editTitle.trim() || item.title,
+      room: editRoom || item.room,
+    });
     setEditing(false);
-    // Mirror the rename to the cloud so family devices catch up on next pull.
-    const s = useStore.getState();
-    if (s.cloudHouseholdId && !s.isDemo && !item.localOnly) {
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session) {
-          void supabase.from('items').update({ title, room: editRoom || item.room }).eq('id', item.id);
-        }
-      }).catch(() => {});
-    }
   };
 
   const doRemove = () => {
@@ -369,8 +364,9 @@ export default function ItemDetailScreen() {
         </View>
       )}
       {/* Who decides this? — only meaningful with more than one decider. All
-          deciders still see and can decide it; this just flags whose call it is. */}
-      {canDecide && deciders.length > 1 && item.decision === 'undecided' && (
+          deciders still see and can decide it; this just flags whose call it is.
+          Same gate as editing: deciders always, the capturer while undecided. */}
+      {canManage && deciders.length > 1 && item.decision === 'undecided' && (
         <>
           <Label style={styles.deciderLabel}>Who decides this?</Label>
           <Row style={styles.deciderRow}>
