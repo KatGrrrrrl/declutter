@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
-import { DecorativeIcon, NavigationTabBar, useTabBarLayout } from '@/components/ui';
+import { DecorativeIcon, NavigationTabBar, useIsDesktop, useTabBarLayout } from '@/components/ui';
 
 /**
  * Tab icons are decorative: each tab's visible label already names it, and
@@ -12,6 +12,7 @@ import { DecorativeIcon, NavigationTabBar, useTabBarLayout } from '@/components/
  */
 export default function ParentTabs() {
   const bar = useTabBarLayout();
+  const isDesktop = useIsDesktop();
   return (
     <Tabs
       tabBar={(props) => <NavigationTabBar {...props} label="Main" />}
@@ -66,11 +67,15 @@ export default function ParentTabs() {
           ),
         }}
       />
+      {/* Heirs is off the mobile bar (five tabs is the 375px budget — the
+          Account tab takes its slot) but stays on the roomy desktop rail. It's
+          reached on mobile from the Keepsakes header. */}
       <Tabs.Screen
         name="heirs"
         options={{
           title: 'Heirs',
           tabBarAccessibilityLabel: 'Heirs',
+          href: isDesktop ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <DecorativeIcon>
               <Ionicons name="people-outline" size={size} color={color} />
@@ -86,6 +91,21 @@ export default function ParentTabs() {
           tabBarIcon: ({ color, size }) => (
             <DecorativeIcon>
               <Ionicons name="document-text-outline" size={size} color={color} />
+            </DecorativeIcon>
+          ),
+        }}
+      />
+      {/* Account/Log out, reachable from every screen. Hidden on desktop, where
+          the left rail's footer already carries Account & settings + Log out. */}
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          tabBarAccessibilityLabel: 'Account',
+          href: isDesktop ? null : undefined,
+          tabBarIcon: ({ color, size }) => (
+            <DecorativeIcon>
+              <Ionicons name="person-circle-outline" size={size} color={color} />
             </DecorativeIcon>
           ),
         }}

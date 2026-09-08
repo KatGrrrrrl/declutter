@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 
-import { DecorativeIcon, NavigationTabBar, useTabBarLayout } from '@/components/ui';
+import { DecorativeIcon, NavigationTabBar, useIsDesktop, useTabBarLayout } from '@/components/ui';
 import { T } from '@/constants/theme';
 
 /**
@@ -13,6 +13,7 @@ import { T } from '@/constants/theme';
  */
 export default function ChildTabs() {
   const bar = useTabBarLayout();
+  const isDesktop = useIsDesktop();
   return (
     <Tabs
       tabBar={(props) => <NavigationTabBar {...props} label="Sections" />}
@@ -74,6 +75,21 @@ export default function ChildTabs() {
           tabBarIcon: ({ color, size }) => (
             <DecorativeIcon>
               <Ionicons name="home-outline" size={size} color={color} />
+            </DecorativeIcon>
+          ),
+        }}
+      />
+      {/* Account/Log out, reachable from every screen. Hidden on desktop, where
+          the left rail's footer already carries Account & settings + Log out. */}
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          tabBarAccessibilityLabel: 'Account',
+          href: isDesktop ? null : undefined,
+          tabBarIcon: ({ color, size }) => (
+            <DecorativeIcon>
+              <Ionicons name="person-circle-outline" size={size} color={color} />
             </DecorativeIcon>
           ),
         }}

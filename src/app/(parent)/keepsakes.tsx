@@ -47,6 +47,20 @@ export default function KeepsakesScreen() {
         Tap any piece to add its story or say who it&rsquo;s for.
       </Muted>
 
+      {/* Entry point to Heirs — it's off the bottom bar on mobile (Account took
+          its slot), and this is its natural neighbour: the people these kept
+          pieces are for. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="See who inherits what"
+        onPress={() => router.push('/(parent)/heirs')}
+        style={({ pressed }) => [styles.heirsLink, pressed && styles.pressed]}
+      >
+        <Ionicons name="people-outline" size={16} color={T.brassDeep} />
+        <Text style={styles.heirsLinkText}>Who inherits what</Text>
+        <Ionicons name="chevron-forward" size={15} color={T.brassDeep} />
+      </Pressable>
+
       {keepsakes.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="heart-outline" size={46} color={T.inkFaint} />
@@ -163,7 +177,22 @@ const styles = StyleSheet.create({
     color: T.brassDeep,
   },
   title: { marginTop: 4, marginBottom: 0 },
-  sub: { fontSize: 15, lineHeight: 21, marginTop: 4, marginBottom: Spacing.three },
+  sub: { fontSize: 15, lineHeight: 21, marginTop: 4, marginBottom: Spacing.two },
+
+  heirsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 7,
+    marginBottom: Spacing.three,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.brass,
+    backgroundColor: T.brassTint,
+  },
+  heirsLinkText: { fontSize: 14, fontWeight: '700', color: T.brassDeep },
 
   list: { gap: Spacing.three },
   card: {
