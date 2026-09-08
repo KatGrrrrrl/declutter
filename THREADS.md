@@ -79,9 +79,9 @@ Live-site pass on desktop and mobile (demo role), plus a read-only code audit. E
 - [x] Stale comments in `store.ts`, `ui.tsx`, `limit-banner.tsx`, `upgrade.tsx`.
 - [ ] **New:** there is **no support / contact address anywhere in the app** — the Pro card now says "get in touch" with nowhere to go. Decide an address (e.g. hello@inventoryourhouse.com, once Resend verifies the domain) and add it to Settings and the Pro card. Launch item.
 
-**Docs behind the code**
-- [ ] **`HANDOFF.md`** ("read this first") still states the old cloud paywall as shipped (§7), lists `ANTHROPIC_API_KEY` as unset, says 7 migrations / 7 functions (actual 10 / 9), and describes tab layouts that no longer exist.
-- [ ] **`AGENTS.md`** is wrong on brand (says Declutter; app is "Inventory Our Home"), auth (says OTP only; password + OTP + Google exist), payments (says RevenueCat later; Stripe is live), photos (says not uploaded; they are), and phase gating (tells agents not to build heirs/memorandum/AI — all shipped). An agent following it would regress the app.
+**Docs behind the code** — fixed Sep 8
+- [x] **`HANDOFF.md`** refreshed: status table, repo map, migrations 0008–0012 + 9 functions, pricing, outstanding items, new §13 (everything since July + the multi-session rule). Points at THREADS / GO-LIVE / PRICING as living docs.
+- [x] **`AGENTS.md`** rewritten around what's true: brand, Stripe, auth, sync v2, photos, free-sync pricing (with a do-not-regress note), the household-record cloud link, never-guess loading, staging rule, `--no-verify-jwt`, a11y gotcha, hydration issue, remaining phase gate.
 - [ ] Privacy row in Settings → "Coming soon"; a privacy policy is typically required for Stripe/app stores.
 
 ### 🧹 Simplify pass (Sep 8) — applied vs deferred
