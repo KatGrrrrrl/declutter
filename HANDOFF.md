@@ -5,7 +5,11 @@
 > to **`C:\Users\kavit\declutter`** — this repo is fully self-contained and must
 > **not** be mixed with any other project (e.g. StockPulseNow).
 >
-> _Last updated: 2026-07-23._
+> _Last updated: 2026-09-08 (sections 2, 4, 5, 7, 8 refreshed; a Sep-8 summary
+> is in §13). For anything in flight, three living docs are more current than
+> this file: [`THREADS.md`](THREADS.md) (sessions, open bugs, recovery steps),
+> [`docs/GO-LIVE.md`](docs/GO-LIVE.md) (launch checklist), and
+> [`docs/PRICING.md`](docs/PRICING.md) (what Pro is and costs — source of truth)._
 
 ---
 
@@ -41,9 +45,11 @@ Supabase backend is live; custom auth domain is live; payments are wired but
 | Backend | ✅ Supabase project `declutter` (`xkzuoogmcfrxicmoybzp`, ca-central-1) |
 | Auth | ✅ Email password + OTP + Google OAuth; custom domain live |
 | Photos | ✅ Private bucket, EXIF-stripped uploads, signed URLs |
-| Payments | ⚠️ Code deployed, **blocked** — real `STRIPE_SECRET_KEY` not set |
-| Email | ⚠️ Instant delivery works to owner's gmail only until domain verified in Resend |
-| iOS/Android | ⛔ Not submitted — blocked on Apple Developer enrollment |
+| Pricing | ✅ **Changed 2026-09-07:** backup, sharing, multi-home are **free**; Pro ($4.99/mo · $39/yr) = AI value estimates + photo splitting only |
+| Payments | ⚠️ Stripe Checkout live on a **test** key (`sk_test_…`). Real launch needs `sk_live_…` — see GO-LIVE §0. Probe with `node tools/probe-checkout.mjs` |
+| AI | ✅ `ANTHROPIC_API_KEY` set 2026-09-07; `estimate-value` and `split-photo` live, Pro-gated server-side |
+| Email | ⚠️ Instant delivery works to owner's gmail only until domain verified in Resend. Daily digest **is live** (pg_cron, migration 0010) |
+| iOS/Android | ⛔ Not submitted — blocked on Apple Developer enrollment. Native `upgrade.tsx` has a **preview-only** Pro button (no checkout); must not ship reachable |
 
 ---
 
@@ -92,8 +98,11 @@ Supabase backend is live; custom auth domain is live; payments are wired but
 C:\Users\kavit\declutter\
 ├─ src/
 │  ├─ app/                     # expo-router routes
-│  │  ├─ (child)/              # contributor tabs: capture, rooms, inventory, family
-│  │  ├─ (parent)/ or decide   # decider tabs: Decide, Keepsakes, Heirs, Export, Legacy
+│  │  ├─ (child)/              # contributor tabs: capture, rooms, inventory, family, account (mobile only)
+│  │  ├─ (parent)/             # decider tabs: decide, inventory (Items), keepsakes, export, account (mobile);
+│  │  │                        #   heirs is desktop-rail only (mobile reaches it via the Keepsakes pill);
+│  │  │                        #   capture + legacy are href:null routes
+│  │  ├─ collection/[id].tsx   # a named item set (Collections, 2026-09-08)
 │  │  ├─ item/[id].tsx         # role-aware item detail (stories, heirs, chat, donation)
 │  │  ├─ login.tsx             # password default; signup; OTP + Google alternates
 │  │  ├─ upgrade.tsx           # cloud-backup + family-sharing paywall
@@ -111,10 +120,11 @@ C:\Users\kavit\declutter\
 │  │  └─ cloud-bridge... / components/cloud-bridge.tsx  # realtime + session gate
 │  └─ constants/theme.ts       # T (colors), Fonts, Radius, Spacing
 ├─ supabase/
-│  ├─ migrations/              # 0001..0007 (see §5)
-│  └─ functions/               # 7 edge functions (see §5)
-├─ docs/SPEC.md, docs/mockup/declutter-mockup.html
-├─ tools/                      # e2e + probe scripts (see §8)
+│  ├─ migrations/              # 0001..0012 (see §5)
+│  └─ functions/               # 9 edge functions (see §5)
+├─ docs/SPEC.md, docs/PRICING.md, docs/GO-LIVE.md, docs/SHIPPING.md, docs/mockup/
+├─ THREADS.md                  # session tracker: open bugs, recovery sequences, audit findings
+├─ tools/                      # e2e + probe scripts, make-household-pro, cleanup-orphans.sql
 ├─ AGENTS.md                   # gotchas + conventions (keep in sync with this file)
 ├─ amplify.yml                 # expo export web -> dist
 └─ app.json                    # brand name, scheme, permission strings
@@ -137,13 +147,22 @@ C:\Users\kavit\declutter\
 - `0005 created_by_default` / `0006 invited_by_default` — `auth.uid()` defaults
   (caught by the e2e test — inserts failed without them).
 - `0007 notification_prefs` — Off/Instant/Daily prefs.
+- `0008 item_archived` — archive is shared cloud state.
+- `0009 decided_by_name` — decisions carry the decider's display name.
+- `0010 daily_digest_schedule` — installs `pg_cron` + `pg_net`; schedules `daily-digest`
+  at 23:00 with a Vault secret. **The function must stay deployed `--no-verify-jwt`.**
+- `0011 collections` — named item sets (`collections`, `items.collection_id`).
+- `0012 household_delete_cascade` — owner delete-everywhere cascades cleanly.
 
 **Edge functions** (`supabase/functions/`, deploy: `supabase functions deploy <name>`):
 - `create-checkout`, `verify-checkout`, `stripe-webhook` — Stripe (v1 verifies on
-  return; no webhook registration needed).
+  return; no webhook registration needed). Prices are found-or-created by lookup key.
 - `upload-photo` — decode/re-encode strips EXIF, 1600px cap, private bucket + signed URLs.
+- `estimate-value`, `split-photo` — the AI layer (Claude); **Pro-gated server-side** on
+  `household_plans.plan = 'pro'`. Need `ANTHROPIC_API_KEY` (set).
 - `invite-member` — Supabase admin invite email on approval.
-- `notify-item-added`, `daily-digest` — email notifications.
+- `notify-item-added`, `daily-digest` — email notifications (`daily-digest` is
+  called by cron with no Authorization header → deploy with `--no-verify-jwt`).
 
 **Ids:** UUIDs unify local/cloud (persist v4 remap). **Sync v2** = upsert merge —
 owners push all items; contributors push only their own undecided items.
@@ -172,21 +191,22 @@ add-on (~$10/mo). Google client "Declutter Web" currently lives in the
 
 ---
 
-## 7. Pricing & the ONE thing blocking payments
+## 7. Pricing & what blocks a paid launch
 
-**Pricing model (shipped):** free + **unlimited local** inventory (no item/household
-cap on-device); the paywall is at **cloud backup + family sharing + more than one
-cloud home**. Monthly **$4.99** (`declutter_pro_monthly`, 499), yearly **$39**
-(`declutter_pro_yearly_v2`, 3900). Local limits in `store.ts` are `Infinity`.
+**Pricing model (changed 2026-09-07, source of truth `docs/PRICING.md`):** the
+inventory is free and **unlimited everywhere** — on the device, backed up, and
+shared across the family, any number of homes. The **only** paid layer is AI:
+value estimates (`estimate-value`) and group-photo splitting (`split-photo`),
+gated server-side. Monthly **$4.99** (`declutter_pro_monthly`, 499), yearly
+**$39** (`declutter_pro_yearly_v2`, 3900). Local limits in `store.ts` are
+`Infinity`. Note the cost story inverted: Supabase now carries every household
+while only AI users pay (PRICING.md has the margin note).
 
-**⚠️ BLOCKER:** `STRIPE_SECRET_KEY` was once set to the literal placeholder
-`"sk_test_..."` (the example command was run verbatim). Payments will fail until
-the **user re-sets it with the real key**:
-```bash
-npx supabase secrets set STRIPE_SECRET_KEY=sk_test_<REAL_KEY>
-```
-Verify in ~30s with `node tools/probe-checkout.mjs` (it reported the
-"Invalid API Key" placeholder error).
+**⚠️ Stripe is on a TEST key.** `STRIPE_SECRET_KEY` was once the literal
+placeholder `sk_test_...`; a real *test* key was set on Sep 7 but re-verify with
+`node tools/probe-checkout.mjs`. A real launch needs `sk_live_…` — the first
+live checkout auto-creates the live prices by lookup key; verify it in the
+dashboard. Full sequence in `docs/GO-LIVE.md` §0.
 
 ---
 
@@ -194,10 +214,11 @@ Verify in ~30s with `node tools/probe-checkout.mjs` (it reported the
 
 | # | Item | Owner | Notes |
 |---|---|---|---|
-| 0 | Set `ANTHROPIC_API_KEY` | **user** | Powers AI value estimates. Function `estimate-value` is deployed but returns `not_configured` until set: `npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...` |
-| 1 | Set real `STRIPE_SECRET_KEY` | **user** | Blocks all payments/Pro. `tools/probe-checkout.mjs` verifies. |
+| 0 | ~~Set `ANTHROPIC_API_KEY`~~ | done | Set 2026-09-07; both AI functions live. |
+| 1 | Set **live** `STRIPE_SECRET_KEY` (currently a test key) | **user** | Blocks real payments. `tools/probe-checkout.mjs` verifies; GO-LIVE §0. |
 | 2 | Verify `inventoryourhouse.com` in **Resend** (DNS) | **user** | Until then, instant emails deliver **only to owner's gmail**. |
-| 3 | Set `DIGEST_SECRET` + a scheduler | **user** | Daily-digest email is locked without it. |
+| 3 | ~~Set `DIGEST_SECRET` + a scheduler~~ | done | Migration 0010 schedules it via pg_cron with a Vault secret; `DIGEST_SECRET` is an optional override. Keep `daily-digest` deployed `--no-verify-jwt`. |
+| 3b | Add a **support / contact address** to the app | **user** | None exists anywhere; the Pro card says "get in touch" with nowhere to go. |
 | 4 | Test Google sign-in on custom domain | user | Should read "continue to auth.inventoryourhouse.com". |
 | 5 | Rebrand Google OAuth client to own Declutter GCP project | pre-launch | Currently in OurGroupTrips project. |
 | 6 | Apple Developer enrollment | user | Blocks iOS submission (Apple sign-in + store). |
@@ -286,6 +307,47 @@ and the "Keepsake" brand.
 - **Riskiest untested assumption:** that elderly parents will actually engage.
   Cheapest test = a shared photo album + weekly calls with **3 real families**
   before building past Phase 1.
+
+---
+
+## 13. 2026-09-08 update (what changed since §9)
+
+Shipped, all on `main` and live via Amplify:
+
+- **Pricing flip** (§7) and the copy sweep that followed it — Welcome, Account &
+  sync, Settings Pro card, native upgrade button no longer sell backup/sharing
+  or promise a trial.
+- **Collections** — named item sets, en-masse capture, one-swipe deciding;
+  migration 0011.
+- **Sync hardening:** items push on capture and reconcile on connect (insert-only,
+  never overwrites a newer edit); edits/deletes/archive sync live; presence banner
+  ("Tom is here too"); default decider per household.
+- **The cloud link lives on the household record** (`Household.cloudLinkedAt` /
+  `lastBackupAt`; persist v6 migrates old devices). `linkedCloudId()` derives from
+  the open household — there is no `cloudHouseholdId` field to clear any more.
+  `pushHousehold` refuses to recreate a household that was backed up and is now
+  gone (steers to Restore). Closed a wrong-household write in onboarding, the
+  guard gap on switch, and a stale link surviving sign-out.
+- **Household loading never guesses:** one home → load; several → prefer the one
+  open on this device, else a picker (sign-in and Restore). Restore/join **merges**
+  into the device's homes instead of wiping the others.
+- Mobile Account tab (Log out reachable everywhere); Family "+" ; iPhone bottom-bar
+  safe area; desktop sign-in loop fixed; rename/remove households.
+- `Btn` and the Decide bars have accessible names (RN Web divs take none from a
+  Text child). ~60 raw `Pressable`s still don't — see THREADS.md.
+- Daily digest verified live end-to-end (cron → no-JWT function → Vault secret).
+
+Known and open (ranked in `THREADS.md`): React #418 hydration mismatch on every
+load (static output vs. client-only layout/state — product call pending); batching
+of one-swipe collection decides; `item_messages` needs a `household_id`; a shared
+labeled tap component + lint rule; `AGENTS.md`/this file drift (this update);
+support address; pre-launch polish.
+
+**Working-in-this-repo rule (learned the hard way):** several Claude sessions
+edit this folder at once. Stage with **explicit file paths** and check
+`git diff --cached --stat` before every commit touching `store.ts`, `sync.ts`
+or `realtime.ts` — a bare `git add <file>` once swept another session's
+half-finished feature into a commit and broke `main`'s typecheck.
 
 ---
 
