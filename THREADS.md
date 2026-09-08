@@ -49,6 +49,14 @@ Summary: 5 threads — 0 running, 2 idle, 3 retired. Everything committed, pushe
 - [ ] FYI (no action): daily digest fires **23:00 UTC** fixed (7pm EDT / 6pm EST); Resend sandbox sender delivers only to the owner's address until the domain is verified.
 - [ ] FYI (informational, from Supabase advisors): `accept_invite` / `my_pending_invites` are SECURITY DEFINER callable by `authenticated` — intentional; leaked-password protection is off; one MFA factor enabled. Review before launch, not blocking.
 
+### 📦 Thread 4 handback (Sep 8, retiring) — verified in repo where marked ✓
+- [ ] **The paid product has never been exercised end to end.** No one has run a real AI value estimate or group-photo split against the live key with a Pro household — does it return sensible values, does the vision prompt over/under-split a shelf? This is the whole thing Pro sells. One manual pass: `SERVICE_KEY=… node tools/make-household-pro.mjs "Millrun"`, try both features, then `--free` to revert. **Launch blocker in substance** (GO-LIVE §5 smoke test covers it — do it).
+- [ ] ✓ **Per-item main decider does not sync.** `mainDeciderName` has no cloud column and is absent from `RemoteItemFields` (0 refs in `sync.ts`). Set it on the phone, no other device sees it. Shipped device-local without saying so — needs a migration like `items.archived` got, or explicit "this device only" copy.
+- [ ] ✓ **Heir assignments do not sync** either (`heirPersonId`: 0 refs in `sync.ts`). Stories do (11 refs). Heirs and main decider are the two item fields that stop at the device. Same fix shape. Note: heirs being owner-private is a product principle — the migration must keep them owner-only in RLS.
+- [ ] ✓ **`landing/index.html` is dead weight** — a bespoke marketing page (4 generated photos, own `serve.mjs`) that the `expo export web` build never includes; not referenced by `app.json` or `amplify.yml`. The in-app Welcome screen is what actually ships. **Decide:** wire it up as the public front door, or delete it so nobody assumes it's live.
+- [ ] ✓ `estimate-value` uses `web_search_20250305` ([index.ts:165](supabase/functions/estimate-value/index.ts)). Thread 4 says `claude-sonnet-5` supports a newer `web_search_20260209` with dynamic filtering (better accuracy, fewer tokens per estimate) — **verify against current Anthropic docs before changing**; cheap upgrade to the paid feature's cost and quality if so.
+- [ ] Reminder (already GO-LIVE §1 #4): any household hand-granted Pro via `make-household-pro.mjs` must be reverted with `--free` before launch; Stripe is still on a test key.
+
 ### 🔍 E2E + static audit findings (Sep 8) — not yet fixed unless ticked
 Live-site pass on desktop and mobile (demo role), plus a read-only code audit. Everything below was verified in code, not assumed.
 
