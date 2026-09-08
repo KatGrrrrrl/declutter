@@ -131,6 +131,7 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
         is_sentimental: i.isSentimental,
         donate_to: i.donateTo ?? null,
         donate_to_kind: i.donateToKind ?? null,
+        archived: i.archived ?? false,
         created_at: i.createdAt,
       }));
       const { error } = await supabase
@@ -290,6 +291,7 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
       donateTo: i.donate_to ?? undefined,
       donateToKind: i.donate_to_kind ?? undefined,
       remotePhotoPath: photoByItem.get(i.id),
+      archived: i.archived ?? false,
       createdAt: i.created_at,
     }));
 
@@ -387,6 +389,7 @@ export async function pushItem(
       is_sentimental: item.isSentimental,
       donate_to: item.donateTo ?? null,
       donate_to_kind: item.donateToKind ?? null,
+      archived: item.archived ?? false,
       created_at: item.createdAt,
     },
     { ignoreDuplicates: !isOwner }
@@ -394,6 +397,57 @@ export async function pushItem(
   if (error) return { ok: false, error: error.message };
 
   // Tags ride along so a later pull doesn't find the item bare.
+  if (item.tags.length) {
+    await supabase.from('item_tags').insert(item.tags.map((tag) => ({ item_id: item.id, tag })));
+  }
+  return { ok: true };
+}
+
+/**
+ * Mirror one item's cloud-owned fields after a local EDIT, so other devices
+ * see the change without a manual backup.
+ *
+ * Sends only what the cloud row owns — local-only state (story, heirs, main
+ * decider, photo uri) is left alone. `decision` goes only when the caller is
+ * an owner: items_guard raises if a contributor touches the decision triple,
+ * which would fail the whole update, and it stamps decided_by/decided_at
+ * itself, so those are never sent.
+ */
+export async function pushItemUpdate(
+  item: Item,
+  cloudHouseholdId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (item.localOnly) return { ok: false, error: 'This item never leaves the device.' };
+
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return { ok: false, error: 'Not signed in.' };
+
+  const role = await cloudRole(cloudHouseholdId);
+  if (role === 'none' || role === 'executor') {
+    return { ok: false, error: 'Not a contributing member of this household.' };
+  }
+  const isOwner = role === 'owner' || role === 'co_owner';
+
+  const patch: Record<string, unknown> = {
+    title: item.title,
+    room: item.room || null,
+    market_value_cents: item.marketValue != null ? Math.round(item.marketValue * 100) : null,
+    is_sentimental: item.isSentimental,
+    donate_to: item.donateTo ?? null,
+    donate_to_kind: item.donateToKind ?? null,
+    archived: item.archived ?? false,
+  };
+  if (isOwner) patch.decision = item.decision;
+
+  const { error } = await supabase
+    .from('items')
+    .update(patch)
+    .eq('id', item.id)
+    .eq('household_id', cloudHouseholdId);
+  if (error) return { ok: false, error: error.message };
+
+  // Tags are a tiny replace-set, same contract as the bulk push.
+  await supabase.from('item_tags').delete().eq('item_id', item.id);
   if (item.tags.length) {
     await supabase.from('item_tags').insert(item.tags.map((tag) => ({ item_id: item.id, tag })));
   }

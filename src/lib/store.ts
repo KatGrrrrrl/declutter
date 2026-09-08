@@ -74,6 +74,26 @@ export interface Item {
   createdAt: string;
 }
 
+/**
+ * The slice of an item the CLOUD row owns. Realtime carries exactly these
+ * fields, so merging one can never overwrite device-local state (tags,
+ * addedBy, photoUri, story, heirs, main decider) — including when our own
+ * write echoes straight back to us.
+ */
+export interface RemoteItemFields {
+  id: string;
+  title: string;
+  room: string;
+  decision: Decision;
+  decidedAt?: string;
+  marketValue?: number;
+  isSentimental: boolean;
+  donateTo?: string;
+  donateToKind?: 'charity' | 'person';
+  archived?: boolean;
+  createdAt: string;
+}
+
 /** A family-chat message about one item. Visible to the whole household. */
 export interface ItemMessage {
   id: string;
@@ -196,7 +216,10 @@ interface AppState {
   }) => void;
   /** Merge one realtime row from another family member's device. */
   applyRemoteMessage: (m: ItemMessage) => void;
-  applyRemoteItem: (i: Item) => void;
+  /** Apply an item INSERT/UPDATE arriving from another device. */
+  applyRemoteItem: (f: RemoteItemFields) => void;
+  /** Apply an item DELETE arriving from another device. */
+  applyRemoteItemDelete: (id: string) => void;
 
   // actions
   completeOnboarding: (opts: {
@@ -405,6 +428,31 @@ const initial = {
   members: seedMembers,
 };
 
+/**
+ * Mirror an item edit to the cloud so other devices see it without a manual
+ * backup. Call AFTER set(), with the ids that changed.
+ *
+ * Fire-and-forget by design: every failure is silent, because the change is
+ * already saved locally and the next full backup carries it. Skips demo data
+ * and `localOnly` items, which never leave the device.
+ */
+function pushItemChange(s: AppState, ...ids: string[]) {
+  const hid = s.cloudHouseholdId;
+  if (!hid || s.isDemo) return;
+  const changed = ids
+    .map((id) => s.items.find((i) => i.id === id))
+    .filter((i): i is Item => !!i && !i.localOnly);
+  if (!changed.length) return;
+  void (async () => {
+    try {
+      const { pushItemUpdate } = await import('@/lib/sync');
+      for (const item of changed) await pushItemUpdate(item, hid);
+    } catch {
+      /* offline — the next backup carries it */
+    }
+  })();
+}
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -592,7 +640,7 @@ export const useStore = create<AppState>()(
 
       setRole: (role) => set({ role }),
 
-      decide: (id, decision) =>
+      decide: (id, decision) => {
         set((s) => {
           const by = s.role === 'owner' ? s.ownerName : s.userName;
           return {
@@ -602,21 +650,25 @@ export const useStore = create<AppState>()(
                 : it
             ),
           };
-        }),
+        });
+        pushItemChange(get(), id);
+      },
 
       setMainDecider: (id, name) =>
         set((s) => ({
           items: s.items.map((it) => (it.id === id ? { ...it, mainDeciderName: name } : it)),
         })),
 
-      undoDecision: (id) =>
+      undoDecision: (id) => {
         set((s) => ({
           items: s.items.map((it) =>
             it.id === id
               ? { ...it, decision: 'undecided', decidedAt: undefined, decidedBy: undefined }
               : it
           ),
-        })),
+        }));
+        pushItemChange(get(), id);
+      },
 
       addItem: (item) => {
         const s = get();
@@ -640,17 +692,21 @@ export const useStore = create<AppState>()(
         return { ok: true };
       },
 
-      updateItem: (id, patch) =>
+      updateItem: (id, patch) => {
         set((s) => ({
           items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
-        })),
+        }));
+        pushItemChange(get(), id);
+      },
 
-      setArchived: (id, archived) =>
+      setArchived: (id, archived) => {
         set((s) => ({
           items: s.items.map((it) => (it.id === id ? { ...it, archived } : it)),
-        })),
+        }));
+        pushItemChange(get(), id);
+      },
 
-      bulkDecide: (ids, decision) =>
+      bulkDecide: (ids, decision) => {
         set((s) => {
           const at = new Date().toISOString();
           const by = s.role === 'owner' ? s.ownerName : s.userName;
@@ -668,19 +724,25 @@ export const useStore = create<AppState>()(
                 : it
             ),
           };
-        }),
+        });
+        pushItemChange(get(), ...ids);
+      },
 
-      bulkSetRoom: (ids, room) =>
+      bulkSetRoom: (ids, room) => {
         set((s) => {
           const set_ = new Set(ids);
           return { items: s.items.map((it) => (set_.has(it.id) ? { ...it, room } : it)) };
-        }),
+        });
+        pushItemChange(get(), ...ids);
+      },
 
-      bulkArchive: (ids, archived) =>
+      bulkArchive: (ids, archived) => {
         set((s) => {
           const set_ = new Set(ids);
           return { items: s.items.map((it) => (set_.has(it.id) ? { ...it, archived } : it)) };
-        }),
+        });
+        pushItemChange(get(), ...ids);
+      },
 
       removeItem: (id) => {
         const s = get();
@@ -773,12 +835,26 @@ export const useStore = create<AppState>()(
             : { messages: [...s.messages, m] }
         ),
 
-      applyRemoteItem: (i) =>
+      // `f` carries only cloud-owned fields, so merging can never clobber
+      // local state (tags, addedBy, photoUri, story, heirs, main decider) —
+      // including when our own write echoes back to us over realtime.
+      applyRemoteItem: (f) =>
         set((s) =>
-          s.items.some((x) => x.id === i.id)
-            ? { items: s.items.map((x) => (x.id === i.id ? { ...x, ...i, photoUri: x.photoUri ?? i.photoUri } : x)) }
-            : { items: [i, ...s.items] }
+          s.items.some((x) => x.id === f.id)
+            ? { items: s.items.map((x) => (x.id === f.id ? { ...x, ...f } : x)) }
+            : {
+                items: [
+                  { tags: [], addedBy: 'Family', heirVisibility: 'owner_only', ...f } as Item,
+                  ...s.items,
+                ],
+              }
         ),
+
+      applyRemoteItemDelete: (id) =>
+        set((s) => ({
+          items: s.items.filter((i) => i.id !== id),
+          messages: s.messages.filter((m) => m.itemId !== id),
+        })),
 
       resetAll: () => set({ ...initial, onboarded: false }),
     }),

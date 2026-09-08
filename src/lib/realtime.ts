@@ -10,6 +10,21 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
+/** The `items` columns realtime replicates. */
+interface ItemRow {
+  id: string;
+  title: string | null;
+  room: string | null;
+  decision: 'undecided' | 'keep' | 'donate' | 'toss';
+  decided_at: string | null;
+  is_sentimental: boolean;
+  market_value_cents: number | null;
+  donate_to: string | null;
+  donate_to_kind: 'charity' | 'person' | null;
+  archived: boolean | null;
+  created_at: string;
+}
+
 let channel: RealtimeChannel | null = null;
 let activeFor: string | null = null;
 
@@ -40,40 +55,40 @@ export function startRealtime(cloudHouseholdId: string) {
         });
       }
     )
+    // One listener for every item change. INSERT and UPDATE both merge (the
+    // store upserts); DELETE removes it. `event: '*'` keeps the three in step
+    // so an edit made on another device can't be missed.
     .on(
       'postgres_changes',
       {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
         table: 'items',
         filter: `household_id=eq.${cloudHouseholdId}`,
       },
       (payload) => {
-        const r = payload.new as {
-          id: string;
-          title: string | null;
-          room: string | null;
-          decision: 'undecided' | 'keep' | 'donate' | 'toss';
-          decided_at: string | null;
-          is_sentimental: boolean;
-          market_value_cents: number | null;
-          donate_to: string | null;
-          donate_to_kind: 'charity' | 'person' | null;
-          created_at: string;
-        };
-        useStore.getState().applyRemoteItem({
+        const store = useStore.getState();
+
+        if (payload.eventType === 'DELETE') {
+          // Deletes replicate the old row (items is REPLICA IDENTITY FULL, so
+          // the household filter and RLS still apply).
+          const gone = payload.old as { id?: string };
+          if (gone?.id) store.applyRemoteItemDelete(gone.id);
+          return;
+        }
+
+        const r = payload.new as ItemRow;
+        store.applyRemoteItem({
           id: r.id,
           title: r.title ?? 'New item',
           room: r.room ?? 'Elsewhere',
           decision: r.decision,
           decidedAt: r.decided_at ?? undefined,
-          tags: [],
-          addedBy: 'Family',
           isSentimental: r.is_sentimental,
           marketValue: r.market_value_cents != null ? r.market_value_cents / 100 : undefined,
           donateTo: r.donate_to ?? undefined,
           donateToKind: r.donate_to_kind ?? undefined,
-          heirVisibility: 'owner_only',
+          archived: r.archived ?? false,
           createdAt: r.created_at,
         });
       }
