@@ -23,7 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { notify, ROOMS } from '@/components/child/shared';
+import { notify } from '@/components/child/shared';
 import { CollectionPicker } from '@/components/collection-picker';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
 import { SplitReview } from '@/components/split-review';
@@ -45,7 +45,14 @@ import { pingItemAdded } from '@/lib/notifications';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
 import { splitGroupPhoto } from '@/lib/split-photo';
 import { pushItem } from '@/lib/sync';
-import { linkedCloudId, useCanDecide, useCollection, useEntitlement, useStore } from '@/lib/store';
+import {
+  linkedCloudId,
+  useCanDecide,
+  useCollection,
+  useEntitlement,
+  useRoomNames,
+  useStore,
+} from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ProposedItem } from '@/lib/split-photo';
@@ -137,7 +144,11 @@ function NativeCapture() {
 
   const cameraRef = useRef<CameraView>(null);
   const sticky = useStickyCollection();
-  const [room, setRoom] = useState<string>(ROOMS[0]);
+  const rooms = useRoomNames();
+  // The household's own rooms, so a family that added "Sun porch" can file
+  // into it from the viewfinder. Falls back to the first room; a household
+  // always has at least the defaults.
+  const [room, setRoom] = useState<string>(rooms[0] ?? '');
   const [shots, setShots] = useState<string[]>([]); // session uris, newest first
   const [count, setCount] = useState(0);
   const [pendingUri, setPendingUri] = useState<string | null>(null);
@@ -283,7 +294,7 @@ function NativeCapture() {
         <View style={styles.roomRow} pointerEvents="box-none">
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.roomChips}>
-              {ROOMS.map((r) => (
+              {rooms.map((r) => (
                 <Pressable
                   key={r}
                   accessibilityRole="button"
@@ -455,7 +466,11 @@ function WebCapture() {
   const split = useSplitPhoto();
 
   const sticky = useStickyCollection();
-  const [room, setRoom] = useState<string>(ROOMS[0]);
+  const rooms = useRoomNames();
+  // The household's own rooms, so a family that added "Sun porch" can file
+  // into it from the viewfinder. Falls back to the first room; a household
+  // always has at least the defaults.
+  const [room, setRoom] = useState<string>(rooms[0] ?? '');
   const [title, setTitle] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [noPhoto, setNoPhoto] = useState(false);
@@ -618,7 +633,7 @@ function WebCapture() {
         <Text style={styles.noPhotoRowText}>This item has no photo</Text>
       </Pressable>
       <View style={styles.webChips}>
-        {ROOMS.map((r) => (
+        {rooms.map((r) => (
           <Pressable
             key={r}
             accessibilityRole="button"

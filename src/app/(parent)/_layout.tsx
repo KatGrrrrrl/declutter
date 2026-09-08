@@ -111,6 +111,9 @@ export default function ParentTabs() {
         }}
       />
       <Tabs.Screen name="legacy" options={{ href: null, title: 'Legacy' }} />
+      {/* Reached from Settings — administering the household is occasional
+          work, not a tab the parent needs beside Decide every day. */}
+      <Tabs.Screen name="family" options={{ href: null, title: 'Family' }} />
       {/* Reachable from Decide's "Add item"; kept off the bar so five fit at 375px. */}
       <Tabs.Screen name="capture" options={{ href: null, title: 'Add item' }} />
     </Tabs>

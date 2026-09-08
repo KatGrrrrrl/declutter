@@ -19,7 +19,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ROOMS } from '@/components/child/shared';
 import { CollectionPicker } from '@/components/collection-picker';
 import { ItemQuotaMeter } from '@/components/limit-banner';
 import { DecisionPill, Heading, Label, Muted, PhotoBox, Screen, Title, useIsDesktop } from '@/components/ui';
@@ -32,6 +31,7 @@ import {
   useCollections,
   useDuplicateIds,
   useMessageCount,
+  useRoomNames,
   useStore,
 } from '@/lib/store';
 
@@ -180,12 +180,13 @@ export function InventoryView() {
     return m;
   }, [items]);
 
-  /** Every room actually in use, plus the canonical capture rooms. */
+  /** Every room the household has, plus any an item names (belt and braces). */
+  const householdRooms = useRoomNames();
   const allRooms = useMemo(() => {
-    const set = new Set<string>(ROOMS);
+    const set = new Set<string>(householdRooms);
     items.forEach((i) => i.room && set.add(i.room));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [items]);
+  }, [items, householdRooms]);
 
   const archivedCount = items.filter((i) => i.archived).length;
 

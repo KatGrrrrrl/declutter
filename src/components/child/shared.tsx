@@ -1,21 +1,13 @@
 /**
- * Shared bits for the child (contributor) screens: canonical room list,
- * initials avatar, mini status chips, and a cross-platform alert.
+ * Shared bits for the child (contributor) screens: initials avatar, mini
+ * status chips, and a cross-platform alert. (Rooms used to live here as a
+ * fixed list; they are per-household records now — see store.Room.)
  * Child-mode only — foundation primitives live in components/ui.tsx.
  */
 
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { Fonts, Radius, T } from '@/constants/theme';
-
-/** Canonical capture rooms; inventory may contain others added over time. */
-export const ROOMS = [
-  'Kitchen',
-  'Living room',
-  'Bedroom',
-  'Study',
-  'Garage',
-] as const;
 
 /** Alert that also works on web (RN's Alert is a no-op there). */
 export function notify(title: string, message: string) {

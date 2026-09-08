@@ -23,13 +23,22 @@ import { Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/co
 import { Radius, Spacing, T } from '@/constants/theme';
 import { sendInviteEmail } from '@/lib/invites';
 import { createCloudInvite } from '@/lib/join';
-import { Member, useActiveHousehold, useCanDecide, useMembers, useStore } from '@/lib/store';
+import {
+  Member,
+  useActiveHousehold,
+  useAdminNames,
+  useCanDecide,
+  useIsAdmin,
+  useMembers,
+  useStore,
+} from '@/lib/store';
 
 export default function FamilyScreen() {
   const router = useRouter();
   const householdName = useStore((s) => s.householdName);
   const ownerName = useStore((s) => s.ownerName);
   const userName = useStore((s) => s.userName);
+  const role = useStore((s) => s.role);
   const items = useStore((s) => s.items);
   const households = useStore((s) => s.households);
   const activeHouseholdId = useStore((s) => s.activeHouseholdId);
@@ -39,14 +48,23 @@ export default function FamilyScreen() {
   const inviteMember = useStore((s) => s.inviteMember);
   const approveMember = useStore((s) => s.approveMember);
   const declineMember = useStore((s) => s.declineMember);
+  const reinviteMember = useStore((s) => s.reinviteMember);
+  const removeMember = useStore((s) => s.removeMember);
+  const setAdmin = useStore((s) => s.setAdmin);
   const household = useActiveHousehold();
   const members = useMembers();
   const canDecide = useCanDecide();
+  const isAdmin = useIsAdmin();
+  const adminNames = useAdminNames();
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteRel, setInviteRel] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
+
+  /** Which member's manage panel is open, and whether it is on the confirm step. */
+  const [managing, setManaging] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const [addingFamily, setAddingFamily] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState('');
@@ -55,14 +73,24 @@ export default function FamilyScreen() {
   const deciders = household?.deciderNames ?? [ownerName];
   const createdBy = household?.createdBy ?? ownerName;
 
-  // Membership (who is IN the household) is managed by the organizer who set
-  // it up — separate from item decisions, which belong to the deciders. This
-  // matters because the deciders are often invitees who haven't joined yet, so
-  // gating approvals on them alone deadlocks: nobody could ever be let in.
-  const canManageMembers = canDecide || userName === createdBy;
+  // Membership (who is IN the household) belongs to the ADMINISTRATORS —
+  // separate from item decisions, which belong to the deciders. This matters
+  // because the deciders are often invitees who haven't joined yet, so gating
+  // approvals on them alone deadlocks: nobody could ever be let in.
+  //
+  // Approving an invitation stays open to deciders too (they are already
+  // trusted with the parent's things). Removing a person does not: that is an
+  // administrator's call alone, and the one action that can remove a decider.
+  const canManageMembers = isAdmin || canDecide || userName === createdBy;
+  const isAdminName = (n: string) =>
+    adminNames.some((a) => a.toLowerCase() === n.toLowerCase());
 
   const active = members.filter((m) => m.status === 'active');
   const invited = members.filter((m) => m.status === 'invited');
+  // People who were asked and said no. Listed rather than quietly dropped: an
+  // invitation that simply stops appearing is indistinguishable from one that
+  // was never sent, and the family is owed the answer they waited for.
+  const declined = members.filter((m) => m.status === 'declined');
   const pending = items.filter((i) => i.requestedBy);
 
   const closeNewFamily = () => {
@@ -113,9 +141,15 @@ export default function FamilyScreen() {
   /**
    * Approve → membership flips locally, a real cloud membership invitation is
    * created (so joining actually works), then the invitation email goes out.
+   *
+   * Also the "ask again" path for someone who declined: the only difference is
+   * which way the roster line moves (back to 'invited' rather than on to
+   * 'active'); everything downstream — the cloud invitation, the email — is
+   * the same invitation being issued a second time.
    */
   const approveAndSend = async (m: Member) => {
-    approveMember(m.id);
+    if (m.status === 'declined') reinviteMember(m.id);
+    else approveMember(m.id);
     if (!m.email) {
       notify(
         'Approved — no email on file',
@@ -139,6 +173,45 @@ export default function FamilyScreen() {
       );
     } else {
       notify('Approved, but the email didn’t send', res.error ?? 'Try again from this screen.');
+    }
+  };
+
+  /**
+   * Remove someone from the home. The store refuses to strand the household —
+   * it will not let the last administrator or the last decider go — so the
+   * message here explains the way out rather than just saying no.
+   */
+  const doRemoveMember = (m: Member) => {
+    const res = removeMember(m.id);
+    setConfirmRemove(null);
+    setManaging(null);
+    if (res.ok) {
+      notify(
+        `${m.name} was removed`,
+        `They no longer have access to ${householdName}. Everything they added stays in the record — removing a person doesn't remove what they catalogued.`
+      );
+      return;
+    }
+    if (res.reason === 'last-admin') {
+      notify(
+        'Someone has to run this home',
+        `${m.name} is the only person who can manage ${householdName}. Make someone else an administrator first, then you can remove them.`
+      );
+    } else if (res.reason === 'last-decider') {
+      notify(
+        'Someone has to have the final say',
+        `${m.name} is the only decider at ${householdName}. Nothing could be kept or let go without them. Give someone else the final say first.`
+      );
+    }
+  };
+
+  const toggleAdmin = (m: Member) => {
+    const res = setAdmin(m.name, !isAdminName(m.name));
+    if (!res.ok && res.reason === 'last-admin') {
+      notify(
+        'Someone has to run this home',
+        `${m.name} is the only administrator. Make someone else one first.`
+      );
     }
   };
 
@@ -266,17 +339,81 @@ export default function FamilyScreen() {
         People at {householdName}
       </Label>
       <View style={styles.list}>
-        {active.map((m) => (
-          <MemberRow
-            key={m.id}
-            name={m.name === userName ? `${m.name} (you)` : m.name}
-            avatarName={m.name}
-            rel={m.relationship ?? (m.name === createdBy ? 'Set up the home' : 'Family')}
-            badge={deciders.includes(m.name) ? 'Owner' : 'Helper'}
-            badgeKind={deciders.includes(m.name) ? 'owner' : 'helper'}
-            finalSay={deciders.includes(m.name)}
-          />
-        ))}
+        {active.map((m) => {
+          const admin = isAdminName(m.name);
+          const open = managing === m.id;
+          return (
+            <View key={m.id}>
+              <MemberRow
+                name={m.name === userName ? `${m.name} (you)` : m.name}
+                avatarName={m.name}
+                rel={m.relationship ?? (m.name === createdBy ? 'Set up the home' : 'Family')}
+                badge={deciders.includes(m.name) ? 'Owner' : 'Helper'}
+                badgeKind={deciders.includes(m.name) ? 'owner' : 'helper'}
+                finalSay={deciders.includes(m.name)}
+                admin={admin}
+                // Administrators manage everyone but themselves: stepping down
+                // is a different decision from removing someone, and mixing
+                // the two is how a household locks itself out.
+                onManage={isAdmin && m.name !== userName ? () => {
+                  setConfirmRemove(null);
+                  setManaging(open ? null : m.id);
+                } : undefined}
+                managing={open}
+              />
+              {open && (
+                <Well style={styles.manageWell}>
+                  <Muted style={styles.manageNote}>
+                    {admin
+                      ? `${m.name} can manage this home — add and remove people, and remove items from the record.`
+                      : `${m.name} helps here. Administrators can also manage people and remove items.`}
+                  </Muted>
+                  <Row style={styles.manageActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        admin
+                          ? `Remove ${m.name} as an administrator`
+                          : `Make ${m.name} an administrator`
+                      }
+                      onPress={() => toggleAdmin(m)}
+                      style={[styles.actBtn, styles.approveBtn]}
+                    >
+                      <Text style={styles.approveText}>
+                        {admin ? 'Not an administrator' : 'Make administrator'}
+                      </Text>
+                    </Pressable>
+                    {confirmRemove === m.id ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Yes, remove ${m.name} from this home`}
+                        onPress={() => doRemoveMember(m)}
+                        style={[styles.actBtn, styles.declineBtn]}
+                      >
+                        <Text style={styles.declineText}>Yes — remove them</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${m.name} from this home`}
+                        onPress={() => setConfirmRemove(m.id)}
+                        style={[styles.actBtn, styles.declineBtn]}
+                      >
+                        <Text style={styles.declineText}>Remove from home</Text>
+                      </Pressable>
+                    )}
+                  </Row>
+                  {confirmRemove === m.id && (
+                    <Muted style={styles.manageNote}>
+                      {m.name} loses access to {householdName}. Everything they added
+                      stays — the photos, the stories, the record.
+                    </Muted>
+                  )}
+                </Well>
+              )}
+            </View>
+          );
+        })}
       </View>
 
       {/* pending invitations — deciders approve, everyone else sees status */}
@@ -320,6 +457,38 @@ export default function FamilyScreen() {
                     </Text>
                   </View>
                 )}
+              </Row>
+            </Card>
+          ))}
+        </>
+      )}
+
+      {/* declined invitations — the answer, kept visible */}
+      {declined.length > 0 && (
+        <>
+          <Label asHeading>Declined</Label>
+          {declined.map((m) => (
+            <Card key={m.id} style={styles.pendingCard}>
+              <Row style={styles.contactRow}>
+                <Avatar name={m.name} size={44} color={T.inkFaint} />
+                <View style={styles.flex}>
+                  <Text style={styles.memberName}>{m.name}</Text>
+                  <Muted style={styles.memberRel}>
+                    {m.relationship ? `${m.relationship} · ` : ''}started a home of
+                    their own instead
+                    {m.email ? ` · ${m.email}` : ''}
+                  </Muted>
+                </View>
+                {canManageMembers ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Invite ${m.name} again`}
+                    onPress={() => approveAndSend(m)}
+                    style={[styles.actBtn, styles.approveBtn]}
+                  >
+                    <Text style={styles.approveText}>Ask again</Text>
+                  </Pressable>
+                ) : null}
               </Row>
             </Card>
           ))}
@@ -408,6 +577,7 @@ export default function FamilyScreen() {
 
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel="Settings"
         onPress={() => router.push(SETTINGS_ROUTE)}
         style={styles.settingsBtn}
       >
@@ -415,11 +585,20 @@ export default function FamilyScreen() {
         <Text style={styles.settingsText}>Settings</Text>
       </Pressable>
 
-      {/* quiet demo control */}
-      <Pressable accessibilityRole="button" onPress={viewAsOwner} style={styles.demoBtn}>
-        <Ionicons name="swap-horizontal-outline" size={14} color={T.inkFaint} />
-        <Text style={styles.demoText}>View as {ownerName} (owner)</Text>
-      </Pressable>
+      {/* Quiet demo control. Hidden in the owner view, which now reaches this
+          same screen from Settings — "View as the owner" while you ARE the
+          owner is a switch to nowhere. */}
+      {role !== 'owner' && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`View as ${ownerName}, the owner`}
+          onPress={viewAsOwner}
+          style={styles.demoBtn}
+        >
+          <Ionicons name="swap-horizontal-outline" size={14} color={T.inkFaint} />
+          <Text style={styles.demoText}>View as {ownerName} (owner)</Text>
+        </Pressable>
+      )}
     </Screen>
   );
 }
@@ -431,6 +610,9 @@ function MemberRow({
   badgeKind = 'helper',
   avatarName,
   finalSay = false,
+  admin = false,
+  onManage,
+  managing = false,
 }: {
   name: string;
   rel: string;
@@ -439,6 +621,11 @@ function MemberRow({
   avatarName?: string;
   /** True when this member holds the final say in the active household. */
   finalSay?: boolean;
+  /** True when this member administers the household (people + the record). */
+  admin?: boolean;
+  /** Opens the manage panel. Given only to administrators, for other people. */
+  onManage?: () => void;
+  managing?: boolean;
 }) {
   const badgeStyle =
     badgeKind === 'owner'
@@ -463,6 +650,12 @@ function MemberRow({
         <Text style={styles.memberName}>{name}</Text>
         <Muted style={styles.memberRel}>{rel}</Muted>
       </View>
+      {admin && (
+        <View style={[styles.badge, styles.badgeAdmin]}>
+          <Ionicons name="shield-checkmark" size={10} color={T.brassDeep} />
+          <Text style={[styles.badgeText, styles.badgeAdminText]}>Admin</Text>
+        </View>
+      )}
       {finalSay && (
         <View style={[styles.badge, styles.badgeFinal]}>
           <Ionicons name="key" size={10} color={T.brassDeep} />
@@ -472,6 +665,21 @@ function MemberRow({
       <View style={[styles.badge, badgeStyle]}>
         <Text style={[styles.badgeText, badgeTextStyle]}>{badge}</Text>
       </View>
+      {!!onManage && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Manage ${name}`}
+          accessibilityState={{ expanded: managing }}
+          onPress={onManage}
+          style={({ pressed }) => [styles.manageBtn, pressed && styles.manageBtnPressed]}
+        >
+          <Ionicons
+            name={managing ? 'chevron-up' : 'ellipsis-horizontal'}
+            size={16}
+            color={T.inkSoft}
+          />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -537,6 +745,25 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   badgeFinalText: { color: T.brassDeep },
+  badgeAdmin: {
+    backgroundColor: T.brassTint,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  badgeAdminText: { color: T.brassDeep },
+
+  manageBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+  },
+  manageBtnPressed: { opacity: 0.6 },
+  manageWell: { marginTop: Spacing.two, marginBottom: Spacing.two },
+  manageNote: { fontSize: 13 },
+  manageActions: { gap: Spacing.two, marginTop: Spacing.two, flexWrap: 'wrap' },
 
   pendingCard: { marginTop: Spacing.two },
   contactRow: { gap: Spacing.three },

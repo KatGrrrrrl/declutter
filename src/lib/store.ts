@@ -43,6 +43,49 @@ export interface Collection {
   createdAt: string;
 }
 
+/**
+ * A room in the house, with enough of a "map" to find it: which floor it is
+ * on and a plain-language hint ("end of the hall, on the left").
+ *
+ * Rooms are keyed by NAME, not id: `Item.room` is a text column locally and in
+ * the cloud, so a Room row is metadata ABOUT a room name rather than a
+ * reference target. That keeps custom rooms working on devices that have never
+ * seen the room record, and it is why `updateRoom` rewrites the items when the
+ * name changes. Any household member may add one (like collections); removing
+ * one is an administrator action, and only ever when the room is empty.
+ */
+export interface Room {
+  id: string;
+  name: string;
+  /** Which level of the house — one of FLOORS, or anything the family types. */
+  floor?: string;
+  /** How to find it: "end of the hall, left", "behind the kitchen". */
+  locationNote?: string;
+  createdBy: string; // display name
+  createdAt: string;
+}
+
+/** The rooms a brand-new household starts with; families add their own. */
+export const DEFAULT_ROOMS = [
+  'Kitchen',
+  'Living room',
+  'Bedroom',
+  'Study',
+  'Garage',
+] as const;
+
+/**
+ * Suggested levels, in the order they are shown and grouped. Free text
+ * underneath — a family with a "Boathouse" can just type it.
+ */
+export const FLOORS = [
+  'Basement',
+  'Main floor',
+  'Upstairs',
+  'Attic',
+  'Outside',
+] as const;
+
 export interface Item {
   id: string;
   title: string;
@@ -190,6 +233,17 @@ export interface Household {
    * at Mum's house, an aunt at the cottage.
    */
   deciderNames: string[];
+  /**
+   * Who ADMINISTERS this home — a different job from deciding. Deciders hold
+   * the final say over items (keep/donate/let-go, heirs); administrators hold
+   * the final say over the household itself: who is in it, and what stays in
+   * the record. An administrator may remove any member — a decider included —
+   * and remove any item, which is why it is tracked separately instead of
+   * being inferred from deciderNames.
+   *
+   * Seeded with whoever set the home up. A home always keeps at least one.
+   */
+  adminNames: string[];
   /** Who created the household (may or may not be a decider). */
   createdBy: string;
   /**
@@ -227,6 +281,8 @@ interface AppState {
   items: Item[];
   /** Named item sets (coin collection, wine cellar, …) for this household. */
   collections: Collection[];
+  /** The rooms of the open household, with floor + "how to find it" notes. */
+  rooms: Room[];
   /** Per-item family chat threads. */
   messages: ItemMessage[];
   /** Household roster: active members + pending invitations. */
@@ -268,11 +324,13 @@ interface AppState {
   restoreSnapshot: (snap: {
     householdName: string;
     deciderNames: string[];
+    adminNames?: string[];
     createdBy: string;
     cloudHouseholdId: string;
     items: Item[];
     people: Person[];
     collections: Collection[];
+    rooms?: Room[];
     messages: ItemMessage[];
     members: Member[];
     /** View to land in: contributors join as helpers. */
@@ -298,6 +356,7 @@ interface AppState {
   mergeCloudData: (snap: {
     items: Item[];
     collections: Collection[];
+    rooms?: Room[];
     messages: ItemMessage[];
     selfItemIds?: string[];
   }) => void;
@@ -326,6 +385,20 @@ interface AppState {
   /** Decider actions on pending invitations. */
   approveMember: (id: string) => void;
   declineMember: (id: string) => void;
+  reinviteMember: (id: string) => void;
+  /**
+   * Remove someone from the household entirely — an ADMINISTRATOR action, and
+   * the one place a decider can be removed. Drops the roster row, their
+   * decider/administrator standing, and (when linked) revokes their cloud
+   * membership so the removal is real rather than cosmetic.
+   *
+   * Refuses to leave the home unrunnable: the last administrator and the last
+   * decider both stay. Their items and stories are untouched — removing a
+   * person is not removing what they catalogued.
+   */
+  removeMember: (id: string) => { ok: boolean; reason?: 'last-admin' | 'last-decider' | 'missing' };
+  /** Grant/revoke administrator standing in the open household (admins only). */
+  setAdmin: (name: string, isAdmin: boolean) => { ok: boolean; reason?: 'last-admin' };
   /** Wipe everything and return to the welcome screen (the "log out"). */
   signOut: () => void;
   /** Replace demo content with an empty household of the same name. */
@@ -377,6 +450,28 @@ interface AppState {
   ) => void;
   bulkSetRoom: (ids: string[], room: string) => void;
   bulkArchive: (ids: string[], archived: boolean) => void;
+  /**
+   * Add a room. Returns ok:false when the name is blank or already taken
+   * (rooms are name-keyed, so duplicates would fight over the same items).
+   */
+  addRoom: (
+    name: string,
+    opts?: { floor?: string; locationNote?: string }
+  ) => { ok: boolean; reason?: 'blank' | 'duplicate'; id?: string };
+  /**
+   * Edit a room. Renaming rewrites `room` on every item in it (and pushes
+   * those to the cloud) — the name IS the link between item and room.
+   */
+  updateRoom: (
+    id: string,
+    patch: { name?: string; floor?: string; locationNote?: string }
+  ) => { ok: boolean; reason?: 'blank' | 'duplicate' };
+  /**
+   * Delete a room — administrators only in the UI. Refuses while items are
+   * still in it: an empty room is a tidy-up, a full one would orphan things
+   * the family catalogued. Move them first.
+   */
+  removeRoom: (id: string) => { ok: boolean; reason?: 'not-empty'; count?: number };
   /** Create a collection and return its id (for making it sticky in capture). */
   addCollection: (name: string, note?: string) => string;
   updateCollection: (id: string, patch: { name?: string; note?: string }) => void;
@@ -515,6 +610,39 @@ const seedMessages: ItemMessage[] = [
   },
 ];
 
+/**
+ * Sample rooms for the demo house — floors and location hints filled in so the
+ * "where is it?" map reads as a real home on the first run.
+ */
+const seedRooms: Room[] = [
+  { id: '00000000-0000-4000-8000-0000000000e1', name: 'Kitchen', floor: 'Main floor', locationNote: 'Back of the house, off the hall', createdBy: 'Sam', createdAt: '2026-06-27T09:00:00Z' },
+  { id: '00000000-0000-4000-8000-0000000000e2', name: 'Living room', floor: 'Main floor', locationNote: 'Front room, by the porch', createdBy: 'Sam', createdAt: '2026-06-27T09:00:00Z' },
+  { id: '00000000-0000-4000-8000-0000000000e3', name: 'Bedroom', floor: 'Upstairs', locationNote: 'End of the landing, on the left', createdBy: 'Sam', createdAt: '2026-06-27T09:00:00Z' },
+  { id: '00000000-0000-4000-8000-0000000000e4', name: 'Study', floor: 'Upstairs', locationNote: 'First door at the top of the stairs', createdBy: 'Sam', createdAt: '2026-06-27T09:00:00Z' },
+  { id: '00000000-0000-4000-8000-0000000000e5', name: 'Garage', floor: 'Outside', locationNote: 'Detached, past the side gate', createdBy: 'Sam', createdAt: '2026-06-27T09:00:00Z' },
+];
+
+/** A fresh household's rooms — the default names, no map filled in yet. */
+const startingRooms = (createdBy: string, now: string): Room[] =>
+  DEFAULT_ROOMS.map((name) => ({ id: uid(), name, createdBy, createdAt: now }));
+
+/**
+ * Room records inferred from the rooms items already name, plus the defaults.
+ * The backfill for anything that predates room records — a store persisted
+ * before this feature, or a cloud copy restored without room rows.
+ */
+const roomsFromItems = (items: Item[], createdBy: string, now: string): Room[] => {
+  const names: string[] = [...DEFAULT_ROOMS];
+  const seen = new Set(names.map((n) => n.toLowerCase()));
+  items.forEach((i) => {
+    const n = i.room?.trim();
+    if (!n || seen.has(n.toLowerCase())) return;
+    seen.add(n.toLowerCase());
+    names.push(n);
+  });
+  return names.map((name) => ({ id: uid(), name, createdBy, createdAt: now }));
+};
+
 /** Pristine app state — the seeded sample household, pre-onboarding. */
 const initial = {
   onboarded: false,
@@ -530,6 +658,9 @@ const initial = {
       // Sam (the son) set the home up; Rose holds the final say — the
       // recommended shape: anyone starts it, the family designates deciders.
       deciderNames: ['Rose'],
+      // Sam set it up, so Sam administers it — Rose still holds every item
+      // decision. The two jobs are deliberately different people here.
+      adminNames: ['Sam'],
       createdBy: 'Sam',
     },
   ] as Household[],
@@ -539,6 +670,7 @@ const initial = {
   people: seedPeople,
   items: seedItems,
   collections: [] as Collection[],
+  rooms: seedRooms,
   messages: seedMessages,
   members: seedMembers,
   defaultDeciders: {} as Record<string, string>,
@@ -586,6 +718,28 @@ function pushItemChange(s: AppState, ...ids: string[]) {
   })();
 }
 
+/**
+ * Mirror a room add/edit to the cloud. Same fire-and-forget contract as
+ * pushItemChange: the change is already saved locally, and a failure just
+ * means the next full backup carries it.
+ *
+ * Rooms go up eagerly (unlike collections, which wait for a synced item):
+ * the point of the room map is that the whole family can see where things are,
+ * including rooms nobody has photographed yet.
+ */
+function pushRoomChange(s: AppState, room: Room, previousName?: string) {
+  const hid = linkedCloudId(s);
+  if (!hid) return;
+  void (async () => {
+    try {
+      const { pushRoom } = await import('@/lib/sync');
+      await pushRoom(room, hid, previousName);
+    } catch {
+      /* offline — the next backup carries it */
+    }
+  })();
+}
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -624,6 +778,7 @@ export const useStore = create<AppState>()(
                 items: [] as Item[],
                 people: [] as Person[],
                 collections: [] as Collection[],
+                rooms: startingRooms(userName, now),
                 messages: [] as ItemMessage[],
                 members: roster,
                 isDemo: false,
@@ -633,6 +788,10 @@ export const useStore = create<AppState>()(
                     name: householdName,
                     createdAt: now,
                     deciderNames: deciders,
+                    // Whoever sets the home up administers it. The deciders
+                    // they named are usually invitees who haven't joined yet,
+                    // so handing them the roster would deadlock it.
+                    adminNames: [userName],
                     createdBy: userName,
                   },
                 ] as Household[],
@@ -676,6 +835,107 @@ export const useStore = create<AppState>()(
           ),
         })),
 
+      // Asking someone again after they said no. Back to 'invited', with the
+      // clock restarted — a second invitation is a new invitation, and the
+      // roster should not still be dated to the one that was refused.
+      reinviteMember: (id) =>
+        set((s) => ({
+          members: s.members.map((m) =>
+            m.id === id
+              ? { ...m, status: 'invited' as const, invitedBy: s.userName, invitedAt: new Date().toISOString() }
+              : m
+          ),
+        })),
+
+      removeMember: (id) => {
+        const s = get();
+        const member = s.members.find((m) => m.id === id);
+        const household = s.households.find((h) => h.id === s.activeHouseholdId);
+        if (!member || !household) return { ok: false, reason: 'missing' as const };
+
+        const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+        const admins = household.adminNames ?? [household.createdBy];
+        // A home with nobody to administer it can never let anyone back in,
+        // and one with nobody to decide can never empty its queue. Both are
+        // dead ends the UI must steer around rather than land in.
+        if (admins.some((a) => same(a, member.name)) && admins.length <= 1) {
+          return { ok: false, reason: 'last-admin' as const };
+        }
+        if (
+          household.deciderNames.some((d) => same(d, member.name)) &&
+          household.deciderNames.length <= 1
+        ) {
+          return { ok: false, reason: 'last-decider' as const };
+        }
+
+        set({
+          members: s.members.filter((m) => m.id !== id),
+          households: s.households.map((h) =>
+            h.id === household.id
+              ? {
+                  ...h,
+                  deciderNames: h.deciderNames.filter((d) => !same(d, member.name)),
+                  adminNames: (h.adminNames ?? [h.createdBy]).filter(
+                    (a) => !same(a, member.name)
+                  ),
+                }
+              : h
+          ),
+        });
+
+        // Cloud: drop the roster line AND revoke the real membership, so a
+        // removed person actually loses access rather than just vanishing from
+        // this device's list. Both are owner-gated by RLS; a non-owner's calls
+        // simply touch no rows. Their items and stories stay — removing a
+        // person is not removing what they catalogued.
+        const hid = linkedCloudId(s);
+        if (hid) {
+          void (async () => {
+            try {
+              const { supabase } = await import('@/lib/supabase');
+              await supabase
+                .from('roster_entries')
+                .delete()
+                .eq('household_id', hid)
+                .eq('name', member.name);
+              if (member.email) {
+                await supabase
+                  .from('household_members')
+                  .update({ status: 'revoked' })
+                  .eq('household_id', hid)
+                  .eq('invited_email', member.email.toLowerCase())
+                  .in('status', ['invited', 'active']);
+              }
+            } catch {
+              /* offline — the next backup re-mirrors the roster without them */
+            }
+          })();
+        }
+        return { ok: true };
+      },
+
+      setAdmin: (name, isAdmin) => {
+        const s = get();
+        const household = s.households.find((h) => h.id === s.activeHouseholdId);
+        if (!household) return { ok: false };
+        const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+        const admins = household.adminNames ?? [household.createdBy];
+        if (!isAdmin && admins.length <= 1 && admins.some((a) => same(a, name))) {
+          return { ok: false, reason: 'last-admin' as const };
+        }
+        const next = isAdmin
+          ? admins.some((a) => same(a, name))
+            ? admins
+            : [...admins, name]
+          : admins.filter((a) => !same(a, name));
+        set({
+          households: s.households.map((h) =>
+            h.id === household.id ? { ...h, adminNames: next } : h
+          ),
+        });
+        return { ok: true };
+      },
+
       signOut: () => set({ ...initial }),
 
       startFresh: (householdName) =>
@@ -687,6 +947,7 @@ export const useStore = create<AppState>()(
             items: [],
             people: [],
             collections: [],
+            rooms: startingRooms(s.userName, now),
             messages: [],
             members: [
               { id: uid(), name: s.userName, status: 'active' as const, invitedBy: s.userName, invitedAt: now },
@@ -699,6 +960,7 @@ export const useStore = create<AppState>()(
                 name,
                 createdAt: now,
                 deciderNames: [s.userName],
+                adminNames: [s.userName],
                 createdBy: s.userName,
               },
             ],
@@ -721,6 +983,7 @@ export const useStore = create<AppState>()(
               name,
               createdAt: new Date().toISOString(),
               deciderNames: deciderNames?.length ? deciderNames : [s.userName],
+              adminNames: [s.userName],
               createdBy: s.userName,
             },
           ],
@@ -818,6 +1081,7 @@ export const useStore = create<AppState>()(
           items: [],
           people: [],
           collections: [],
+          rooms: startingRooms(s.userName, now),
           messages: [],
           members: [
             { id: uid(), name: s.userName, status: 'active' as const, invitedBy: s.userName, invitedAt: now },
@@ -953,6 +1217,90 @@ export const useStore = create<AppState>()(
           return { items: s.items.map((it) => (set_.has(it.id) ? { ...it, archived } : it)) };
         });
         pushItemChange(get(), ...ids);
+      },
+
+      addRoom: (name, opts) => {
+        const s = get();
+        const trimmed = name.trim();
+        if (!trimmed) return { ok: false, reason: 'blank' as const };
+        if (s.rooms.some((r) => r.name.toLowerCase() === trimmed.toLowerCase())) {
+          return { ok: false, reason: 'duplicate' as const };
+        }
+        const room: Room = {
+          id: uid(),
+          name: trimmed,
+          floor: opts?.floor?.trim() || undefined,
+          locationNote: opts?.locationNote?.trim() || undefined,
+          createdBy: viewerName(s),
+          createdAt: new Date().toISOString(),
+        };
+        set({ rooms: [...s.rooms, room] });
+        pushRoomChange(get(), room);
+        return { ok: true, id: room.id };
+      },
+
+      updateRoom: (id, patch) => {
+        const s = get();
+        const room = s.rooms.find((r) => r.id === id);
+        if (!room) return { ok: false };
+        const name = patch.name?.trim();
+        if (patch.name !== undefined && !name) return { ok: false, reason: 'blank' as const };
+        const renamed = Boolean(name && name.toLowerCase() !== room.name.toLowerCase());
+        if (
+          name &&
+          s.rooms.some((r) => r.id !== id && r.name.toLowerCase() === name.toLowerCase())
+        ) {
+          return { ok: false, reason: 'duplicate' as const };
+        }
+        const next: Room = {
+          ...room,
+          ...(name ? { name } : {}),
+          ...(patch.floor !== undefined ? { floor: patch.floor.trim() || undefined } : {}),
+          ...(patch.locationNote !== undefined
+            ? { locationNote: patch.locationNote.trim() || undefined }
+            : {}),
+        };
+        // The room's NAME is what items point at, so a rename has to carry the
+        // items with it — otherwise they'd all fall out into a ghost room.
+        const movedIds = renamed
+          ? s.items.filter((i) => i.room === room.name).map((i) => i.id)
+          : [];
+        set({
+          rooms: s.rooms.map((r) => (r.id === id ? next : r)),
+          ...(renamed
+            ? {
+                items: s.items.map((i) =>
+                  i.room === room.name ? { ...i, room: next.name } : i
+                ),
+              }
+            : {}),
+        });
+        pushRoomChange(get(), next, renamed ? room.name : undefined);
+        if (movedIds.length) pushItemChange(get(), ...movedIds);
+        return { ok: true };
+      },
+
+      removeRoom: (id) => {
+        const s = get();
+        const room = s.rooms.find((r) => r.id === id);
+        if (!room) return { ok: true };
+        const count = s.items.filter((i) => i.room === room.name).length;
+        if (count > 0) return { ok: false, reason: 'not-empty' as const, count };
+        set({ rooms: s.rooms.filter((r) => r.id !== id) });
+        const hid = linkedCloudId(s);
+        if (hid) {
+          void (async () => {
+            try {
+              // By NAME, not id: whichever device synced the room first minted
+              // the cloud row's id, so ours may not match it.
+              const { deleteRoom } = await import('@/lib/sync');
+              await deleteRoom(room.name, hid);
+            } catch {
+              /* offline — the row stays until a future cleanup */
+            }
+          })();
+        }
+        return { ok: true };
       },
 
       addCollection: (name, note) => {
@@ -1135,6 +1483,12 @@ export const useStore = create<AppState>()(
             name: snap.householdName,
             createdAt: prev?.createdAt ?? now,
             deciderNames: snap.deciderNames,
+            // Fall back to whoever set the home up: a household restored from
+            // a cloud copy written before administrators existed has no
+            // is_admin flags to read, and must not come back unadministered.
+            adminNames: snap.adminNames?.length
+              ? snap.adminNames
+              : (prev?.adminNames ?? [snap.createdBy]),
             createdBy: snap.createdBy,
             // It came from the cloud, so it is linked from the first moment.
             cloudLinkedAt: prev?.cloudLinkedAt ?? now,
@@ -1157,12 +1511,18 @@ export const useStore = create<AppState>()(
             items,
             people: snap.people,
             collections: snap.collections,
+            // A home with no room rows in the cloud (or restored from an older
+            // copy) still needs somewhere to put things: fall back to the
+            // rooms its items name, then to the defaults.
+            rooms: snap.rooms?.length
+              ? snap.rooms
+              : roomsFromItems(items, snap.createdBy, now),
             messages: snap.messages,
             members: snap.members,
           };
         }),
 
-      mergeCloudData: ({ items, collections, messages, selfItemIds }) =>
+      mergeCloudData: ({ items, collections, rooms, messages, selfItemIds }) =>
         set((s) => {
           const cloudById = new Map(items.map((i) => [i.id, i]));
           const localIds = new Set(s.items.map((i) => i.id));
@@ -1206,11 +1566,21 @@ export const useStore = create<AppState>()(
             ...collections,
             ...s.collections.filter((c) => !cloudColIds.has(c.id)),
           ];
+          // Rooms merge by NAME, not id: two devices that both typed "Attic"
+          // before either synced hold different room ids for the same room,
+          // and the family should end up with one Attic, not two. The cloud
+          // copy wins on floor/location; rooms only this device knows survive.
+          const cloudRooms = rooms ?? [];
+          const cloudRoomNames = new Set(cloudRooms.map((r) => r.name.toLowerCase()));
+          const mergedRooms = cloudRooms.length
+            ? [...cloudRooms, ...s.rooms.filter((r) => !cloudRoomNames.has(r.name.toLowerCase()))]
+            : s.rooms;
           const msgIds = new Set(s.messages.map((m) => m.id));
           const freshMsgs = messages.filter((m) => !msgIds.has(m.id));
           return {
             items: [...fresh, ...merged],
             collections: mergedCols,
+            rooms: mergedRooms,
             messages: [...s.messages, ...freshMsgs],
           };
         }),
@@ -1248,7 +1618,7 @@ export const useStore = create<AppState>()(
     {
       name: 'declutter-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 6,
+      version: 7,
       /**
        * v1 → v2: chat messages + per-household deciders/creator.
        * v2 → v3: member roster (backfilled from deciders + current user).
@@ -1259,6 +1629,9 @@ export const useStore = create<AppState>()(
        * v5 → v6: the cloud link moves from a top-level cloudHouseholdId /
        *          lastBackupAt pair onto the household it describes
        *          (Household.cloudLinkedAt / lastBackupAt).
+       * v6 → v7: room records (name + floor + location note), backfilled from
+       *          the rooms items already name; and Household.adminNames,
+       *          seeded with whoever created the home.
        */
       migrate: (persisted) => {
         // Pre-v6 stores carry the link beside the households, not on them.
@@ -1268,11 +1641,17 @@ export const useStore = create<AppState>()(
           ...s
         } = persisted as Partial<AppState> & { cloudHouseholdId?: string; lastBackupAt?: string };
         const now = new Date().toISOString();
-        const households = (s.households ?? []).map((h) => ({
-          ...h,
-          deciderNames: h.deciderNames ?? [s.ownerName ?? 'Rose'],
-          createdBy: h.createdBy ?? s.userName ?? 'Rose',
-        }));
+        const households = (s.households ?? []).map((h) => {
+          const createdBy = h.createdBy ?? s.userName ?? 'Rose';
+          return {
+            ...h,
+            deciderNames: h.deciderNames ?? [s.ownerName ?? 'Rose'],
+            createdBy,
+            // v7: whoever set the home up administers it, which is exactly the
+            // rule the Family screen already applied ad hoc before this field.
+            adminNames: h.adminNames?.length ? h.adminNames : [createdBy],
+          };
+        });
         let members = s.members;
         if (!members) {
           const names = new Set<string>();
@@ -1334,6 +1713,10 @@ export const useStore = create<AppState>()(
           activeHouseholdId,
           // v5: collections arrive empty for stores persisted before them.
           collections: s.collections ?? [],
+          // v7: back-fill room records so nothing an item names disappears.
+          rooms: s.rooms?.length
+            ? s.rooms
+            : roomsFromItems(items, households[0]?.createdBy ?? s.userName ?? 'Family', now),
         } as AppState;
       },
     }
@@ -1418,6 +1801,71 @@ export const selectCanDecide = (s: AppState) => {
 };
 
 export const useCanDecide = () => useStore(selectCanDecide);
+
+/**
+ * Whether the current user ADMINISTERS the active household — the authority
+ * over the household itself: removing any member (deciders included) and
+ * removing any item from the record.
+ *
+ * Deliberately not the same question as selectCanDecide. Deciding is about
+ * the parent's things; administering is about the household's shape, and is
+ * usually the adult child who set the home up.
+ */
+export const selectIsAdmin = (s: AppState) => {
+  const h = selectActiveHousehold(s);
+  const me = viewerName(s);
+  if (!h) return s.role === 'owner';
+  const admins = h.adminNames?.length ? h.adminNames : [h.createdBy];
+  return admins.some((a) => a.toLowerCase() === me.toLowerCase());
+};
+
+export const useIsAdmin = () => useStore(selectIsAdmin);
+
+/** Administrator names for the active household (never empty). */
+export const useAdminNames = () =>
+  useStore(
+    useShallow((s: AppState) => {
+      const h = selectActiveHousehold(s);
+      if (!h) return [] as string[];
+      return h.adminNames?.length ? h.adminNames : [h.createdBy];
+    })
+  );
+
+/**
+ * Every room of the open household, ordered by floor (FLOORS order first,
+ * then anything the family typed, then rooms with no floor set).
+ *
+ * Includes a stand-in for any room an item names that has no record yet — a
+ * room can arrive on an item from another device before its record does, and
+ * a room must never be a place where things silently disappear.
+ */
+export const selectRooms = (s: AppState): Room[] => {
+  const known = new Set(s.rooms.map((r) => r.name.toLowerCase()));
+  const ghosts: Room[] = [];
+  s.items.forEach((i) => {
+    const n = i.room?.trim();
+    if (!n || known.has(n.toLowerCase())) return;
+    known.add(n.toLowerCase());
+    ghosts.push({ id: `ghost:${n}`, name: n, createdBy: 'Family', createdAt: '' });
+  });
+  const rank = (r: Room) => {
+    if (!r.floor) return FLOORS.length + 1;
+    const i = (FLOORS as readonly string[]).indexOf(r.floor);
+    return i === -1 ? FLOORS.length : i;
+  };
+  return [...s.rooms, ...ghosts].sort(
+    (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)
+  );
+};
+
+export const useRooms = () => useStore(useShallow(selectRooms));
+
+/** Just the room names, in the same order — for pickers and filters. */
+export const useRoomNames = () =>
+  useStore(useShallow((s: AppState) => selectRooms(s).map((r) => r.name)));
+
+/** True for a room that exists only because an item names it (no record yet). */
+export const isGhostRoom = (r: Room) => r.id.startsWith('ghost:');
 
 /**
  * This user's default decider for the ACTIVE household, or undefined for

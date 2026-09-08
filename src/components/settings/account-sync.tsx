@@ -130,9 +130,11 @@ export function AccountSync() {
       items: state.items,
       people: state.people,
       collections: state.collections,
+      rooms: state.rooms,
       messages: state.messages,
       members: state.members,
       deciderNames: household?.deciderNames ?? [state.ownerName],
+      adminNames: household?.adminNames ?? [household?.createdBy ?? state.userName],
       userName: state.userName,
     });
     setBusy(false);

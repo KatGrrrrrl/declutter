@@ -14,7 +14,7 @@
  *   and carries `remotePhotoPath` back on pulls.
  */
 
-import type { Collection, Item, ItemMessage, Member, Person } from '@/lib/store';
+import type { Collection, Item, ItemMessage, Member, Person, Room } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 export interface SyncInput {
@@ -25,9 +25,11 @@ export interface SyncInput {
   items: Item[];
   people: Person[];
   collections: Collection[];
+  rooms: Room[];
   messages: ItemMessage[];
   members: Member[];
   deciderNames: string[];
+  adminNames: string[];
   userName: string;
 }
 
@@ -58,6 +60,72 @@ async function upsertCollections(
     { ignoreDuplicates: !isOwner }
   );
   return error ? { error: error.message } : {};
+}
+
+/**
+ * Room rows — the household's map: which floor each room is on and how to
+ * find it. Name-keyed (`rooms_unique_name`), because `items.room` is text and
+ * the name is what links an item to its room; two devices that both typed
+ * "Attic" converge on one row instead of duplicating it.
+ *
+ * Pushed EAGERLY, unlike collections: a room nobody has photographed yet is
+ * still part of the map the family needs to see, and a room name is
+ * structural rather than a disclosure about any one item.
+ */
+async function upsertRooms(
+  rooms: Room[],
+  householdId: string,
+  userId: string
+): Promise<{ error?: string }> {
+  if (!rooms.length) return {};
+  const { error } = await supabase.from('rooms').upsert(
+    rooms.map((r) => ({
+      household_id: householdId,
+      name: r.name,
+      floor: r.floor ?? null,
+      location_note: r.locationNote ?? null,
+      created_by: userId,
+      created_by_name: r.createdBy || null,
+    })),
+    { onConflict: 'household_id,name' }
+  );
+  return error ? { error: error.message } : {};
+}
+
+/**
+ * Mirror one room add/edit (the store's fire-and-forget path).
+ *
+ * `previousName` makes a rename a rename: rooms are addressed by name, so
+ * without it "Study" → "Office" would insert Office and strand Study. When no
+ * row answers to the old name (another device renamed it first, or this room
+ * has never synced) it falls through to the plain upsert.
+ */
+export async function pushRoom(
+  room: Room,
+  householdId: string,
+  previousName?: string
+): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return;
+  if (previousName && previousName !== room.name) {
+    const { data } = await supabase
+      .from('rooms')
+      .update({
+        name: room.name,
+        floor: room.floor ?? null,
+        location_note: room.locationNote ?? null,
+      })
+      .eq('household_id', householdId)
+      .eq('name', previousName)
+      .select('id');
+    if (data?.length) return;
+  }
+  await upsertRooms([room], householdId, auth.user.id);
+}
+
+/** Remove a room row by name (ids differ per device; the name is the key). */
+export async function deleteRoom(name: string, householdId: string): Promise<void> {
+  await supabase.from('rooms').delete().eq('household_id', householdId).eq('name', name);
 }
 
 /** The collections a given set of item rows references. */
@@ -211,6 +279,16 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
       if (error) throw error;
     }
 
+    // 2b. Rooms — the house's map. Any member may add one, so this is not
+    //     owner-gated; the DB's rooms RLS matches.
+    //
+    //     Deliberately NOT fatal. The map is metadata about the catalog, not
+    //     the catalog: a household whose room rows can't be written (an app
+    //     build that has reached a device before the migration reached the
+    //     database) must still be able to back up its items. The local rooms
+    //     survive and the next backup carries them.
+    await upsertRooms(input.rooms, hid, user.id);
+
     // 3. Items. Owners push all; contributors only INSERT their own new,
     //    undecided items (server triggers would reject more anyway).
     const uploadable = input.items.filter((i) => !i.localOnly);
@@ -278,19 +356,37 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
 
     // 5. Roster mirror (owner only; name-keyed upsert).
     if (isOwner && input.members.length) {
+      const rosterRow = (m: Member) => ({
+        household_id: hid,
+        name: m.name,
+        relationship: m.relationship || null,
+        // The cloud's member_status enum has no 'declined' — a refused
+        // invitation lands on 'revoked', the same value decline_invite()
+        // writes server-side. Pull maps it back (a roster line is only ever
+        // revoked by a decline: removal DELETEs the row outright).
+        status: m.status === 'declined' ? 'revoked' : m.status,
+        is_decider: input.deciderNames.includes(m.name),
+        invited_by_name: m.invitedBy,
+        invited_email: m.email ?? null,
+      });
       const { error } = await supabase.from('roster_entries').upsert(
         input.members.map((m) => ({
-          household_id: hid,
-          name: m.name,
-          relationship: m.relationship || null,
-          status: m.status,
-          is_decider: input.deciderNames.includes(m.name),
-          invited_by_name: m.invitedBy,
-          invited_email: m.email ?? null,
+          ...rosterRow(m),
+          is_admin: input.adminNames.includes(m.name),
         })),
         { onConflict: 'household_id,name' }
       );
-      if (error) throw error;
+      if (error) {
+        // A build can reach a device before its migration reaches the
+        // database. Losing who administers the home is survivable for one
+        // deploy window; losing the whole backup is not — so retry without
+        // the column rather than failing the family's backup over it.
+        // Safe to delete once migration 0013 is applied everywhere.
+        const retry = await supabase
+          .from('roster_entries')
+          .upsert(input.members.map(rosterRow), { onConflict: 'household_id,name' });
+        if (retry.error) throw error;
+      }
     }
 
     return {
@@ -333,11 +429,13 @@ export interface PullResult {
   snapshot?: {
     householdName: string;
     deciderNames: string[];
+    adminNames: string[];
     createdBy: string;
     cloudHouseholdId: string;
     items: Item[];
     people: Person[];
     collections: Collection[];
+    rooms: Room[];
     messages: ItemMessage[];
     members: Member[];
     /** Ids of items this account captured — the store restores their addedBy. */
@@ -393,7 +491,7 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
     // are scoped to this household's items — unscoped, a member of two homes
     // downloaded the other home's tags, story bodies and photo paths on every
     // restore, only to discard them in the maps below.
-    const [tags, stories, people, roster, photos, collections] = await Promise.all([
+    const [tags, stories, people, roster, photos, collections, rooms] = await Promise.all([
       supabase.from('item_tags').select('*').in('item_id', itemIds),
       supabase.from('stories').select('*').in('item_id', itemIds),
       supabase.from('people').select('*').eq('household_id', hh.id),
@@ -403,8 +501,14 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
         .select('item_id, storage_path, is_primary, created_at')
         .in('item_id', itemIds),
       supabase.from('collections').select('*').eq('household_id', hh.id),
+      supabase.from('rooms').select('*').eq('household_id', hh.id),
     ]);
-    for (const r of [tags, stories, people, roster, photos, collections]) if (r.error) throw r.error;
+    for (const r of [tags, stories, people, roster, photos, collections])
+      if (r.error) throw r.error;
+    // Rooms are the one non-fatal fetch, for the same reason the push is:
+    // a restore must not fail because the map couldn't be read. Without them
+    // the store falls back to the rooms the restored items name.
+    const roomRows = rooms.error ? [] : (rooms.data ?? []);
 
     const { data: msgs, error: msgErr } = itemIds.length
       ? await supabase.from('item_messages').select('*').in('item_id', itemIds)
@@ -492,30 +596,46 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
       createdAt: m.created_at,
     }));
 
+    const localRooms: Room[] = roomRows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      floor: r.floor ?? undefined,
+      locationNote: r.location_note ?? undefined,
+      createdBy: r.created_by_name ?? 'Family',
+      createdAt: r.created_at,
+    }));
+
     const rosterRows = roster.data ?? [];
     const localMembers: Member[] = rosterRows.map((r) => ({
       id: r.id,
       name: r.name,
       relationship: r.relationship ?? undefined,
       email: r.invited_email ?? undefined,
-      status: r.status,
+      // 'revoked' on a roster line means the invitee said no (see push).
+      status: r.status === 'revoked' ? 'declined' : r.status,
       invitedBy: r.invited_by_name ?? '',
       invitedAt: r.created_at,
     }));
     const deciderNames = rosterRows.filter((r) => r.is_decider).map((r) => r.name);
     const createdBy =
       rosterRows.find((r) => r.status === 'active')?.name ?? deciderNames[0] ?? 'Family';
+    // Rows written before administrators existed carry no is_admin flag; the
+    // household falls back to its creator rather than coming back with nobody
+    // able to manage it.
+    const adminNames = rosterRows.filter((r) => r.is_admin).map((r) => r.name);
 
     return {
       ok: true,
       snapshot: {
         householdName: hh.name,
         deciderNames: deciderNames.length ? deciderNames : [createdBy],
+        adminNames: adminNames.length ? adminNames : [createdBy],
         createdBy,
         cloudHouseholdId: hh.id,
         items: localItems,
         people: localPeople,
         collections: localCollections,
+        rooms: localRooms,
         messages: localMessages,
         members: localMembers,
         selfItemIds: (items.data ?? [])
@@ -574,6 +694,40 @@ export async function pushItem(
     await supabase.from('item_tags').insert(item.tags.map((tag) => ({ item_id: item.id, tag })));
   }
   return { ok: true };
+}
+
+/**
+ * Mirror heir assignments for a set of items — one heir_assignments row per
+ * assigned item, none for an unassigned one. Owner-level only (RLS rejects
+ * anyone else, and callers gate on isOwner). Read side: an owner pulls every
+ * row; a non-owner device only ever receives the ones marked 'revealed'.
+ *
+ * BEST-EFFORT by design: it never fails the item write it rides with. The
+ * table arrives with migration 0014, and a device on this build must keep
+ * syncing items against a project that hasn't applied it yet; supabase-js
+ * returns errors rather than throwing, and they are deliberately ignored.
+ */
+async function syncHeirAssignments(items: Item[], householdId: string): Promise<void> {
+  const assigned = items.filter((i) => i.heirPersonId);
+  const unassigned = items.filter((i) => !i.heirPersonId).map((i) => i.id);
+  try {
+    if (assigned.length) {
+      await supabase.from('heir_assignments').upsert(
+        assigned.map((i) => ({
+          household_id: householdId,
+          item_id: i.id,
+          person_id: i.heirPersonId!,
+          visibility: i.heirVisibility,
+        })),
+        { onConflict: 'item_id' }
+      );
+    }
+    if (unassigned.length) {
+      await supabase.from('heir_assignments').delete().in('item_id', unassigned);
+    }
+  } catch {
+    /* offline — the next backup carries it */
+  }
 }
 
 /**
@@ -659,40 +813,6 @@ export async function pushItemUpdates(
   if (tagRows.length) await supabase.from('item_tags').insert(tagRows);
 
   return { ok: true, pushed: uploadable.length };
-}
-
-/**
- * Mirror heir assignments for a set of items — one heir_assignments row per
- * assigned item, none for an unassigned one. Owner-level only (RLS rejects
- * anyone else, and callers gate on isOwner). Read side: an owner pulls every
- * row; a non-owner device only ever receives the ones marked 'revealed'.
- *
- * BEST-EFFORT by design: it never fails the item write it rides with. The
- * table arrives with migration 0014, and a device on this build must keep
- * syncing items against a project that hasn't applied it yet; supabase-js
- * returns errors rather than throwing, and they are deliberately ignored.
- */
-async function syncHeirAssignments(items: Item[], householdId: string): Promise<void> {
-  const assigned = items.filter((i) => i.heirPersonId);
-  const unassigned = items.filter((i) => !i.heirPersonId).map((i) => i.id);
-  try {
-    if (assigned.length) {
-      await supabase.from('heir_assignments').upsert(
-        assigned.map((i) => ({
-          household_id: householdId,
-          item_id: i.id,
-          person_id: i.heirPersonId!,
-          visibility: i.heirVisibility,
-        })),
-        { onConflict: 'item_id' }
-      );
-    }
-    if (unassigned.length) {
-      await supabase.from('heir_assignments').delete().in('item_id', unassigned);
-    }
-  } catch {
-    /* offline — the next backup carries it */
-  }
 }
 
 /**

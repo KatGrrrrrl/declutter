@@ -33,7 +33,7 @@ import {
 import { CollectionPicker } from '@/components/collection-picker';
 import { DonateTo } from '@/components/donate-to';
 import { ItemChat } from '@/components/item-chat';
-import { notify, ROOMS } from '@/components/child/shared';
+import { notify } from '@/components/child/shared';
 import { Avatar, VISIBILITY_META, formatDuration } from '@/components/parent/bits';
 import {
   Btn,
@@ -49,7 +49,15 @@ import {
 import { Fonts, Spacing, T } from '@/constants/theme';
 import { estimateItemValue } from '@/lib/estimate-value';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
-import { linkedCloudId, useActiveHousehold, useCanDecide, useCollection, useStore } from '@/lib/store';
+import {
+  linkedCloudId,
+  useActiveHousehold,
+  useCanDecide,
+  useCollection,
+  useIsAdmin,
+  useRoomNames,
+  useStore,
+} from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ValueEstimate } from '@/lib/estimate-value';
@@ -94,15 +102,23 @@ export default function ItemDetailScreen() {
   const deciders = household?.deciderNames ?? [];
 
   const isOwner = role === 'owner';
+  const isAdmin = useIsAdmin();
+  const rooms = useRoomNames();
   const story = item?.story;
 
   /**
-   * Who may edit/remove this record: deciders always; the capturer while the
-   * item is still undecided (fixing their own batch mistakes). Matches the
-   * cloud RLS exactly. Deciding itself stays owner-only.
+   * Who may edit/remove this record: the household's administrators and the
+   * deciders always; the capturer while the item is still undecided (fixing
+   * their own batch mistakes). Matches the cloud RLS. Deciding itself stays
+   * owner-only.
+   *
+   * Administrators are in here because the person who keeps the record — the
+   * adult child who set the home up — is often working in the helper view,
+   * where `isOwner` is false. Without them, nobody could clear out a mistaken
+   * capture once a decider had touched it.
    */
   const canManage = Boolean(
-    item && (isOwner || (item.addedBy === userName && item.decision === 'undecided'))
+    item && (isOwner || isAdmin || (item.addedBy === userName && item.decision === 'undecided'))
   );
 
   const [editing, setEditing] = useState(false);
@@ -420,7 +436,7 @@ export default function ItemDetailScreen() {
           />
           <Label>Room</Label>
           <Row style={styles.editRooms}>
-            {ROOMS.map((r) => (
+            {rooms.map((r) => (
               <Pressable
                 key={r}
                 accessibilityRole="button"

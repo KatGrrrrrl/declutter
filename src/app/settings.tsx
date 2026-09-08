@@ -24,7 +24,7 @@ import {
 
 import { notify } from '@/components/child/shared';
 import { AccountSync } from '@/components/settings/account-sync';
-import { UPGRADE_ROUTE } from '@/components/settings/routes';
+import { familyRoute, UPGRADE_ROUTE } from '@/components/settings/routes';
 import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { refreshPlan, verifyCheckout } from '@/lib/billing';
@@ -50,7 +50,7 @@ export default function SettingsScreen() {
   // passing it to useStore as a selector would break reference equality.
   const state = useStore();
   const ent = selectEntitlement(state);
-  const { households, activeHouseholdId, householdName, userName, isDemo } = state;
+  const { households, activeHouseholdId, householdName, userName, isDemo, role } = state;
   const { switchHousehold, addHousehold, startFresh, signOut, setDefaultDecider } = state;
   const { renameHousehold, removeHousehold, unlinkHousehold } = state;
   // Default decision-maker: only a choice worth making with >1 decider here.
@@ -436,6 +436,10 @@ export default function SettingsScreen() {
                       <Muted style={styles.rowMeta}>
                         Final say: {h.deciderNames.join(', ')}
                       </Muted>
+                      <Muted style={styles.rowMeta}>
+                        Administered by:{' '}
+                        {(h.adminNames?.length ? h.adminNames : [h.createdBy]).join(', ')}
+                      </Muted>
                       {active && <Muted style={styles.rowMeta}>Currently open</Muted>}
                     </View>
                   </Pressable>
@@ -516,6 +520,25 @@ export default function SettingsScreen() {
               </View>
             );
           })}
+
+          {/* The roster of the open home — inviting, approving, and (for
+              administrators) removing people. It lives on the Family screen,
+              which the parent's tab bar deliberately doesn't carry. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Manage the people at ${householdName}`}
+            onPress={() => router.push(familyRoute(role))}
+            style={({ pressed }) => [styles.rowSwitch, pressed && styles.pressed]}
+          >
+            <Ionicons name="people-outline" size={20} color={T.brass} />
+            <View style={styles.cardMain}>
+              <Text style={styles.rowTitle}>People at {householdName}</Text>
+              <Muted style={styles.rowMeta}>
+                Invite family, approve who joins, and choose who administers this home
+              </Muted>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={T.inkFaint} />
+          </Pressable>
 
           {addingHousehold ? (
             <View style={styles.addBox}>

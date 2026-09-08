@@ -215,9 +215,11 @@ export default function OnboardingScreen() {
           items: s.items,
           people: s.people,
           collections: s.collections,
+          rooms: s.rooms,
           messages: s.messages,
           members: s.members,
           deciderNames: h?.deciderNames ?? [s.ownerName],
+          adminNames: h?.adminNames ?? [s.userName],
           userName: s.userName,
         });
         if (res.ok && res.cloudHouseholdId) {
