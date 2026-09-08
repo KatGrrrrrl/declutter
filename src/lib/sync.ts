@@ -68,9 +68,26 @@ export async function pushHousehold(input: SyncInput): Promise<SyncResult> {
         .select('id')
         .eq('id', hid)
         .maybeSingle();
-      if (!existing) hid = undefined;
+      if (!existing) {
+        // We were linked to a cloud household that no longer exists — it was
+        // merged or deleted on the server. Falling through to the create path
+        // below would mint a fresh duplicate under activeHouseholdId and
+        // re-push our stale local items: exactly how the second "Millrun"
+        // household appeared. Refuse instead and steer the user to Restore,
+        // which repoints this device at the surviving household before it
+        // backs up again.
+        return {
+          ok: false,
+          error:
+            'This household is no longer in the cloud — it was moved or removed elsewhere. ' +
+            'Open Account & sync and tap “Restore from my backup” to reconnect this device, then back up again.',
+        };
+      }
     }
     if (!hid) {
+      // First backup of a household that has never reached the cloud: create
+      // it. Reaching here means we were never linked (cloudHouseholdId unset),
+      // not that a known link went missing — that case returned above.
       hid = input.activeHouseholdId;
       const { data: existing } = await supabase
         .from('households')
