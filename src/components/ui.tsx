@@ -52,9 +52,11 @@ export function useIsDesktop() {
  * absolutely and honors the device safe area natively; applying any of this
  * there detaches it and it disappears off-screen. On web we (a) cap width to
  * the app column, and (b) give the bar explicit height + bottom padding so
- * labels clear Safari's toolbar / the iPhone home indicator (the page shell
- * additionally pads by env(safe-area-inset-bottom) — see global.css and
- * app/+html.tsx's viewport-fit=cover).
+ * labels have room for descenders. Clearing Safari's bottom toolbar and the
+ * iPhone home indicator is NOT done here: the page shell (body) pads by
+ * env(safe-area-inset-bottom) so #root itself ends above them — see
+ * global.css (box-sizing: border-box is what makes that padding effective)
+ * and app/+html.tsx's viewport-fit=cover.
  */
 export const TAB_BAR_WIDTH_CAP =
   Platform.OS === 'web'

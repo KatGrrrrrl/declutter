@@ -11,19 +11,30 @@
 /*
  * Mobile web: 100vh includes the area hidden behind the browser's own bars,
  * which pushed the bottom tab bar (and bottom buttons) off-screen. dvh tracks
- * the *visible* viewport. The body safe-area padding lifts the whole shell
- * above the iPhone home indicator — it only takes effect because
- * app/+html.tsx declares viewport-fit=cover (without that, iOS reports the
- * insets as 0).
+ * the *visible* viewport.
+ *
+ * The body safe-area padding lifts the whole app shell (#root) above the
+ * iPhone home indicator and Safari's floating bottom toolbar. Two things make
+ * it work: app/+html.tsx declares viewport-fit=cover (without that, iOS
+ * reports the insets as 0), and `box-sizing: border-box` below. Without
+ * border-box the padding is ADDED to the 100dvh height, #root still spans the
+ * full screen, and the extra padding is simply clipped by overflow:hidden —
+ * so the tab bar stays hidden under the toolbar.
  */
 @supports (height: 100dvh) {
   html,
-  body,
-  #root {
+  body {
     height: 100dvh;
   }
 }
-body {
+/* Selectors carry extra specificity so they beat expo-router's inline
+   ScrollViewStyleReset (`#root,body,html{height:100%}`) regardless of order. */
+html body {
+  box-sizing: border-box;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background-color: #ffffff;
+}
+body #root {
+  /* 100% of body's CONTENT box, i.e. minus the safe-area padding above. */
+  height: 100%;
 }
