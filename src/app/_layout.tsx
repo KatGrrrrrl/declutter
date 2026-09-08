@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { CloudBridge } from '@/components/cloud-bridge';
 import { PresenceBanner } from '@/components/presence-banner';
+import { RestorePrompt } from '@/components/restore-prompt';
 import { T } from '@/constants/theme';
 import { useStore } from '@/lib/store';
 import { useDocumentTitle } from '@/lib/use-document-title';
@@ -52,6 +53,8 @@ export default function RootLayout() {
             detail navigation; it renders nothing unless someone else is online. */}
         <View style={{ flex: 1 }}>
         <PresenceBanner />
+        {/* "Your backup is waiting" — the one-tap device-pairing step. */}
+        <RestorePrompt />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: T.ground } }}>
           <Stack.Screen name="index" options={{ title: 'Home' }} />
           <Stack.Screen name="onboarding" options={{ title: 'Welcome' }} />
