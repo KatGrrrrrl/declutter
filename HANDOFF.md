@@ -153,8 +153,14 @@ C:\Users\kavit\declutter\
   at 23:00 with a Vault secret. **The function must stay deployed `--no-verify-jwt`.**
 - `0011 collections` — named item sets (`collections`, `items.collection_id`).
 - `0012 household_delete_cascade` — owner delete-everywhere cascades cleanly.
+- `0013 rooms_and_admins` — name-keyed `rooms` (floor + location note); `roster_entries.is_admin`.
+- `0014 heir_assignments_main_decider` — heir assignments as RLS-hidden rows (owner-only
+  writes; members read only `revealed`); `items.main_decider_name`, owner-gated.
+- `0015 invite_decline` — `decline_invite()` RPC, the mirror of `accept_invite()`.
 
 **Edge functions** (`supabase/functions/`, deploy: `supabase functions deploy <name>`):
+- `notify-invite-declined` — emails a household's administrators when an invitee says no
+  (JWT verification **on**; gated on the caller's own `declined_at` row).
 - `create-checkout`, `verify-checkout`, `stripe-webhook` — Stripe (v1 verifies on
   return; no webhook registration needed). Prices are found-or-created by lookup key.
 - `upload-photo` — decode/re-encode strips EXIF, 1600px cap, private bucket + signed URLs.

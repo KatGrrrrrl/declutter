@@ -52,9 +52,10 @@ backup/sharing/multi-home as Pro is a regression. Stripe is currently on a
   iOS/Android not yet submitted.
 - **State:** Zustand v5 with `persist` (AsyncStorage), `src/lib/store.ts`.
   Persist version is bumped with a `migrate` whenever the shape changes.
-- **Backend:** Supabase — Postgres + RLS, Auth, private Storage, 9 Edge
+- **Backend:** Supabase — Postgres + RLS, Auth, private Storage, 10 Edge
   Functions (Deno): Stripe checkout/verify/webhook, EXIF-stripping photo upload,
-  AI estimate + split, invites, item-added email, daily digest.
+  AI estimate + split, invites, invite-declined email, item-added email, daily
+  digest.
 - **Auth:** email + password, six-digit email code (OTP), and Google OAuth, on
   the custom domain `auth.inventoryourhouse.com`. Apple sign-in awaits developer
   enrollment.
@@ -86,7 +87,8 @@ supabase functions deploy daily-digest --no-verify-jwt   # ALWAYS this flag: cro
   (invites, which-household-to-load policy), `billing.ts`, `photo-sync.ts`.
 - `supabase/migrations/` — 0001 is the Phase-1 schema and doubles as DB
   documentation (authority triggers, RLS helpers, invite state machine,
-  append-only audit log). 0002–0012 evolve it; read the headers.
+  append-only audit log). 0002–0015 evolve it; read the headers. Heir
+  assignments are their own RLS-hidden rows (0014) — never columns on items.
 - `docs/` — `SPEC.md`, `PRICING.md`, `GO-LIVE.md`, `SHIPPING.md` (EAS/store
   setup), `mockup/`. `THREADS.md` at the root tracks sessions and open work.
 - `tools/` — live-backend e2e scripts (`SERVICE_KEY=… node tools/e2e-*.mjs`),
