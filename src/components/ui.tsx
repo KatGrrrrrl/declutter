@@ -422,6 +422,10 @@ export function Btn({
   return (
     <Pressable
       accessibilityRole="button"
+      // RN Web renders Pressable as a div, which gets no accessible name from
+      // its Text child — without this every Btn is an unnamed button to a
+      // screen reader.
+      accessibilityLabel={label}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
