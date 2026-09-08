@@ -1086,24 +1086,29 @@ export const useStore = create<AppState>()(
             ? snap.items.map((i) => (mine.has(i.id) ? { ...i, addedBy: userName } : i))
             : snap.items;
           const now = new Date().toISOString();
+          const prev = s.households.find((h) => h.id === id);
+          const restored: Household = {
+            id,
+            name: snap.householdName,
+            createdAt: prev?.createdAt ?? now,
+            deciderNames: snap.deciderNames,
+            createdBy: snap.createdBy,
+            // It came from the cloud, so it is linked from the first moment.
+            cloudLinkedAt: prev?.cloudLinkedAt ?? now,
+            lastBackupAt: now,
+          };
+          // Merge, never replace: a restore (or accepting an invitation) brings
+          // ONE home onto this device — the other homes already here stay, as
+          // the Account & sync copy promises. Only the demo is dropped, the
+          // same as every other path that starts a real home.
+          const others = s.isDemo ? [] : s.households.filter((h) => h.id !== id);
           return {
             onboarded: true,
             isDemo: false,
             role: snap.role ?? s.role,
             userName,
             householdName: snap.householdName,
-            households: [
-              {
-                id,
-                name: snap.householdName,
-                createdAt: now,
-                deciderNames: snap.deciderNames,
-                createdBy: snap.createdBy,
-                // It came from the cloud, so it is linked from the first moment.
-                cloudLinkedAt: now,
-                lastBackupAt: now,
-              },
-            ],
+            households: [...others, restored],
             activeHouseholdId: id,
             ownerName: snap.deciderNames[0] ?? snap.createdBy,
             items,
