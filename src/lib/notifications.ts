@@ -12,7 +12,7 @@
  * enhancement layered on top of the local-first app, not a dependency.
  */
 
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { Item } from '@/lib/store';
@@ -25,7 +25,7 @@ export type NotifyMode = 'off' | 'instant' | 'daily';
  * cloud). "No row yet" reads as 'off' — that IS the default.
  */
 export async function getNotifyPref(): Promise<NotifyMode | null> {
-  const householdId = useStore.getState().cloudHouseholdId;
+  const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return null;
   const { data: auth } = await supabase.auth.getSession();
   if (!auth.session) return null;
@@ -45,7 +45,7 @@ export async function getNotifyPref(): Promise<NotifyMode | null> {
  * stamping the delivery email from the auth session.
  */
 export async function setNotifyPref(mode: NotifyMode): Promise<{ ok: boolean; error?: string }> {
-  const householdId = useStore.getState().cloudHouseholdId;
+  const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return { ok: false, error: 'This household is not backed up yet.' };
   const { data: auth } = await supabase.auth.getSession();
   if (!auth.session) return { ok: false, error: 'Not signed in.' };
@@ -72,7 +72,7 @@ export async function setNotifyPref(mode: NotifyMode): Promise<{ ok: boolean; er
  * (localOnly's contract is "never leaves the device" — that includes emails).
  */
 export function pingItemAdded(item: Item): void {
-  const householdId = useStore.getState().cloudHouseholdId;
+  const householdId = linkedCloudId(useStore.getState());
   if (!householdId || item.localOnly) return;
   void supabase.auth
     .getSession()

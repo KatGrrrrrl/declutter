@@ -185,7 +185,9 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const lastBackupAt = useStore((s) => s.lastBackupAt);
+  const lastBackupAt = useStore(
+    (s) => s.households.find((h) => h.id === s.activeHouseholdId)?.lastBackupAt
+  );
   // "Backed up" must reflect the household actually being in the cloud, not
   // the plan alone: a Pro plan with no backup yet is still device-only, and a
   // linked household syncs as you go whatever the card used to say.

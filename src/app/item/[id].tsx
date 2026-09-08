@@ -49,7 +49,7 @@ import {
 import { Fonts, Spacing, T } from '@/constants/theme';
 import { estimateItemValue } from '@/lib/estimate-value';
 import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
-import { useActiveHousehold, useCanDecide, useCollection, useStore } from '@/lib/store';
+import { linkedCloudId, useActiveHousehold, useCanDecide, useCollection, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 import type { ValueEstimate } from '@/lib/estimate-value';
@@ -143,7 +143,7 @@ export default function ItemDetailScreen() {
     updateItem(item.id, { photoUri: uri });
     // Same fire-and-forget cloud upload as capture, when linked.
     const s = useStore.getState();
-    if (s.cloudHouseholdId && !item.localOnly) {
+    if (linkedCloudId(s) && !item.localOnly) {
       supabase.auth
         .getSession()
         .then(({ data }) => {

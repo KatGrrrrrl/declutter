@@ -16,7 +16,7 @@ import { Platform } from 'react-native';
 
 import { readAsBase64 } from '@/lib/photo-sync';
 import { supabase } from '@/lib/supabase';
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 
 export interface ProposedItem {
   name: string;
@@ -45,7 +45,7 @@ async function materialize(base64: string, index: number): Promise<string> {
 export async function splitGroupPhoto(photoUri: string): Promise<SplitResult> {
   const { data: sess } = await supabase.auth.getSession();
   if (!sess?.session) return { ok: false, reason: 'needs_account' };
-  const householdId = useStore.getState().cloudHouseholdId;
+  const householdId = linkedCloudId(useStore.getState());
   // Pro is a property of a cloud household — no cloud household means free.
   if (!householdId) return { ok: false, reason: 'pro_required' };
 

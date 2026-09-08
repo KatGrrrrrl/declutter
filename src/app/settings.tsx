@@ -51,7 +51,7 @@ export default function SettingsScreen() {
   const ent = selectEntitlement(state);
   const { households, activeHouseholdId, householdName, userName, isDemo } = state;
   const { switchHousehold, addHousehold, startFresh, signOut, setDefaultDecider } = state;
-  const { renameHousehold, removeHousehold, setCloudMeta } = state;
+  const { renameHousehold, removeHousehold, unlinkHousehold } = state;
   // Default decision-maker: only a choice worth making with >1 decider here.
   const activeHousehold = households.find((h) => h.id === activeHouseholdId);
   const deciders = activeHousehold?.deciderNames ?? [];
@@ -60,7 +60,9 @@ export default function SettingsScreen() {
   // message below — they used to be unconditional, and told a synced
   // household that signing out would erase it for good.
   const linked = Boolean(linkedCloudId(state));
-  const lastBackup = state.lastBackupAt ? new Date(state.lastBackupAt).toLocaleString() : null;
+  const lastBackup = activeHousehold?.lastBackupAt
+    ? new Date(activeHousehold.lastBackupAt).toLocaleString()
+    : null;
 
   const [addingHousehold, setAddingHousehold] = useState(false);
   const [newHouseholdName, setNewHouseholdName] = useState('');
@@ -192,7 +194,7 @@ export default function SettingsScreen() {
     const res = removeHousehold(id);
     if (!res.ok) {
       // It was the only household: keep it on the device, now local-only.
-      setCloudMeta({ cloudHouseholdId: undefined, lastBackupAt: undefined });
+      unlinkHousehold(id);
       notify(
         'Deleted from the cloud',
         'The family copy is gone. Your device copy stays, as a local-only household.'

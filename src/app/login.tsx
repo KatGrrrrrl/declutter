@@ -25,7 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Btn, CONTENT_MAX, DecorativeIcon, Muted, Row } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { loadMyHousehold } from '@/lib/join';
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 const looksLikeEmail = (v: string) => v.includes('@') && v.includes('.');
@@ -37,7 +37,7 @@ export default function LoginScreen() {
   const { loggedOut } = useLocalSearchParams<{ loggedOut?: string }>();
 
   // Only claim "backed up to your account" when the home is actually cloud-linked.
-  const cloudHouseholdId = useStore((s) => s.cloudHouseholdId);
+  const cloudHouseholdId = useStore(linkedCloudId);
   const lockedOut = useStore((s) => s.lockedOut);
   const lastAccountEmail = useStore((s) => s.lastAccountEmail);
   const unlock = useStore((s) => s.unlock);

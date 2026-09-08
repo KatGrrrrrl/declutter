@@ -209,7 +209,7 @@ export default function OnboardingScreen() {
         const s = useStore.getState();
         const h = s.households.find((x) => x.id === s.activeHouseholdId);
         const res = await pushHousehold({
-          cloudHouseholdId: s.cloudHouseholdId,
+          wasBackedUp: Boolean(h?.cloudLinkedAt),
           activeHouseholdId: s.activeHouseholdId,
           householdName: s.householdName,
           items: s.items,
@@ -220,11 +220,8 @@ export default function OnboardingScreen() {
           deciderNames: h?.deciderNames ?? [s.ownerName],
           userName: s.userName,
         });
-        if (res.ok) {
-          s.setCloudMeta({
-            cloudHouseholdId: res.cloudHouseholdId,
-            lastBackupAt: new Date().toISOString(),
-          });
+        if (res.ok && res.cloudHouseholdId) {
+          s.markCloudLinked(res.cloudHouseholdId, new Date().toISOString());
         }
       })();
     }

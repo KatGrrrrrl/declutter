@@ -22,12 +22,12 @@
 
 import { useEffect, useState } from 'react';
 
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { startRealtime, stopRealtime } from '@/lib/realtime';
 
 export function CloudBridge() {
-  const cloudHouseholdId = useStore((s) => s.cloudHouseholdId);
+  const cloudHouseholdId = useStore(linkedCloudId);
   const activeHouseholdId = useStore((s) => s.activeHouseholdId);
   const isDemo = useStore((s) => s.isDemo);
   // Tri-state: null = not yet determined. The sign-in gate must never fire
@@ -54,7 +54,7 @@ export function CloudBridge() {
         // Only adopt the link if that household is still the one open — the
         // user may have switched while this was in flight.
         if (res.linked && useStore.getState().activeHouseholdId === activeHouseholdId) {
-          useStore.getState().setCloudMeta({ cloudHouseholdId: activeHouseholdId });
+          useStore.getState().markCloudLinked(activeHouseholdId);
         }
       } catch {
         /* offline — the next load, or a manual backup, catches up */
@@ -75,7 +75,7 @@ export function CloudBridge() {
   useEffect(() => {
     if (hasSession !== false) return; // unknown or signed in — nothing to do
     const s = useStore.getState();
-    const accountBound = Boolean(s.cloudHouseholdId || s.lastAccountEmail);
+    const accountBound = s.households.some((h) => h.cloudLinkedAt) || Boolean(s.lastAccountEmail);
     if (s.onboarded && !s.isDemo && !s.lockedOut && accountBound) {
       s.requireSignIn(); // LockGate turns this into a redirect to /login
     }

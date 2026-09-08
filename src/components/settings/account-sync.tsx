@@ -119,7 +119,7 @@ export function AccountSync() {
   const runBackup = async () => {
     setBusy(true);
     const res = await backupHousehold({
-      cloudHouseholdId: state.cloudHouseholdId,
+      wasBackedUp: Boolean(household?.cloudLinkedAt),
       activeHouseholdId: state.activeHouseholdId,
       householdName: state.householdName,
       items: state.items,
@@ -135,10 +135,7 @@ export function AccountSync() {
       notify('Backup didn’t finish', res.error ?? 'Something went wrong — try again.');
       return;
     }
-    state.setCloudMeta({
-      cloudHouseholdId: res.cloudHouseholdId,
-      lastBackupAt: new Date().toISOString(),
-    });
+    if (res.cloudHouseholdId) state.markCloudLinked(res.cloudHouseholdId, new Date().toISOString());
     // Catalog is up; now sweep any photos that haven't uploaded yet.
     const photos = await uploadPendingPhotos();
     const skipped = res.skippedLocalOnly
@@ -274,8 +271,8 @@ export function AccountSync() {
               </View>
             ))}
             <Muted style={styles.lede}>
-                  {state.lastBackupAt
-                    ? `Last backup ${new Date(state.lastBackupAt).toLocaleString()}.`
+                  {household?.lastBackupAt
+                    ? `Last backup ${new Date(household.lastBackupAt).toLocaleString()}.`
                     : 'No backup yet from this device.'}{' '}
                   Photos and voice audio aren’t included yet — the catalog,
                   decisions, stories, chat, and family roster are.

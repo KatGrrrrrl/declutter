@@ -12,7 +12,7 @@
  */
 
 import type { Member } from '@/lib/store';
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { pullHousehold } from '@/lib/sync';
 
@@ -123,7 +123,8 @@ export async function createCloudInvite(
 ): Promise<{ ok: boolean; error?: string }> {
   const s = useStore.getState();
   if (!member.email) return { ok: false, error: 'No email on the invitation.' };
-  if (!s.cloudHouseholdId) {
+  const cloudHouseholdId = linkedCloudId(s);
+  if (!cloudHouseholdId) {
     return { ok: false, error: 'Back up the household first (Settings → Account & sync).' };
   }
   const { data: auth } = await supabase.auth.getUser();
@@ -133,7 +134,7 @@ export async function createCloudInvite(
   const { data: existing } = await supabase
     .from('household_members')
     .select('id, status')
-    .eq('household_id', s.cloudHouseholdId)
+    .eq('household_id', cloudHouseholdId)
     .eq('invited_email', email)
     .maybeSingle();
   if (existing) return { ok: true }; // already invited/joined
@@ -142,7 +143,7 @@ export async function createCloudInvite(
     .some((d) => d.toLowerCase() === member.name.toLowerCase());
 
   const { error } = await supabase.from('household_members').insert({
-    household_id: s.cloudHouseholdId,
+    household_id: cloudHouseholdId,
     invited_email: email,
     role: isDecider ? 'co_owner' : 'contributor',
     status: 'invited',

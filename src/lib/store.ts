@@ -184,6 +184,18 @@ export interface Household {
   deciderNames: string[];
   /** Who created the household (may or may not be a decider). */
   createdBy: string;
+  /**
+   * When this household first reached the cloud from this device — first
+   * backup, restore, or adoption on connect. It lives ON the household so it
+   * travels with it: switching, adding, removing or re-onboarding needs no
+   * cleanup, and a link can never point at a different home than the one
+   * open. Undefined = never backed up. It also outlives switching, which is
+   * what lets pushHousehold tell "never backed up" from "was backed up and
+   * the cloud copy is gone".
+   */
+  cloudLinkedAt?: string;
+  /** Last full backup of THIS household from this device. */
+  lastBackupAt?: string;
 }
 
 interface AppState {
@@ -218,9 +230,6 @@ interface AppState {
    */
   defaultDeciders: Record<string, string>;
 
-  /** Cloud backup linkage (set after the first successful backup). */
-  cloudHouseholdId?: string;
-  lastBackupAt?: string;
   /**
    * Set when the user logs out of their account: the app locks (data stays on
    * device, but re-entry requires signing back in — an inventory of valuables
@@ -240,7 +249,13 @@ interface AppState {
    * is missing on load rather than the user tapping Log out.
    */
   requireSignIn: () => void;
-  setCloudMeta: (meta: { cloudHouseholdId?: string; lastBackupAt?: string }) => void;
+  /**
+   * Record that a household is in the cloud. Keeps the original link time;
+   * `backedUpAt` (when given) stamps the household's last full backup.
+   */
+  markCloudLinked: (householdId: string, backedUpAt?: string) => void;
+  /** The cloud copy is gone (deleted everywhere): the household is local-only again. */
+  unlinkHousehold: (householdId: string) => void;
   /** Replace local state wholesale from a cloud restore snapshot. */
   restoreSnapshot: (snap: {
     householdName: string;
@@ -505,16 +520,16 @@ const initial = {
 };
 
 /**
- * The cloud household this device may write to right now.
+ * The cloud household this device may write to right now: the OPEN household,
+ * if it has ever reached the cloud. Local household ids double as cloud ids.
  *
- * Local household ids double as cloud ids, so a link that doesn't match the
- * household actually open means the open one is different (and possibly not
- * linked at all) — writing then would file items into another family's
- * household. Undefined means "don't write".
+ * Derived from the household record, not a separate field, so there is no
+ * stale link to clear when the open household changes — the old design kept
+ * one and had to remember to reset it in six places. Undefined = don't write.
  */
 export const linkedCloudId = (s: AppState): string | undefined =>
-  !s.isDemo && s.cloudHouseholdId && s.cloudHouseholdId === s.activeHouseholdId
-    ? s.cloudHouseholdId
+  !s.isDemo && s.households.find((h) => h.id === s.activeHouseholdId)?.cloudLinkedAt
+    ? s.activeHouseholdId
     : undefined;
 
 /**
@@ -594,14 +609,6 @@ export const useStore = create<AppState>()(
                 ] as Household[],
                 activeHouseholdId: id,
                 ownerName: deciders[0] ?? userName,
-                // A brand-new household is not the linked one. startFresh and
-                // addHousehold already drop the old link for this reason; this
-                // path didn't, so onboarding after a prior link pushed the new
-                // home's items into the OLD cloud household — and, once that
-                // one was deleted, tripped the missing-household guard with
-                // nothing to restore.
-                cloudHouseholdId: undefined,
-                lastBackupAt: undefined,
               }
             : {};
           return { onboarded: true, role, householdName, userName, ...fresh };
@@ -668,11 +675,6 @@ export const useStore = create<AppState>()(
             ],
             activeHouseholdId: id,
             ownerName: s.role === 'owner' ? s.userName : s.ownerName,
-            // A brand-new household is not the linked one. Leaving the old
-            // link in place would file its items into the previous
-            // household; CloudBridge re-adopts a link once it verifies one.
-            cloudHouseholdId: undefined,
-            lastBackupAt: undefined,
           };
         }),
 
@@ -695,9 +697,6 @@ export const useStore = create<AppState>()(
           ],
           activeHouseholdId: id,
           householdName: name,
-          // Same reason as startFresh: the new household is not the linked one.
-          cloudHouseholdId: undefined,
-          lastBackupAt: undefined,
         });
         return { ok: true };
       },
@@ -716,7 +715,7 @@ export const useStore = create<AppState>()(
         set({ messages: [...s.messages, msg] });
         // Fire-and-forget cloud push so family sees it live; realtime echoes
         // are deduped by id in applyRemoteMessage. Never blocks the UI.
-        if (s.cloudHouseholdId && !s.isDemo) {
+        if (linkedCloudId(s)) {
           void (async () => {
             try {
               const { supabase } = await import('@/lib/supabase');
@@ -740,12 +739,9 @@ export const useStore = create<AppState>()(
       switchHousehold: (id) =>
         set((s) => {
           const h = s.households.find((x) => x.id === id);
-          // Drop the cloud link on the way out: it belongs to the household we
-          // are leaving. CloudBridge re-adopts one for the household we open
-          // if it turns out to be linked too.
-          return h
-            ? { activeHouseholdId: id, householdName: h.name, cloudHouseholdId: undefined }
-            : {};
+          // Nothing to clean up: the cloud link lives on each household record,
+          // so the one we open brings its own.
+          return h ? { activeHouseholdId: id, householdName: h.name } : {};
         }),
 
       renameHousehold: (id, name) => {
@@ -797,8 +793,6 @@ export const useStore = create<AppState>()(
           members: [
             { id: uid(), name: s.userName, status: 'active' as const, invitedBy: s.userName, invitedAt: now },
           ],
-          cloudHouseholdId: undefined,
-          lastBackupAt: undefined,
         });
         return { ok: true };
       },
@@ -1015,7 +1009,7 @@ export const useStore = create<AppState>()(
           items: s.items.filter((it) => it.id !== id),
           messages: s.messages.filter((m) => m.itemId !== id),
         });
-        if (s.cloudHouseholdId && !s.isDemo) {
+        if (linkedCloudId(s)) {
           void (async () => {
             try {
               const { supabase } = await import('@/lib/supabase');
@@ -1049,7 +1043,25 @@ export const useStore = create<AppState>()(
       addPerson: (p) =>
         set((s) => ({ people: [...s.people, { ...p, id: uid() }] })),
 
-      setCloudMeta: (meta) => set(meta),
+      markCloudLinked: (householdId, backedUpAt) =>
+        set((s) => ({
+          households: s.households.map((h) =>
+            h.id === householdId
+              ? {
+                  ...h,
+                  cloudLinkedAt: h.cloudLinkedAt ?? backedUpAt ?? new Date().toISOString(),
+                  ...(backedUpAt ? { lastBackupAt: backedUpAt } : {}),
+                }
+              : h
+          ),
+        })),
+
+      unlinkHousehold: (householdId) =>
+        set((s) => ({
+          households: s.households.map((h) =>
+            h.id === householdId ? { ...h, cloudLinkedAt: undefined, lastBackupAt: undefined } : h
+          ),
+        })),
 
       lockOut: (accountEmail) =>
         set({
@@ -1073,6 +1085,7 @@ export const useStore = create<AppState>()(
           const items = mine.size
             ? snap.items.map((i) => (mine.has(i.id) ? { ...i, addedBy: userName } : i))
             : snap.items;
+          const now = new Date().toISOString();
           return {
             onboarded: true,
             isDemo: false,
@@ -1083,14 +1096,16 @@ export const useStore = create<AppState>()(
               {
                 id,
                 name: snap.householdName,
-                createdAt: new Date().toISOString(),
+                createdAt: now,
                 deciderNames: snap.deciderNames,
                 createdBy: snap.createdBy,
+                // It came from the cloud, so it is linked from the first moment.
+                cloudLinkedAt: now,
+                lastBackupAt: now,
               },
             ],
             activeHouseholdId: id,
             ownerName: snap.deciderNames[0] ?? snap.createdBy,
-            cloudHouseholdId: snap.cloudHouseholdId,
             items,
             people: snap.people,
             collections: snap.collections,
@@ -1132,7 +1147,7 @@ export const useStore = create<AppState>()(
     {
       name: 'declutter-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 5,
+      version: 6,
       /**
        * v1 → v2: chat messages + per-household deciders/creator.
        * v2 → v3: member roster (backfilled from deciders + current user).
@@ -1140,9 +1155,17 @@ export const useStore = create<AppState>()(
        *          local rows and cloud rows share identity — the basis of
        *          multi-device upsert sync.
        * v4 → v5: collections (named item sets); defaults to none.
+       * v5 → v6: the cloud link moves from a top-level cloudHouseholdId /
+       *          lastBackupAt pair onto the household it describes
+       *          (Household.cloudLinkedAt / lastBackupAt).
        */
       migrate: (persisted) => {
-        const s = persisted as Partial<AppState>;
+        // Pre-v6 stores carry the link beside the households, not on them.
+        const {
+          cloudHouseholdId: legacyLinkId,
+          lastBackupAt: legacyBackupAt,
+          ...s
+        } = persisted as Partial<AppState> & { cloudHouseholdId?: string; lastBackupAt?: string };
         const now = new Date().toISOString();
         const households = (s.households ?? []).map((h) => ({
           ...h,
@@ -1192,13 +1215,21 @@ export const useStore = create<AppState>()(
           ? remap(s.activeHouseholdId)
           : households4[0]?.id;
 
+        // v6: put the old top-level link onto the household it pointed at.
+        const linkId = legacyLinkId ? remap(legacyLinkId) : undefined;
+        const households6 = households4.map((h) =>
+          h.id === linkId && !h.cloudLinkedAt
+            ? { ...h, cloudLinkedAt: legacyBackupAt ?? now, lastBackupAt: legacyBackupAt }
+            : h
+        );
+
         return {
           ...s,
           messages,
           people,
           items,
           members: members4,
-          households: households4,
+          households: households6,
           activeHouseholdId,
           // v5: collections arrive empty for stores persisted before them.
           collections: s.collections ?? [],

@@ -16,7 +16,7 @@
  * release; this module is only invoked from the web paywall.
  */
 
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 export type BillingCycle = 'monthly' | 'yearly';
@@ -73,7 +73,7 @@ export async function startCheckout(cycle: BillingCycle): Promise<StartCheckoutR
   const { data: auth } = await supabase.auth.getSession();
   if (!auth.session) return { ok: false, reason: 'needs_account' };
 
-  const householdId = useStore.getState().cloudHouseholdId;
+  const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return { ok: false, reason: 'needs_backup' };
 
   const res = await invokeBilling('create-checkout', { cycle, householdId });
@@ -110,7 +110,7 @@ export async function refreshPlan(): Promise<void> {
   const { data: auth } = await supabase.auth.getSession();
   if (!auth.session) return;
 
-  const householdId = useStore.getState().cloudHouseholdId;
+  const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return;
 
   const { data } = await supabase
