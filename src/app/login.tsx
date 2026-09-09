@@ -32,6 +32,7 @@ import {
   loadMyHousehold,
   type PendingInvite,
 } from '@/lib/join';
+import { reconcileAccount } from '@/lib/account-switch';
 import { linkedCloudId, useStore } from '@/lib/store';
 
 import type { CloudHouseholdSummary } from '@/lib/sync';
@@ -105,12 +106,30 @@ export default function LoginScreen() {
    */
   const finish = async () => {
     unlock();
-    const s = useStore.getState();
-    if (s.onboarded && !s.isDemo) {
+    setLoadingHome(true);
+
+    // WHO is signing in, before deciding what they may see. `onboarded` only
+    // says a home exists on this device — never whose. Treating it as proof
+    // of identity is what showed a helper the owner's household, in the
+    // owner's role, with a Decide tab they have no authority to use.
+    const { data: auth } = await supabase.auth.getUser();
+    const signedInAs = auth?.user?.email ?? '';
+    const account = await reconcileAccount(signedInAs);
+
+    // Their own device, already holding their own home: straight in.
+    if (account.outcome === 'same' && useStore.getState().onboarded) {
+      setLoadingHome(false);
       router.replace('/');
       return;
     }
-    setLoadingHome(true);
+    // A different account: reconcileAccount has set the previous person's
+    // data aside and put back this account's own, if it had any here before.
+    if (account.restored && useStore.getState().onboarded) {
+      setLoadingHome(false);
+      router.replace('/');
+      return;
+    }
+
     const res = await loadMyHousehold();
     if (res.ok) {
       setLoadingHome(false);

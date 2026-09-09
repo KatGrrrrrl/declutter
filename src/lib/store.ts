@@ -302,10 +302,27 @@ interface AppState {
    */
   lockedOut?: boolean;
   lastAccountEmail?: string;
+  /**
+   * Which signed-in account this device's data BELONGS to — as opposed to
+   * lastAccountEmail, which only records who last logged out.
+   *
+   * `onboarded` is not proof of identity: it says a home exists here, not
+   * whose it is. Without this field, signing in as a second person on a
+   * device that already held a household showed them the first person's
+   * home, in the first person's role (see `finish` in app/login.tsx). For a
+   * catalogue of an elder's belongings that is the wrong default, so the
+   * binding is recorded explicitly and checked on every sign-in.
+   *
+   * Stamped whenever an account is proven to own what's here: a pull/join
+   * (adoptSnapshot) and a successful backup.
+   */
+  accountEmail?: string;
   /** True immediately after logging out, so the login screen can confirm it
    *  even though the lock redirect drops any URL params. Consumed once. */
   pendingLogoutNotice?: boolean;
   lockOut: (accountEmail: string) => void;
+  /** Record that this device's data belongs to `email`. */
+  bindAccount: (email: string) => void;
   unlock: () => void;
   clearLogoutNotice: () => void;
   /**
@@ -495,7 +512,7 @@ interface AppState {
  * by id instead of wipe-and-rewrite, which is what lets several family
  * members' devices merge without clobbering each other.
  */
-const uid = (): string => {
+export const uid = (): string => {
   const g = globalThis as { crypto?: { randomUUID?: () => string } };
   if (g.crypto?.randomUUID) return g.crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -823,9 +840,27 @@ export const useStore = create<AppState>()(
         });
       },
 
+      /**
+       * Approve a pending invitation — the decider says yes, the invitation
+       * goes out (see approveAndSend on the Family screen).
+       *
+       * Approving does NOT make someone a member: only their own sign-in
+       * does, via accept_invite. This used to flip the roster line straight
+       * to 'active', which made the Family screen claim people had joined
+       * who had never opened the app, and left the roster permanently out of
+       * step with household_members. Someone with an email stays 'invited'
+       * until the cloud says otherwise (pullHousehold reconciles the two).
+       *
+       * A line with no email is different: it is a name-only record for
+       * someone who will never sign in — a parent whose children run the
+       * whole thing — and approving that is the only "joining" it will ever
+       * have, so it still goes active.
+       */
       approveMember: (id) =>
         set((s) => ({
-          members: s.members.map((m) => (m.id === id ? { ...m, status: 'active' as const } : m)),
+          members: s.members.map((m) =>
+            m.id === id ? { ...m, status: m.email ? ('invited' as const) : ('active' as const) } : m
+          ),
         })),
 
       declineMember: (id) =>
@@ -1461,6 +1496,8 @@ export const useStore = create<AppState>()(
           pendingLogoutNotice: true,
         }),
 
+      bindAccount: (email) => set({ accountEmail: email.toLowerCase() }),
+
       unlock: () => set({ lockedOut: false, pendingLogoutNotice: false }),
 
       clearLogoutNotice: () => set({ pendingLogoutNotice: false }),
@@ -1618,7 +1655,7 @@ export const useStore = create<AppState>()(
     {
       name: 'declutter-store-v1',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 7,
+      version: 8,
       /**
        * v1 → v2: chat messages + per-household deciders/creator.
        * v2 → v3: member roster (backfilled from deciders + current user).
@@ -1632,6 +1669,10 @@ export const useStore = create<AppState>()(
        * v6 → v7: room records (name + floor + location note), backfilled from
        *          the rooms items already name; and Household.adminNames,
        *          seeded with whoever created the home.
+       * v7 → v8: accountEmail — which account this device's data belongs to.
+       *          Seeded from lastAccountEmail where the device has one; left
+       *          undefined otherwise, which sign-in treats as "unknown" and
+       *          resolves against the cloud rather than assuming.
        */
       migrate: (persisted) => {
         // Pre-v6 stores carry the link beside the households, not on them.
@@ -1717,6 +1758,12 @@ export const useStore = create<AppState>()(
           rooms: s.rooms?.length
             ? s.rooms
             : roomsFromItems(items, households[0]?.createdBy ?? s.userName ?? 'Family', now),
+          // v8: the only account we can name for an existing device is the one
+          // it last locked against. Where there isn't one the binding stays
+          // undefined on purpose — sign-in resolves an unknown device against
+          // the cloud instead of assuming the person at the keyboard owns
+          // what's already here.
+          accountEmail: s.accountEmail ?? s.lastAccountEmail,
         } as AppState;
       },
     }

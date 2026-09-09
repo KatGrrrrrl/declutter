@@ -15,6 +15,7 @@
  */
 
 import type { Collection, Item, ItemMessage, Member, Person, Room } from '@/lib/store';
+import { uid } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 export interface SyncInput {
@@ -491,11 +492,18 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
     // are scoped to this household's items — unscoped, a member of two homes
     // downloaded the other home's tags, story bodies and photo paths on every
     // restore, only to discard them in the maps below.
-    const [tags, stories, people, roster, photos, collections, rooms] = await Promise.all([
+    const [tags, stories, people, roster, memberships, photos, collections, rooms] =
+      await Promise.all([
       supabase.from('item_tags').select('*').in('item_id', itemIds),
       supabase.from('stories').select('*').in('item_id', itemIds),
       supabase.from('people').select('*').eq('household_id', hh.id),
       supabase.from('roster_entries').select('*').eq('household_id', hh.id),
+      // The roster is what the family SEES; household_members is what access
+      // actually IS. They drift (see the reconcile below), so pull both.
+      supabase
+        .from('household_members')
+        .select('invited_email, role, status, declined_at')
+        .eq('household_id', hh.id),
       supabase
         .from('item_photos')
         .select('item_id, storage_path, is_primary, created_at')
@@ -505,6 +513,9 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
     ]);
     for (const r of [tags, stories, people, roster, photos, collections])
       if (r.error) throw r.error;
+    // Membership is reconciliation, not payload: a household whose member
+    // rows can't be read (older deployment, policy change) still restores.
+    const memberRows = memberships.error ? [] : (memberships.data ?? []);
     // Rooms are the one non-fatal fetch, for the same reason the push is:
     // a restore must not fail because the map couldn't be read. Without them
     // the store falls back to the rooms the restored items name.
@@ -606,16 +617,91 @@ export async function pullHousehold(householdId?: string): Promise<PullResult> {
     }));
 
     const rosterRows = roster.data ?? [];
+
+    /**
+     * Reconcile the roster against real membership.
+     *
+     * These two tables answer different questions and were drifting apart.
+     * roster_entries is the family's own list — names, relationships, who
+     * decides — mirrored up from a device. household_members is who can
+     * actually reach the household, and it is the only one of the two that
+     * the server enforces. Approving someone locally used to mark their
+     * roster line 'active' immediately, while their membership correctly
+     * stayed 'invited' until they accepted, so the Family screen showed
+     * people as joined who had never signed in. The reverse drifted too: an
+     * invitation created against an email with no roster line was invisible
+     * to the whole family.
+     *
+     * So membership wins on STATUS, the roster wins on IDENTITY (the name
+     * "Mum" lives nowhere else), and anyone present in only one of the two
+     * still appears.
+     */
+    const membershipByEmail = new Map<string, (typeof memberRows)[number]>();
+    for (const m of memberRows) {
+      const key = (m.invited_email ?? '').toLowerCase();
+      if (!key) continue;
+      // Keep the most meaningful row per address: active beats invited beats
+      // revoked, so a re-invite after a decline doesn't read as declined.
+      const rank = (st: string | null) => (st === 'active' ? 3 : st === 'invited' ? 2 : 1);
+      const seen = membershipByEmail.get(key);
+      if (!seen || rank(m.status) > rank(seen.status)) membershipByEmail.set(key, m);
+    }
+
+    const statusFor = (
+      rosterStatus: string,
+      email?: string | null
+    ): Member['status'] => {
+      const m = email ? membershipByEmail.get(email.toLowerCase()) : undefined;
+      if (m) {
+        if (m.status === 'active') return 'active';
+        if (m.status === 'invited') return 'invited';
+        // revoked: a decline is the invitee's own answer; a plain revoke is
+        // the household withdrawing, which reads the same on the roster.
+        return 'declined';
+      }
+      // No membership row at all. A roster line claiming 'active' is the
+      // stale-approval case — nobody with an email is active until the cloud
+      // says so. Lines with no email are name-only records the family keeps
+      // (a parent who never signs in), and those stand as written.
+      if (email && rosterStatus === 'active') return 'invited';
+      return rosterStatus === 'revoked' ? 'declined' : (rosterStatus as Member['status']);
+    };
+
     const localMembers: Member[] = rosterRows.map((r) => ({
       id: r.id,
       name: r.name,
       relationship: r.relationship ?? undefined,
       email: r.invited_email ?? undefined,
-      // 'revoked' on a roster line means the invitee said no (see push).
-      status: r.status === 'revoked' ? 'declined' : r.status,
+      status: statusFor(r.status, r.invited_email),
       invitedBy: r.invited_by_name ?? '',
       invitedAt: r.created_at,
     }));
+
+    // Anyone with real access but no roster line — invited straight from a
+    // device whose roster push never ran, or whose line was renamed away.
+    // Without this they hold membership the family cannot see or manage.
+    const rosterEmails = new Set(
+      rosterRows.map((r) => (r.invited_email ?? '').toLowerCase()).filter(Boolean)
+    );
+    // Never synthesise a line for the person doing the pulling. Their roster
+    // entry is the one most likely to carry no email — nobody invites
+    // themselves — so matching by address would miss it and list the
+    // household's own owner twice, once under their name and once under
+    // their address. (The push now stamps that email, but a household backed
+    // up before this change still arrives without it.)
+    const myEmail = (auth.user.email ?? '').toLowerCase();
+    for (const [email, m] of membershipByEmail) {
+      if (rosterEmails.has(email) || email === myEmail) continue;
+      if (m.status === 'revoked') continue; // finished; nothing to show
+      localMembers.push({
+        id: uid(),
+        name: email.split('@')[0],
+        email,
+        status: m.status === 'active' ? 'active' : 'invited',
+        invitedBy: '',
+        invitedAt: new Date().toISOString(),
+      });
+    }
     const deciderNames = rosterRows.filter((r) => r.is_decider).map((r) => r.name);
     const createdBy =
       rosterRows.find((r) => r.status === 'active')?.name ?? deciderNames[0] ?? 'Family';

@@ -40,6 +40,10 @@ function adoptSnapshot(snapshot: NonNullable<PullResult['snapshot']>, user: User
     role: isDecider ? 'owner' : 'contributor',
     userName,
   });
+  // This account has now proven it owns what's on this device — the pull
+  // succeeded, which RLS only allows for an active member. Recording it is
+  // what stops the NEXT person's sign-in from being shown this household.
+  if (myEmail) useStore.getState().bindAccount(myEmail);
 }
 
 /**
