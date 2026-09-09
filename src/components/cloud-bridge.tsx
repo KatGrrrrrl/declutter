@@ -20,13 +20,16 @@
  * Renders nothing.
  */
 
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
+import { reconcileAccount } from '@/lib/account-switch';
 import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { startRealtime, stopRealtime } from '@/lib/realtime';
 
 export function CloudBridge() {
+  const router = useRouter();
   const cloudHouseholdId = useStore(linkedCloudId);
   const activeHouseholdId = useStore((s) => s.activeHouseholdId);
   const isDemo = useStore((s) => s.isDemo);
@@ -41,6 +44,39 @@ export function CloudBridge() {
     );
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  /**
+   * Whose session is this? (job 0a — before anything renders household data.)
+   *
+   * Checking identity only at the moment of signing in was not enough: a
+   * device already carrying a session just reloads, and a stale sign-in as
+   * somebody else kept showing the previous person's household in the
+   * previous person's role. The check belongs wherever a session turns up,
+   * which is here.
+   *
+   * reconcileAccount asks the server whether this account may actually reach
+   * the home that is open, and sets it aside (recoverably) if not. When it
+   * does, we hand over to /login, whose own sign-in path already knows how
+   * to place someone: their own home, the invitation waiting for them, or
+   * starting a home of their own.
+   */
+  useEffect(() => {
+    if (!hasSession || isDemo) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      const email = data?.user?.email;
+      if (!email || cancelled) return;
+      const res = await reconcileAccount(email);
+      if (!cancelled && res.outcome === 'switched' && !res.restored) {
+        router.replace('/login');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSession, isDemo]);
 
   // Reconcile on connect (job 0). Keyed on the household actually open, so
   // this also runs after switching households or starting a fresh one.

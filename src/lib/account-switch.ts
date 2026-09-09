@@ -23,7 +23,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useStore } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
+import { listMyHouseholds } from '@/lib/sync';
 
 /** Must match the `name` given to persist() in store.ts. */
 const STORE_KEY = 'declutter-store-v1';
@@ -73,21 +74,37 @@ export async function reconcileAccount(
     return { outcome: 'empty', restored: false };
   }
 
-  // An UNLABELLED device (persisted before v8, never locked) is the one case
-  // where we cannot tell whose home this is. Setting it aside is only safe if
-  // the cloud can give it back: a home that has never been backed up exists
-  // nowhere else, and making it vanish on someone's first sign-in after an
-  // update would be a far worse bug than the one this file fixes. So an
-  // unbacked, unlabelled device is adopted by whoever signs in — which is
-  // also what happened before this file existed — and is labelled from then
-  // on, so the NEXT account switch takes the safe path above.
-  if (!bound && !useStore.getState().households.some((h) => h.cloudLinkedAt)) {
+  // A home that was never backed up exists nowhere but this device. We
+  // cannot check it against anything, and hiding it could look exactly like
+  // losing it, so it is adopted by whoever signs in — what happened before
+  // this file existed — and labelled from now on.
+  const openCloudId = linkedCloudId(useStore.getState());
+  if (!openCloudId) {
     useStore.getState().bindAccount(incoming);
     return { outcome: 'same', restored: false };
   }
 
-  // A different account (or a labelled-but-backed-up device) is signing in
-  // over someone else's home. Move it aside before anything can render it.
+  // The real question, and the only one worth trusting: does this account
+  // actually have access to the home that is open here? RLS answers it —
+  // listMyHouseholds returns only households the signed-in account may see.
+  // Asking the server rather than reading a local label matters because most
+  // devices carry no label yet, and a label is exactly the thing that is
+  // missing when it is most needed.
+  const mine = await listMyHouseholds();
+  if (mine.ok && mine.households.some((h) => h.id === openCloudId)) {
+    useStore.getState().bindAccount(incoming);
+    return { outcome: 'same', restored: false };
+  }
+  // Couldn't ask (offline, transient failure) and nothing on the device says
+  // this is somebody else's: leave it be rather than hide a home over a
+  // dropped request. A device that IS labelled for someone else falls
+  // through to the swap below, network or no network.
+  if (!mine.ok && !bound) {
+    return { outcome: 'same', restored: false };
+  }
+
+  // This account has no access to the home sitting on this device. Move it
+  // aside before anything can render it.
   try {
     const blob = await AsyncStorage.getItem(STORE_KEY);
     if (blob) await AsyncStorage.setItem(bound ? stashKey(bound) : ORPHAN_KEY, blob);
