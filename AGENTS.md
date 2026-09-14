@@ -79,15 +79,17 @@ supabase functions deploy daily-digest --no-verify-jwt   # ALWAYS this flag: cro
 
 ## Layout
 
-- `src/app/` — expo-router routes: `(child)/` contributor tabs, `(parent)/`
-  decider tabs, `item/[id]`, `collection/[id]`, `login`, `onboarding`,
+- `src/app/` — expo-router routes: `(home)/` the one tab group (tabs chosen by
+  `useCanDecide()`), `item/[id]`, `collection/[id]`, `login`, `onboarding`,
   `settings`, `upgrade`. `src/components/`, `src/hooks/`, `src/constants/`.
-- `src/lib/` — `store.ts` (state + `useShallow` hooks), `sync.ts` (upsert
-  merge, backup/restore, reconcile), `realtime.ts` + `presence.ts`, `join.ts`
-  (invites, which-household-to-load policy), `billing.ts`, `photo-sync.ts`.
+- `src/lib/` — `auth.ts` (the only session owner), `membership.ts` (authority
+  from `household_members`), `household.ts` (load/pick/create homes, invites),
+  `outbox.ts` + `cloud.ts` (every cloud write), `account-switch.ts`,
+  `store.ts` (state + `useShallow` hooks), `realtime.ts` + `presence.ts`,
+  `billing.ts`, `photo-sync.ts`.
 - `supabase/migrations/` — 0001 is the Phase-1 schema and doubles as DB
   documentation (authority triggers, RLS helpers, invite state machine,
-  append-only audit log). 0002–0015 evolve it; read the headers. Heir
+  append-only audit log). 0002–0018 evolve it; read the headers. Heir
   assignments are their own RLS-hidden rows (0014) — never columns on items.
 - `docs/` — `SPEC.md`, `PRICING.md`, `GO-LIVE.md`, `SHIPPING.md` (EAS/store
   setup), `mockup/`. `THREADS.md` at the root tracks sessions and open work.
@@ -98,7 +100,7 @@ supabase functions deploy daily-digest --no-verify-jwt   # ALWAYS this flag: cro
 
 - **Several Claude sessions work in this folder at once.** Stage with
   **explicit file paths** and check `git diff --cached --stat` before every
-  commit — especially for `store.ts`, `sync.ts`, `realtime.ts`. A bare
+  commit — especially for `store.ts`, `outbox.ts`, `realtime.ts`. A bare
   `git add <file>` once swept another session's half-finished feature into a
   commit and broke `main`. Never run a dev server on a port another session
   is using; never commit `supabase/.temp/cli-latest` or `.claude/launch.json`.
@@ -108,20 +110,25 @@ supabase functions deploy daily-digest --no-verify-jwt   # ALWAYS this flag: cro
   not). Use the exported `useShallow`-wrapped hooks in `src/lib/store.ts`
   (`useEntitlement`, `useQueue`, `useKeepsakes`, `useItemMessages`,
   `useActiveHousehold`, `useCollectionItems`, …) or single-field selectors only.
-- **The cloud link lives on the household record.** `Household.cloudLinkedAt`
-  / `lastBackupAt`; the writable cloud id is `linkedCloudId(s)` (derived from
-  the OPEN household). There is no top-level `cloudHouseholdId` — don't add
-  one back, and don't "clear the link" on switch/add/remove: there is nothing
-  to clear. `pushHousehold` refuses to recreate a household that was backed up
-  and is now gone (it steers to Restore). Loading a household never guesses
-  which: one → load; several → prefer the open one, else ask
-  (`join.pickMyHousehold`). Restore/join **merges** into the device's homes.
-- **Sync is v2 upsert-merge, not snapshot:** items push on capture, edits and
-  deletes mirror live, reconcile-on-connect is insert-only (never overwrites a
-  newer edit). Owners push everything; contributors push only their own
-  undecided items; `localOnly` items never leave the device. Photos upload via
-  the EXIF-stripping `upload-photo` function (swept on every backup); voice
-  audio still stays on the device.
+- **Who may do what comes from the database, never the device.** Use
+  `useCanDecide()` / `useIsAdmin()` / `useDeciders()` from `membership.ts`
+  (they read `household_members`); don't add a device-side role, roster or
+  name-keyed decider list back. The only device role is `demoRole`, for the
+  sample home. The writable cloud id is still `linkedCloudId(s)` (from the
+  OPEN household's `cloudLinkedAt`); there is no top-level `cloudHouseholdId`.
+- **Every cloud write goes through the outbox** (`store` → `setCloudSink` →
+  `outbox.enqueue` → `cloud.ts`). Screens never call Supabase to write items,
+  rooms or collections. Ops belong to the account that made them and only send
+  while that account is signed in; connection failures retry, refusals stay
+  visible in Account & sync. Opening a home (`household.openHousehold`)
+  REPLACES the device copy with the cloud's and re-applies pending ops, so a
+  delete made elsewhere never comes back. `localOnly` items never leave the
+  device. Photos upload via the EXIF-stripping `upload-photo` function; voice
+  audio stays on the device.
+- **Test the core with `tools/e2e-core/run.mjs`** (`PGPASSWORD` only; two Node
+  "devices" run the real `src/lib` against production and clean up) and the
+  rules with `tools/sql/authority-behaviour.sql`. Run both before shipping any
+  change to `src/lib/` or to RLS/triggers.
 - **DB authority checks live in `private.*` SECURITY DEFINER functions** (e.g.
   `private.is_household_member`) to avoid recursive RLS on
   `household_members`. Never write a policy that selects from

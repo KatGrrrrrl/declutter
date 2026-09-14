@@ -11,10 +11,11 @@
  * against their own auth email. decline_invite() (migration 0015) writes that
  * stamp, so the proof is a side effect of the thing having actually happened.
  *
- * Recipients: whoever ADMINISTERS the household — the roster's is_admin lines,
- * which is the app's own answer to "who runs this home". A household whose
- * roster predates administrators (or whose admins have no email on file) falls
- * back to its active owners, read from auth. Nobody is silently dropped.
+ * Recipients: whoever ADMINISTERS the household — active members with
+ * `is_admin` (migration 017), which is the app's own answer to "who runs this
+ * home". If none has an email on file it falls back to the active owners.
+ * Addresses come from auth, never from a client-writable column. Nobody is
+ * silently dropped.
  *
  * Delivery: Resend, exactly as notify-item-added. With no RESEND_API_KEY set
  * this returns 503 email_not_configured and the app carries on — the decline
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
 
     const { data: declined } = await admin
       .from('household_members')
-      .select('id, invited_email, declined_at')
+      .select('id, invited_email, declined_at, display_name')
       .eq('household_id', householdId)
       .eq('invited_email', callerEmail)
       .not('declined_at', 'is', null)
@@ -93,23 +94,30 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const householdName = hh?.name ?? 'your household';
 
-    // 1. The administrators, as the roster records them. `is_admin` arrived
-    //    with migration 0013; a database that predates it errors here rather
-    //    than returning rows, which the owner fallback below then covers.
-    const recipients = new Set<string>();
-    let invitedName: string | null = null;
-    const { data: roster } = await admin
-      .from('roster_entries')
-      .select('name, invited_email, is_admin')
-      .eq('household_id', householdId);
-    for (const r of roster ?? []) {
-      if (r.is_admin && r.invited_email) recipients.add(String(r.invited_email).toLowerCase());
-      // The family's own name for the person who declined reads far better in
-      // the email than their email address does.
-      if (String(r.invited_email ?? '').toLowerCase() === callerEmail) invitedName = r.name;
-    }
+    // The family's own name for the person who declined reads far better in
+    // the email than their email address does.
+    const invitedName: string | null = declined.display_name ?? null;
 
-    // 2. Fallback: the household's active owners, straight from auth.
+    const recipients = new Set<string>();
+    const addEmailsOf = async (userIds: (string | null)[]) => {
+      for (const id of userIds) {
+        if (!id) continue;
+        const { data: u } = await admin.auth.admin.getUserById(id);
+        const addr = u?.user?.email?.toLowerCase();
+        if (addr) recipients.add(addr);
+      }
+    };
+
+    // 1. The administrators.
+    const { data: admins } = await admin
+      .from('household_members')
+      .select('user_id')
+      .eq('household_id', householdId)
+      .eq('status', 'active')
+      .eq('is_admin', true);
+    await addEmailsOf((admins ?? []).map((a) => a.user_id));
+
+    // 2. Fallback: the household's active owners.
     if (recipients.size === 0) {
       const { data: owners } = await admin
         .from('household_members')
@@ -117,12 +125,7 @@ Deno.serve(async (req) => {
         .eq('household_id', householdId)
         .eq('status', 'active')
         .in('role', ['owner', 'co_owner']);
-      for (const o of owners ?? []) {
-        if (!o.user_id) continue;
-        const { data: u } = await admin.auth.admin.getUserById(o.user_id);
-        const addr = u?.user?.email?.toLowerCase();
-        if (addr) recipients.add(addr);
-      }
+      await addEmailsOf((owners ?? []).map((o) => o.user_id));
     }
 
     // Never mail the decliner about their own decline.

@@ -130,20 +130,22 @@ do $t$ declare n int; begin
   end;
 end $t$;
 
+-- The roster (a name-keyed list any member could write) is gone since 018;
+-- nothing that grants standing lives anywhere but household_members.
 do $t$ begin
-  begin
-    insert into public.roster_entries (household_id, name, is_decider)
-    values ('b0000000-0000-4000-8000-000000000001', 'Self-appointed', true);
-    raise notice 'FAIL 07 a helper wrote a roster line with the final say';
-  exception when others then raise notice 'PASS 07 a helper cannot write a roster line with the final say: %', sqlerrm;
-  end;
+  if to_regclass('public.roster_entries') is null then
+    raise notice 'PASS 07 there is no name-keyed roster left to claim standing through';
+  else
+    raise notice 'FAIL 07 public.roster_entries still exists';
+  end if;
 end $t$;
 
 do $t$ declare n int; begin
-  insert into public.roster_entries (household_id, name) values ('b0000000-0000-4000-8000-000000000001', 'Suggested person');
-  get diagnostics n = row_count;
-  raise notice '% 08 a helper can still suggest a name-only person (% rows)', case when n = 1 then 'PASS' else 'FAIL' end, n;
-exception when others then raise notice 'FAIL 08 a helper could not suggest a person: %', sqlerrm;
+  begin
+    execute 'select count(*) from private.roster_entries_archive' into n;
+    raise notice 'FAIL 08 a member can read the archived roster (% rows)', n;
+  exception when others then raise notice 'PASS 08 the archived roster is out of reach of members: %', sqlerrm;
+  end;
 end $t$;
 
 do $t$ declare n int; begin
@@ -294,6 +296,33 @@ do $t$ begin
     raise notice 'FAIL 22 the last administrator was removed';
   exception when others then raise notice 'PASS 22 a home always keeps an administrator: %', sqlerrm;
   end;
+end $t$;
+
+
+-- ---- as someone invited who says no -----------------------------------------
+reset role;
+insert into public.household_members (household_id, invited_email, role, status, invited_by, display_name)
+values ('b0000000-0000-4000-8000-000000000001', 'authz-outsider@test.invalid', 'contributor', 'invited',
+        'a0000000-0000-4000-8000-000000000001', 'Cousin X');
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000004","email":"authz-outsider@test.invalid","role":"authenticated"}', true);
+set local role authenticated;
+
+do $t$ begin
+  perform public.decline_invite('b0000000-0000-4000-8000-000000000001');
+  raise notice 'PASS 24 an invited person can decline';
+exception when others then raise notice 'FAIL 24 declining an invitation failed: %', sqlerrm;
+end $t$;
+
+reset role;
+do $t$ begin
+  if exists (select 1 from public.household_members
+              where household_id = 'b0000000-0000-4000-8000-000000000001'
+                and invited_email = 'authz-outsider@test.invalid'
+                and status = 'revoked' and declined_at is not null) then
+    raise notice 'PASS 25 the decline is recorded on the invitation, where the email to administrators checks for it';
+  else
+    raise notice 'FAIL 25 the decline was not recorded';
+  end if;
 end $t$;
 
 

@@ -98,12 +98,13 @@ Supabase backend is live; custom auth domain is live; payments are wired but
 C:\Users\kavit\declutter\
 ├─ src/
 │  ├─ app/                     # expo-router routes
-│  │  ├─ (child)/              # contributor tabs: capture, rooms, inventory, family, account (mobile only)
-│  │  ├─ (parent)/             # decider tabs: decide, inventory (Items), keepsakes, export, account (mobile);
-│  │  │                        #   heirs is desktop-rail only (mobile reaches it via the Keepsakes pill);
-│  │  │                        #   capture + legacy are href:null routes
+│  │  ├─ (home)/               # ONE tab group for everyone (Sep 14). _layout picks tabs by
+│  │  │                        #   useCanDecide(): deciders get decide, inventory (Items), keepsakes,
+│  │  │                        #   heirs (desktop), export, account (mobile); helpers get capture,
+│  │  │                        #   rooms, inventory, family, account. Decider-only screens redirect
+│  │  │                        #   helpers to /capture.
 │  │  ├─ collection/[id].tsx   # a named item set (Collections, 2026-09-08)
-│  │  ├─ item/[id].tsx         # role-aware item detail (stories, heirs, chat, donation)
+│  │  ├─ item/[id].tsx         # role-aware item detail; browser-only render (expo-audio breaks pre-render)
 │  │  ├─ login.tsx             # password default; signup; OTP + Google alternates
 │  │  ├─ upgrade.tsx           # cloud-backup + family-sharing paywall
 │  │  ├─ onboarding*           # set up a home, name decider(s), invite members
@@ -113,11 +114,17 @@ C:\Users\kavit\declutter\
 │  │  └─ ui.tsx                # NavigationTabBar (rail), Title/Heading, Screen, PhotoBox
 │  ├─ hooks/                   # use-document-title, etc.
 │  ├─ lib/
-│  │  ├─ store.ts              # Zustand store — THE state model + useShallow hooks
+│  │  ├─ auth.ts               # the ONLY session owner: status, known accounts, switch/sign out
+│  │  ├─ account-switch.ts     # per-account device state (stash/restore on account change)
+│  │  ├─ membership.ts         # who may do what, from household_members (useCanDecide, useIsAdmin…)
+│  │  ├─ household.ts          # pull-and-replace loader, pick/create/open homes, invites
+│  │  ├─ outbox.ts             # per-account persisted write queue: retries, visible refusals
+│  │  ├─ cloud.ts              # pure cloud writers used by the outbox
+│  │  ├─ store.ts              # Zustand store v9 — open home's working copy + householdData
 │  │  ├─ supabase.ts           # client; URL = https://auth.inventoryourhouse.com
 │  │  ├─ photo-sync.ts         # uploadItemPhoto, pickPhoto helper
-│  │  ├─ sync.ts              # snapshot backup/restore + v2 upsert merge
-│  │  └─ cloud-bridge... / components/cloud-bridge.tsx  # realtime + session gate
+│  │  └─ realtime.ts, presence.ts  # live changes + "Tom is here too"
+│  │  (components/session-bridge.tsx wires auth → household load → outbox)
 │  └─ constants/theme.ts       # T (colors), Fonts, Radius, Spacing
 ├─ supabase/
 │  ├─ migrations/              # 0001..0012 (see §5)
@@ -157,6 +164,17 @@ C:\Users\kavit\declutter\
 - `0014 heir_assignments_main_decider` — heir assignments as RLS-hidden rows (owner-only
   writes; members read only `revealed`); `items.main_decider_name`, owner-gated.
 - `0015 invite_decline` — `decline_invite()` RPC, the mirror of `accept_invite()`.
+- `0016 owner_check_never_blank` — security fix: `is_household_owner` returned NULL for
+  non-members, which silently skipped trigger guards (an invitee could accept as owner).
+- `0017 identity_core` — authority moves onto `household_members` (`is_admin`,
+  `display_name`, `relationship`); `items.main_decider` uuid; `item_messages.household_id`.
+- `0018 retire_roster` — `roster_entries` dropped (copy kept in
+  `private.roster_entries_archive`). `decided_by_name` / `main_decider_name` stay as
+  display caches only; nothing decides from them.
+
+Tests for all of this: `tools/sql/authority-behaviour.sql` (28 checks, rolled back),
+`tools/e2e-phase0-functions.mjs`, `tools/e2e-core/run.mjs` (two devices running the
+real `src/lib` against production). All need only `PGPASSWORD` from `.dbpassword.local`.
 
 **Edge functions** (`supabase/functions/`, deploy: `supabase functions deploy <name>`):
 - `notify-invite-declined` — emails a household's administrators when an invitee says no
@@ -325,18 +343,18 @@ Shipped, all on `main` and live via Amplify:
   or promise a trial.
 - **Collections** — named item sets, en-masse capture, one-swipe deciding;
   migration 0011.
-- **Sync hardening:** items push on capture and reconcile on connect (insert-only,
-  never overwrites a newer edit); edits/deletes/archive sync live; presence banner
-  ("Tom is here too"); default decider per household.
-- **The cloud link lives on the household record** (`Household.cloudLinkedAt` /
-  `lastBackupAt`; persist v6 migrates old devices). `linkedCloudId()` derives from
-  the open household — there is no `cloudHouseholdId` field to clear any more.
-  `pushHousehold` refuses to recreate a household that was backed up and is now
-  gone (steers to Restore). Closed a wrong-household write in onboarding, the
-  guard gap on switch, and a stale link surviving sign-out.
-- **Household loading never guesses:** one home → load; several → prefer the one
-  open on this device, else a picker (sign-in and Restore). Restore/join **merges**
-  into the device's homes instead of wiping the others.
+- **Identity core rebuild (Sep 14, plan `melodic-hatching-glade.md`):** the cloud is
+  the truth and an account is required for a real home. One session owner
+  (`auth.ts`); authority from `household_members` (`membership.ts`), never from
+  names on the device; every write goes through a per-account outbox that retries
+  connection failures and shows refusals ("Try again / Stop trying" in Account &
+  sync); opening a home replaces the device copy from the cloud and re-applies only
+  changes still waiting to send, so deletions never come back. Several accounts can
+  use one device; each account's data is stashed separately and switching asks for
+  that account's sign-in. Whoever creates a home holds the final say until the
+  invited decider joins, then can "Hand over the final say" from their Family row.
+  Retired: `sync.ts`, `join.ts`, `invites.ts`, `cloud-bridge`, `restore-prompt`,
+  the `(parent)`/`(child)` route groups, `roster_entries`.
 - Mobile Account tab (Log out reachable everywhere); Family "+" ; iPhone bottom-bar
   safe area; desktop sign-in loop fixed; rename/remove households.
 - `Btn` and the Decide bars have accessible names (RN Web divs take none from a
@@ -351,7 +369,7 @@ support address; pre-launch polish.
 
 **Working-in-this-repo rule (learned the hard way):** several Claude sessions
 edit this folder at once. Stage with **explicit file paths** and check
-`git diff --cached --stat` before every commit touching `store.ts`, `sync.ts`
+`git diff --cached --stat` before every commit touching `store.ts`, `outbox.ts`
 or `realtime.ts` — a bare `git add <file>` once swept another session's
 half-finished feature into a commit and broke `main`'s typecheck.
 
