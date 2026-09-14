@@ -123,8 +123,12 @@ Deno.serve(async (req) => {
       mode: 'subscription',
       customer: customer.id,
       line_items: [{ price: price.id, quantity: 1 }],
-      metadata: { household_id: householdId },
-      subscription_data: { metadata: { household_id: householdId } },
+      // Who started this checkout. verify-checkout will only confirm a session
+      // for the same signed-in person, so a success link that leaks (browser
+      // history, a forwarded screenshot) can't be replayed by anyone else.
+      client_reference_id: user.id,
+      metadata: { household_id: householdId, user_id: user.id },
+      subscription_data: { metadata: { household_id: householdId, user_id: user.id } },
       success_url: SUCCESS_URL,
       cancel_url: CANCEL_URL,
       allow_promotion_codes: true,

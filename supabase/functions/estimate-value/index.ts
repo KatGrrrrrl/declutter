@@ -86,9 +86,12 @@ Deno.serve(async (req) => {
     if (!uid) return fail(401, 'Not signed in.');
 
     // items SELECT is RLS-gated to household membership — this is the real check.
+    // Tags live in item_tags, not on items. Selecting a `tags` column that
+    // doesn't exist made this query fail for every item, so the paid feature
+    // could never return an estimate to anyone.
     const { data: item, error: itemErr } = await userClient
       .from('items')
-      .select('id, household_id, title, room, tags')
+      .select('id, household_id, title, room, item_tags(tag)')
       .eq('id', itemId)
       .maybeSingle();
     if (itemErr) return fail(500, itemErr.message);
@@ -132,7 +135,9 @@ Deno.serve(async (req) => {
     }
 
     // ---- (d) build the request. A description alone still yields an estimate.
-    const tags = Array.isArray(item.tags) ? (item.tags as string[]).join(', ') : '';
+    const tags = Array.isArray(item.item_tags)
+      ? (item.item_tags as { tag: string }[]).map((t) => t.tag).join(', ')
+      : '';
     const desc =
       `Item: ${item.title}\n` +
       `Room/context: ${item.room}\n` +

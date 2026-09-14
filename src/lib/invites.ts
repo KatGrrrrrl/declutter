@@ -6,6 +6,7 @@
  */
 
 import type { Member } from '@/lib/store';
+import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 export async function sendInviteEmail(
@@ -23,11 +24,25 @@ export async function sendInviteEmail(
       error: 'Sign in under Settings → Account & sync first — invitation emails are sent from your account.',
     };
   }
+  // The server now creates the invitation itself and checks the caller may
+  // invite into THIS household, so it needs to know which one — and whether
+  // the person is being given the final say, which only an owner may grant.
+  const s = useStore.getState();
+  const householdId = linkedCloudId(s);
+  if (!householdId) {
+    return { ok: false, error: 'Back up the household first (Settings → Account & sync).' };
+  }
+  const deciders = s.households.find((h) => h.id === s.activeHouseholdId)?.deciderNames ?? [];
+  const isDecider = deciders.some((d) => d.toLowerCase() === member.name.toLowerCase());
   try {
     const { data, error } = await supabase.functions.invoke('invite-member', {
       body: {
+        householdId,
         email: member.email,
         name: member.name,
+        relationship: member.relationship,
+        role: isDecider ? 'co_owner' : 'contributor',
+        // Kept for older deployments of the function during the rollout.
         householdName,
         invitedBy,
       },

@@ -3,8 +3,13 @@
  *
  * POST { itemId, itemTitle, householdId, addedBy }
  *
- * Auth: verify_jwt is ON (default) — only signed-in app users can call this.
- * The caller's own user id (from their JWT) is EXCLUDED from the fanout:
+ * Auth: verify_jwt is ON (default), but that only proves the request carries
+ * a JWT the project signed — and the public anon key IS such a JWT. So the
+ * caller must also resolve to a real user who is an ACTIVE member of the
+ * household; anything else is refused. Before this check, anyone holding the
+ * app's publishable key could make the server email every instant subscriber
+ * of any household whose id they knew, with a title and "added by" name of
+ * their choosing. The caller's own user id is excluded from the fanout:
  * nobody needs an email about the item they just added themselves.
  *
  * Fanout: notification_prefs rows for the household with mode = 'instant'
@@ -42,8 +47,8 @@ Deno.serve(async (req) => {
     if (!householdId || typeof householdId !== 'string') {
       return Response.json({ ok: false, error: 'householdId is required.' }, { status: 400, headers: cors });
     }
-    const title = typeof itemTitle === 'string' && itemTitle.trim() ? itemTitle.trim() : 'New item';
-    const who = typeof addedBy === 'string' && addedBy.trim() ? addedBy.trim() : 'Someone';
+    const fallbackTitle = typeof itemTitle === 'string' && itemTitle.trim() ? itemTitle.trim() : 'New item';
+    const fallbackWho = typeof addedBy === 'string' && addedBy.trim() ? addedBy.trim() : 'Someone';
 
     const apiKey = Deno.env.get('RESEND_API_KEY');
     if (!apiKey) {
@@ -56,11 +61,43 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Who is calling? (verify_jwt already validated the token; we only need
-    // the uid so the adder never emails themselves.)
+    // Who is calling, and do they belong to this household?
     const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     const { data: userData } = await admin.auth.getUser(token);
     const callerId = userData?.user?.id ?? null;
+    if (!callerId) {
+      return Response.json({ ok: false, error: 'Not signed in.' }, { status: 401, headers: cors });
+    }
+    const { data: membership } = await admin
+      .from('household_members')
+      .select('id, display_name')
+      .eq('household_id', householdId)
+      .eq('user_id', callerId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (!membership) {
+      return Response.json(
+        { ok: false, error: 'Not a member of that household.' },
+        { status: 403, headers: cors }
+      );
+    }
+
+    // What the email says comes from the database where it can: the name the
+    // household knows the caller by, and the item's stored title. The request
+    // body is only a fallback (an item not yet uploaded, a member with no
+    // display name) — otherwise any member could send the family an email
+    // "from" someone else about an item that doesn't exist.
+    let title = fallbackTitle;
+    if (typeof itemId === 'string' && /^[0-9a-f-]{36}$/i.test(itemId)) {
+      const { data: stored } = await admin
+        .from('items')
+        .select('title')
+        .eq('id', itemId)
+        .eq('household_id', householdId)
+        .maybeSingle();
+      if (stored?.title?.trim()) title = stored.title.trim();
+    }
+    const who = membership.display_name?.trim() || fallbackWho;
 
     const { data: hh } = await admin
       .from('households')
@@ -69,13 +106,12 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const householdName = hh?.name ?? 'your household';
 
-    let query = admin
+    const { data: prefs, error: prefsError } = await admin
       .from('notification_prefs')
       .select('user_id, email')
       .eq('household_id', householdId)
-      .eq('mode', 'instant');
-    if (callerId) query = query.neq('user_id', callerId);
-    const { data: prefs, error: prefsError } = await query;
+      .eq('mode', 'instant')
+      .neq('user_id', callerId);
     if (prefsError) {
       return Response.json({ ok: false, error: prefsError.message }, { status: 500, headers: cors });
     }
