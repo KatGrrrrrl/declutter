@@ -17,11 +17,11 @@ import {
 } from '@/components/parent/swipe-card';
 import { Btn, DECISION_META, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
+import { useCanDecide, useDeciders } from '@/lib/membership';
 import {
   Collection,
   Item,
   useActiveHousehold,
-  useCanDecide,
   useCollections,
   useQueue,
   useStore,
@@ -59,7 +59,8 @@ export default function DecideScreen() {
   const bulkDecide = useStore((s) => s.bulkDecide);
   const canDecide = useCanDecide();
   const household = useActiveHousehold();
-  const setRole = useStore((s) => s.setRole);
+  const setDemoRole = useStore((s) => s.setDemoRole);
+  const deciderList = useDeciders();
 
   const cardRef = useRef<SwipeCardHandle>(null);
   const busyRef = useRef(false);
@@ -159,7 +160,7 @@ export default function DecideScreen() {
   // active household. The deck belongs to the deciders — explain warmly and
   // offer the helper view instead.
   if (!canDecide) {
-    const deciders = joinNames(household?.deciderNames ?? []);
+    const deciders = joinNames(deciderList.map((d) => d.name));
     return (
       <Screen scroll={false}>
         <Title style={styles.title}>Decide</Title>
@@ -176,7 +177,8 @@ export default function DecideScreen() {
               label="Take me to the helper view"
               big
               onPress={() => {
-                setRole('contributor');
+                // Demo: flip the sample view. A real home routes by membership.
+                setDemoRole('contributor');
                 router.replace('/');
               }}
             />

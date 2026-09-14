@@ -210,6 +210,9 @@ async function apply(session: Session | null) {
   }
   if (mine !== generation) return; // a newer sign-in/out overtook this one
 
+  // The device's data now belongs to this account: record its id too, for
+  // "is this item mine?" checks that used to compare display names.
+  if (email) useStore.getState().bindAccount(email, userId);
   remember(userId, email);
   useSessionStore.setState({ status: 'signed-in', needsPlacement });
 }

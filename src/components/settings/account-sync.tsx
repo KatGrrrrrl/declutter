@@ -1,9 +1,15 @@
 /**
- * Account & sync — sign-in, cloud backup of the household catalog, and
- * restore onto a fresh device. Backup covers items, decisions, stories, chat,
- * roster, donation destinations, and photos (EXIF-stripped server-side by the
- * upload-photo function, swept on every backup). Voice audio is the one thing
- * that still stays on the device.
+ * Account & sync — sign in, see that the family copy is current, and fix
+ * anything that couldn't be shared.
+ *
+ * There is no "Back up now" or "Restore" any more. Every change goes to the
+ * family's shared copy as it is made (src/lib/outbox.ts), and opening a home
+ * loads that copy fresh (src/lib/household.ts). What this panel shows instead
+ * is the truth about that: how many changes are still on their way, and —
+ * the thing that used to be invisible — which ones the server refused, with
+ * a way to try again or let go.
+ *
+ * Voice recordings still stay on the device; a story's words are shared.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -19,15 +25,20 @@ import {
   acceptInvite,
   declineInvite,
   listPendingInvites,
-  PendingInvite,
-  pickMyHousehold,
-} from '@/lib/join';
-import { uploadPendingPhotos } from '@/lib/photo-sync';
+  refreshOpenHousehold,
+  uploadLocalHousehold,
+  type PendingInvite,
+} from '@/lib/household';
+import {
+  describeOp,
+  discardOp,
+  nudgeOutbox,
+  retryOp,
+  useFailedOps,
+  useOutboxStatus,
+} from '@/lib/outbox';
 import { useActiveHousehold, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
-import { backupHousehold, restoreHousehold } from '@/lib/sync';
-
-import type { CloudHouseholdSummary } from '@/lib/sync';
 
 export function AccountSync() {
   const router = useRouter();
@@ -39,21 +50,19 @@ export function AccountSync() {
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'email' | 'code'>('email');
   const [busy, setBusy] = useState(false);
-  const [confirmRestore, setConfirmRestore] = useState(false);
-  // The account belongs to several cloud homes and none is the one open here:
-  // the person picks which to restore. Never guessed.
-  const [restoreChoices, setRestoreChoices] = useState<CloudHouseholdSummary[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
 
-  const state = useStore();
   const household = useActiveHousehold();
+  const isDemo = useStore((s) => s.isDemo);
+  const outbox = useOutboxStatus();
+  const failed = useFailedOps();
+  const shared = Boolean(household?.cloudLinkedAt) && !isDemo;
 
   // Signed in → check whether any household is waiting for this person.
-  // (Async fetch only; the signed-out case renders no invites anyway.)
   useEffect(() => {
     if (!signedIn) return;
     let cancelled = false;
-    listPendingInvites().then((list) => {
+    void listPendingInvites().then((list) => {
       if (!cancelled) setInvites(list);
     });
     return () => {
@@ -66,11 +75,11 @@ export function AccountSync() {
     const res = await acceptInvite(inv.householdId);
     setBusy(false);
     if (!res.ok) {
-      notify('Couldn’t join yet', res.error ?? 'Try again in a moment.');
+      notify('Couldn’t join yet', res.error);
       return;
     }
     setInvites((v) => v.filter((x) => x.householdId !== inv.householdId));
-    notify('Welcome in', `You’ve joined “${res.householdName}”.`);
+    notify('Welcome in', `You’ve joined “${res.name}”.`);
     router.replace('/');
   };
 
@@ -84,7 +93,7 @@ export function AccountSync() {
     const res = await declineInvite(inv.householdId);
     setBusy(false);
     if (!res.ok) {
-      notify('Couldn’t decline yet', res.error ?? 'Try again in a moment.');
+      notify('Couldn’t decline yet', res.error);
       return;
     }
     setInvites((v) => v.filter((x) => x.householdId !== inv.householdId));
@@ -96,8 +105,7 @@ export function AccountSync() {
     );
   };
 
-  /** OAuth sign-in (web). Buttons work once the provider is configured in
-   *  Supabase; until then they explain themselves instead of failing. */
+  /** OAuth sign-in (web). Buttons explain themselves if a provider isn't switched on. */
   const oauth = (provider: 'google' | 'apple') => async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -146,84 +154,42 @@ export function AccountSync() {
     setCode('');
   };
 
-  const runBackup = async () => {
+  /** Send what's waiting and load the family's latest copy of this home. */
+  const syncNow = async () => {
     setBusy(true);
-    const res = await backupHousehold({
-      wasBackedUp: Boolean(household?.cloudLinkedAt),
-      activeHouseholdId: state.activeHouseholdId,
-      householdName: state.householdName,
-      items: state.items,
-      people: state.people,
-      collections: state.collections,
-      rooms: state.rooms,
-      messages: state.messages,
-      members: state.members,
-      deciderNames: household?.deciderNames ?? [state.ownerName],
-      adminNames: household?.adminNames ?? [household?.createdBy ?? state.userName],
-      userName: state.userName,
-    });
+    nudgeOutbox();
+    const res = await refreshOpenHousehold();
     setBusy(false);
-    if (!res.ok) {
-      notify('Backup didn’t finish', res.error ?? 'Something went wrong — try again.');
-      return;
+    if (res.ok) {
+      notify('Up to date', 'This device has the family’s latest copy of the home.');
+    } else if (res.retry) {
+      notify('Couldn’t reach the family copy', 'You’re offline or the connection dropped. Changes wait here and send when you’re back.');
+    } else {
+      notify('Couldn’t sync', res.error);
     }
-    if (res.cloudHouseholdId) state.markCloudLinked(res.cloudHouseholdId, new Date().toISOString());
-    // Catalog is up; now sweep any photos that haven't uploaded yet.
-    const photos = await uploadPendingPhotos();
-    const skipped = res.skippedLocalOnly
-      ? ` ${res.skippedLocalOnly} device-only item${res.skippedLocalOnly === 1 ? '' : 's'} stayed private, as promised.`
-      : '';
-    const photoNote = photos.uploaded
-      ? ` ${photos.uploaded} photo${photos.uploaded === 1 ? '' : 's'} uploaded.`
-      : '';
-    notify('Backed up', `${res.itemsPushed} items are safe in your account.${photoNote}${skipped}`);
   };
 
-  const runRestore = async (householdId?: string) => {
+  /** A home that has only ever lived on this device joins the account. */
+  const shareThisHome = async () => {
+    if (!household) return;
     setBusy(true);
-    let id = householdId;
-    if (!id) {
-      const picked = await pickMyHousehold();
-      if (picked.choices) {
-        // Several homes, none of them the one open here — ask, don't guess.
-        setBusy(false);
-        setRestoreChoices(picked.choices);
-        return;
-      }
-      if (!picked.id) {
-        setBusy(false);
-        setConfirmRestore(false);
-        notify('Nothing restored', picked.error ?? 'No backup found.');
-        return;
-      }
-      id = picked.id;
-    }
-    const res = await restoreHousehold(id);
+    const res = await uploadLocalHousehold(household.id);
     setBusy(false);
-    setConfirmRestore(false);
-    setRestoreChoices([]);
-    if (!res.ok || !res.snapshot) {
-      notify('Nothing restored', res.error ?? 'No backup found.');
-      return;
-    }
-    state.restoreSnapshot(res.snapshot);
-    notify('Restored', `“${res.snapshot.householdName}” is back — ${res.snapshot.items.length} items.`);
+    if (res.ok) notify('Shared', `“${household.name}” is now in your account. Family you invite will see it.`);
+    else notify('Couldn’t share this home yet', res.error);
   };
-
-  /** Same contract as the Settings-top Log out: disconnect AND lock. */
-  const signOutAccount = () => void signOut();
 
   return (
     <>
-      <Label>Account & sync (beta)</Label>
+      <Label>Account & sync</Label>
       <Card>
         {!signedIn ? (
           stage === 'email' ? (
             <>
               <Muted style={styles.lede}>
-                Sign in with your email to back this household up — so a lost
-                phone never means a lost inventory. No password: we send a
-                six-digit code instead.
+                Sign in with your email to keep this household in your account —
+                so a lost phone never means a lost inventory, and family can
+                join. No password: we send a six-digit code instead.
               </Muted>
               <TextInput
                 style={styles.input}
@@ -231,6 +197,7 @@ export function AccountSync() {
                 onChangeText={setEmail}
                 placeholder="you@example.com"
                 placeholderTextColor={T.inkFaint}
+                aria-label="Email"
                 autoCapitalize="none"
                 autoComplete="email"
                 keyboardType="email-address"
@@ -249,6 +216,7 @@ export function AccountSync() {
                   </Row>
                   <Pressable
                     accessibilityRole="button"
+                    accessibilityLabel="Continue with Google"
                     onPress={oauth('google')}
                     style={styles.oauthBtn}
                   >
@@ -257,6 +225,7 @@ export function AccountSync() {
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
+                    accessibilityLabel="Continue with Apple"
                     onPress={oauth('apple')}
                     style={styles.oauthBtn}
                   >
@@ -277,6 +246,7 @@ export function AccountSync() {
                 onChangeText={setCode}
                 placeholder="123456"
                 placeholderTextColor={T.inkFaint}
+                aria-label="Six-digit code"
                 keyboardType="number-pad"
                 maxLength={6}
                 returnKeyType="done"
@@ -285,7 +255,7 @@ export function AccountSync() {
               <View style={styles.cta}>
                 <Btn label={busy ? 'Checking…' : 'Sign in'} onPress={verifyCode} disabled={busy} />
               </View>
-              <Text style={styles.linkText} onPress={() => setStage('email')}>
+              <Text accessibilityRole="button" style={styles.linkText} onPress={() => setStage('email')}>
                 Different email
               </Text>
             </>
@@ -296,15 +266,15 @@ export function AccountSync() {
               <View style={styles.dot} />
               <Muted style={styles.flex}>Signed in as {sessionEmail}</Muted>
             </Row>
+
             {invites.map((inv) => (
               <View key={inv.householdId} style={styles.inviteWell}>
                 <Heading style={styles.inviteHeading}>
-                  You&rsquo;re invited to &ldquo;{inv.householdName}&rdquo;
+                  You&rsquo;ve been invited to help with &ldquo;{inv.householdName}&rdquo;
                 </Heading>
                 <Muted style={styles.inviteSub}>
-                  Joining loads the family&rsquo;s shared inventory onto this
-                  device. Your own current data here stays untouched in your
-                  account backups.
+                  Joining brings the family&rsquo;s shared inventory onto this
+                  device, alongside the homes already here.
                 </Muted>
                 <View style={styles.cta}>
                   <Btn
@@ -323,65 +293,71 @@ export function AccountSync() {
                 </Text>
               </View>
             ))}
-            <Muted style={styles.lede}>
-                  {household?.lastBackupAt
-                    ? `Last backup ${new Date(household.lastBackupAt).toLocaleString()}.`
-                    : 'No backup yet from this device.'}{' '}
-                  Photos, the catalog, decisions, stories, chat, and the family
-                  roster are all included. Voice recordings stay on this device
-                  for now.
+
+            {isDemo ? null : shared ? (
+              <>
+                <Muted style={styles.lede}>
+                  {outbox.pending
+                    ? `${outbox.pending} change${outbox.pending === 1 ? '' : 's'} on the way to the family.`
+                    : 'Everything you’ve changed here has reached the family.'}{' '}
+                  Changes send as you make them; voice recordings stay on this device.
                 </Muted>
                 <View style={styles.cta}>
-                  <Btn label={busy ? 'Backing up…' : 'Back up now'} onPress={runBackup} disabled={busy} />
+                  <Btn label={busy ? 'Syncing…' : 'Sync now'} onPress={syncNow} disabled={busy} />
                 </View>
-                {confirmRestore && restoreChoices.length > 0 ? (
-                  <View style={styles.cta}>
-                    <Muted style={styles.lede}>Your account has more than one home. Which one?</Muted>
-                    {restoreChoices.map((c) => (
-                      <Btn
-                        key={c.id}
-                        label={busy ? 'Restoring…' : c.name}
-                        kind="brass"
-                        onPress={() => runRestore(c.id)}
-                        disabled={busy}
-                      />
-                    ))}
-                    <Text
-                      style={styles.linkText}
-                      onPress={() => {
-                        setRestoreChoices([]);
-                        setConfirmRestore(false);
-                      }}
-                    >
-                      Keep what’s here
-                    </Text>
+              </>
+            ) : household ? (
+              <>
+                <Muted style={styles.lede}>
+                  &ldquo;{household.name}&rdquo; is only on this device. Share it with your
+                  account to keep it safe and let family join.
+                </Muted>
+                <View style={styles.cta}>
+                  <Btn label={busy ? 'Sharing…' : 'Share this home'} onPress={shareThisHome} disabled={busy} />
+                </View>
+              </>
+            ) : null}
+
+            {failed.length > 0 && (
+              <View style={styles.failedWell}>
+                <Heading style={styles.failedHeading}>
+                  {failed.length === 1 ? 'One change couldn’t be shared' : `${failed.length} changes couldn’t be shared`}
+                </Heading>
+                <Muted style={styles.failedSub}>
+                  It&rsquo;s still on this device. The family&rsquo;s copy said no, or couldn&rsquo;t take it:
+                </Muted>
+                {failed.map((op) => (
+                  <View key={op.id} style={styles.failedRow}>
+                    <Text style={styles.failedWhat}>{describeOp(op)}</Text>
+                    {op.lastError ? <Muted style={styles.failedWhy}>{op.lastError}</Muted> : null}
+                    <Row style={styles.failedActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Try again: ${describeOp(op)}`}
+                        onPress={() => retryOp(op.id)}
+                        style={styles.failedBtn}
+                      >
+                        <Text style={styles.failedBtnText}>Try again</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Stop trying: ${describeOp(op)}`}
+                        onPress={() => discardOp(op.id)}
+                        style={styles.failedBtn}
+                      >
+                        <Text style={styles.failedBtnText}>Stop trying</Text>
+                      </Pressable>
+                    </Row>
                   </View>
-                ) : confirmRestore ? (
-                  <View style={styles.cta}>
-                    <Btn
-                      label={busy ? 'Restoring…' : 'Yes — replace this device’s data'}
-                      kind="brass"
-                      onPress={() => runRestore()}
-                      disabled={busy}
-                    />
-                    <Text style={styles.linkText} onPress={() => setConfirmRestore(false)}>
-                      Keep what’s here
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.cta}>
-                    <Btn
-                      label="Restore from my backup"
-                      kind="quiet"
-                      onPress={() => setConfirmRestore(true)}
-                    />
-                  </View>
-                )}
+                ))}
+              </View>
+            )}
+
             <View style={styles.cta}>
-              <Btn label="Log out" kind="quiet" onPress={signOutAccount} />
+              <Btn label="Log out" kind="quiet" onPress={() => void signOut()} />
             </View>
             <Muted style={styles.signOutNote}>
-              Logging out keeps everything on this device and your backups in
+              Logging out keeps everything on this device and the family copy in
               your account. To erase this device instead, use &ldquo;Sign out &amp;
               erase&rdquo; below.
             </Muted>
@@ -425,6 +401,22 @@ const styles = StyleSheet.create({
   },
   inviteHeading: { fontSize: 17 },
   inviteSub: { marginTop: Spacing.one, fontSize: 13 },
+  failedWell: {
+    marginTop: Spacing.three,
+    backgroundColor: T.tossTint,
+    borderRadius: Radius.control,
+    borderWidth: 1,
+    borderColor: T.toss,
+    padding: Spacing.three,
+  },
+  failedHeading: { fontSize: 16 },
+  failedSub: { marginTop: Spacing.one, fontSize: 13 },
+  failedRow: { marginTop: Spacing.three },
+  failedWhat: { fontSize: 14, fontWeight: '600', color: T.ink },
+  failedWhy: { fontSize: 13, marginTop: 2 },
+  failedActions: { gap: Spacing.three, marginTop: Spacing.one },
+  failedBtn: { minHeight: 44, justifyContent: 'center' },
+  failedBtnText: { fontSize: 13.5, fontWeight: '600', color: T.inkSoft, textDecorationLine: 'underline' },
   orRow: { marginTop: Spacing.three, gap: Spacing.two, alignItems: 'center' },
   orLine: { flex: 1, height: 1, backgroundColor: T.lineSoft },
   orText: { fontSize: 12 },

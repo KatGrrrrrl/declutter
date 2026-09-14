@@ -35,6 +35,9 @@ interface ItemRow {
   archived: boolean | null;
   collection_id: string | null;
   main_decider_name: string | null;
+  main_decider: string | null;
+  decided_by: string | null;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -82,7 +85,14 @@ function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
     })
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'item_messages' },
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'item_messages',
+        // Filterable since 017 stamped household_id on every message. Before,
+        // this delivered every household's chat to every subscriber.
+        filter: `household_id=eq.${cloudHouseholdId}`,
+      },
       (payload) => {
         const r = payload.new as {
           id: string;
@@ -91,9 +101,8 @@ function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
           body: string;
           created_at: string;
         };
-        // item_messages has no household column, so this subscription spans
-        // every household the account belongs to. Keep only chat for items
-        // this device actually holds — anything else is another household's.
+        // Belt and braces: the filter scopes to this household, and the item
+        // must be one this device holds (a helper may not see every item's chat).
         const store = useStore.getState();
         if (!store.items.some((i) => i.id === r.item_id)) return;
         store.applyRemoteMessage({
@@ -142,6 +151,9 @@ function openChannel(cloudHouseholdId: string, myUid: string | undefined) {
           archived: r.archived ?? false,
           collectionId: r.collection_id ?? undefined,
           mainDeciderName: r.main_decider_name ?? undefined,
+          mainDeciderId: r.main_decider ?? undefined,
+          decidedById: r.decided_by ?? undefined,
+          createdById: r.created_by ?? undefined,
           createdAt: r.created_at,
         });
       }

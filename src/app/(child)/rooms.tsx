@@ -19,12 +19,12 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MiniChip, notify } from '@/components/child/shared';
 import { Btn, Heading, Label, Muted, Screen, Title, Well } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
+import { useIsAdmin } from '@/lib/membership';
 import {
   FLOORS,
   Room,
   isGhostRoom,
   useCollections,
-  useIsAdmin,
   useRooms,
   useStore,
 } from '@/lib/store';

@@ -30,7 +30,6 @@ import {
   View,
 } from 'react-native';
 
-import { awaitAuthReady } from '@/lib/auth';
 import { CollectionPicker } from '@/components/collection-picker';
 import { DonateTo } from '@/components/donate-to';
 import { ItemChat } from '@/components/item-chat';
@@ -49,16 +48,9 @@ import {
 } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
 import { estimateItemValue } from '@/lib/estimate-value';
-import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
-import {
-  linkedCloudId,
-  useActiveHousehold,
-  useCanDecide,
-  useCollection,
-  useIsAdmin,
-  useRoomNames,
-  useStore,
-} from '@/lib/store';
+import { useCanDecide, useDeciders, useIsAdmin } from '@/lib/membership';
+import { pickPhoto } from '@/lib/photo-sync';
+import { isMine, useCollection, useRoomNames, useStore } from '@/lib/store';
 
 import type { ValueEstimate } from '@/lib/estimate-value';
 import type { HeirVisibility } from '@/lib/store';
@@ -74,6 +66,13 @@ const DECISION_CHOICES = [
 ] as const;
 const CAN_RECORD = Platform.OS !== 'web';
 
+/** "Rose", "Rose or Tom", "Rose, Tom or Ann" — for copy that names the deciders. */
+function joinDeciderNames(names: string[]): string {
+  if (!names.length) return 'the decider';
+  if (names.length === 1) return names[0];
+  return names.slice(0, -1).join(', ') + ' or ' + names[names.length - 1];
+}
+
 export default function ItemDetailScreen() {
   const router = useRouter();
   const { id, estimate: estimateParam } = useLocalSearchParams<{
@@ -82,10 +81,10 @@ export default function ItemDetailScreen() {
   }>();
 
   const item = useStore((s) => s.items.find((i) => i.id === id));
-  const role = useStore((s) => s.role);
   const people = useStore((s) => s.people);
   const userName = useStore((s) => s.userName);
-  const ownerName = useStore((s) => s.ownerName);
+  const accountUserId = useStore((s) => s.accountUserId);
+  const isDemo = useStore((s) => s.isDemo);
   const setStory = useStore((s) => s.setStory);
   const assignHeir = useStore((s) => s.assignHeir);
   const updateItem = useStore((s) => s.updateItem);
@@ -98,10 +97,13 @@ export default function ItemDetailScreen() {
   const setItemCollection = useStore((s) => s.setItemCollection);
   const collection = useCollection(item?.collectionId);
   const canDecide = useCanDecide();
-  const household = useActiveHousehold();
-  const deciders = household?.deciderNames ?? [];
+  // Joined deciders can be an item's main decider; the database refuses anyone else.
+  const allDeciders = useDeciders();
+  const deciders = allDeciders.filter((d) => d.joined && d.userId);
+  const decidersLabel = isDemo ? 'Rose' : joinDeciderNames(allDeciders.map((d) => d.name));
 
-  const isOwner = role === 'owner';
+  // "Owner" here means holds the final say in this household, per membership.
+  const isOwner = canDecide;
   const isAdmin = useIsAdmin();
   const rooms = useRoomNames();
   const story = item?.story;
@@ -118,7 +120,10 @@ export default function ItemDetailScreen() {
    * capture once a decider had touched it.
    */
   const canManage = Boolean(
-    item && (isOwner || isAdmin || (item.addedBy === userName && item.decision === 'undecided'))
+    item &&
+    (isOwner ||
+      isAdmin ||
+      (isMine(item, { accountUserId, userName, isDemo }) && item.decision === 'undecided'))
   );
 
   const [editing, setEditing] = useState(false);
@@ -156,19 +161,8 @@ export default function ItemDetailScreen() {
     if (!item) return;
     const uri = await pickPhoto();
     if (!uri) return;
+    // updateItem queues the upload for the family when the home is shared.
     updateItem(item.id, { photoUri: uri });
-    // Same fire-and-forget cloud upload as capture, when linked.
-    const s = useStore.getState();
-    if (linkedCloudId(s) && !item.localOnly) {
-      awaitAuthReady()
-        .then((session) => {
-          if (session.status === 'signed-in') {
-            const fresh = useStore.getState().items.find((i) => i.id === item.id);
-            if (fresh?.photoUri === uri) return uploadItemPhoto(fresh);
-          }
-        })
-        .catch(() => {});
-    }
   };
 
   /* ---- playback ---- */
@@ -385,31 +379,40 @@ export default function ItemDetailScreen() {
       {/* Who decides this? — only meaningful with more than one decider. All
           deciders still see and can decide it; this just flags whose call it is.
           Same gate as editing: deciders always, the capturer while undecided. */}
-      {canManage && deciders.length > 1 && item.decision === 'undecided' && (
+      {isOwner && deciders.length > 1 && item.decision === 'undecided' && (
         <>
           <Label style={styles.deciderLabel}>Who decides this?</Label>
           <Row style={styles.deciderRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ selected: !item.mainDeciderName }}
+              accessibilityLabel="Anyone with the final say"
+              accessibilityState={{ selected: !item.mainDeciderId && !item.mainDeciderName }}
               onPress={() => setMainDecider(item.id, undefined)}
-              style={[styles.deciderChip, !item.mainDeciderName && styles.deciderChipOn]}
+              style={[styles.deciderChip, !item.mainDeciderId && !item.mainDeciderName && styles.deciderChipOn]}
             >
-              <Text style={[styles.deciderChipText, !item.mainDeciderName && styles.deciderChipTextOn]}>
+              <Text
+                style={[
+                  styles.deciderChipText,
+                  !item.mainDeciderId && !item.mainDeciderName && styles.deciderChipTextOn,
+                ]}
+              >
                 Anyone
               </Text>
             </Pressable>
-            {deciders.map((name) => {
-              const on = item.mainDeciderName === name;
+            {deciders.map((d) => {
+              const on = item.mainDeciderId === d.userId;
               return (
                 <Pressable
-                  key={name}
+                  key={d.memberId}
                   accessibilityRole="button"
+                  accessibilityLabel={d.name + ' decides this'}
                   accessibilityState={{ selected: on }}
-                  onPress={() => setMainDecider(item.id, on ? undefined : name)}
+                  onPress={() =>
+                    setMainDecider(item.id, on ? undefined : { userId: d.userId!, name: d.name })
+                  }
                   style={[styles.deciderChip, on && styles.deciderChipOn]}
                 >
-                  <Text style={[styles.deciderChipText, on && styles.deciderChipTextOn]}>{name}</Text>
+                  <Text style={[styles.deciderChipText, on && styles.deciderChipTextOn]}>{d.name}</Text>
                 </Pressable>
               );
             })}
@@ -788,7 +791,7 @@ export default function ItemDetailScreen() {
               <View style={styles.requestedChip}>
                 <Ionicons name="checkmark-circle" size={20} color={T.keep} />
                 <Text style={styles.requestedText}>
-                  Requested — {ownerName} will see this quietly.
+                  Requested — {decidersLabel} will see this quietly.
                 </Text>
               </View>
             ) : (
@@ -800,7 +803,7 @@ export default function ItemDetailScreen() {
               />
             )}
             <Muted style={styles.requestNote}>
-              Only {ownerName} sees requests — never your siblings.
+              Only {decidersLabel} sees requests — never your siblings.
             </Muted>
           </View>
         </>

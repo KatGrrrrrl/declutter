@@ -72,8 +72,10 @@ export async function setNotifyPref(mode: NotifyMode): Promise<{ ok: boolean; er
  * Silent no-op when signed out, not cloud-linked, or the item is localOnly
  * (localOnly's contract is "never leaves the device" — that includes emails).
  */
-export function pingItemAdded(item: Item): void {
-  const householdId = linkedCloudId(useStore.getState());
+export function pingItemAdded(item: Item, householdId?: string): void {
+  // The outbox calls this once the item has actually landed, with the
+  // household it landed in — which may not be the one open by then.
+  householdId = householdId ?? linkedCloudId(useStore.getState());
   if (!householdId || item.localOnly) return;
   void awaitAuthReady()
     .then((session) => {

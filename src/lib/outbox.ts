@@ -36,6 +36,7 @@ import * as cloud from '@/lib/cloud';
 import type { CloudResult, ItemParts } from '@/lib/cloud';
 import { loadMyMemberships } from '@/lib/membership';
 import type { Collection, Item, ItemMessage, Person, Room } from '@/lib/store';
+import { setCloudSink } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
 export type Op =
@@ -225,6 +226,12 @@ export async function drainOutbox(): Promise<void> {
 
       if (res.ok) {
         useOutboxStore.setState((s) => ({ ops: s.ops.filter((o) => o.id !== op.id) }));
+        // Only now is it true that the family can see it: tell those who asked
+        // for instant emails. (It used to fire before the item had landed.)
+        if (op.kind === 'item.create') {
+          const { pingItemAdded } = await import('@/lib/notifications');
+          pingItemAdded(op.payload.item, op.householdId);
+        }
         continue;
       }
       if (res.retry) {
@@ -310,6 +317,38 @@ async function execute(op: Op): Promise<CloudResult> {
   }
 }
 
+/* ------------------------------------------------------------------ describing */
+
+/** A change, in words a family member recognises. */
+export function describeOp(op: Op): string {
+  switch (op.kind) {
+    case 'item.create':
+      return 'Adding “' + op.payload.item.title + '”';
+    case 'item.update':
+      return 'Changes to “' + op.payload.item.title + '”';
+    case 'item.delete':
+      return 'Removing an item';
+    case 'photo.upload':
+      return 'The photo of “' + op.payload.item.title + '”';
+    case 'message.create':
+      return 'A chat message';
+    case 'room.upsert':
+      return 'The room “' + op.payload.room.name + '”';
+    case 'room.delete':
+      return 'Removing the room “' + op.payload.name + '”';
+    case 'collection.upsert':
+      return 'The collection “' + op.payload.collection.name + '”';
+    case 'collection.delete':
+      return 'Removing a collection';
+    case 'person.upsert':
+      return 'The heir “' + op.payload.person.displayName + '”';
+    case 'person.delete':
+      return 'Removing an heir';
+    case 'household.rename':
+      return 'Renaming the home to “' + op.payload.name + '”';
+  }
+}
+
 /* ------------------------------------------------------------------ acting on failures */
 
 /** Try a failed change again (the person tapped "Try again"). */
@@ -333,6 +372,17 @@ export function nudgeOutbox(): void {
 }
 
 /* ------------------------------------------------------------------ reading */
+
+/**
+ * Plain code: this account's changes to one household that haven't landed yet
+ * (pending or failed), oldest first. Opening a household lays these over the
+ * fresh pull so replacing the device copy never loses unsent work.
+ */
+export function pendingOpsFor(householdId: string): Op[] {
+  const { userId } = currentSession();
+  if (!userId) return [];
+  return useOutboxStore.getState().ops.filter((o) => o.userId === userId && o.householdId === householdId);
+}
 
 export interface OutboxStatus {
   pending: number;
@@ -390,6 +440,8 @@ let started = false;
 export function startOutbox(): void {
   if (started) return;
   started = true;
+  // Store actions hand their cloud-bound changes here.
+  setCloudSink(enqueue);
   subscribeSession((next, prev) => {
     if (next.status === 'signed-in' && (prev.status !== 'signed-in' || prev.userId !== next.userId)) {
       // Refresh standing first: a decision queued while someone was a decider

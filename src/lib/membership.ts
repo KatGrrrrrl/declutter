@@ -199,6 +199,11 @@ export async function loadHouseholdMembers(householdId: string): Promise<Result>
 
 /* ------------------------------------------------------------------ reading */
 
+/** Plain code: my active memberships as last loaded (no network). */
+export function myMembershipsSnapshot(): Record<string, MyMembership> {
+  return useMembershipStore.getState().mine;
+}
+
 /**
  * What kind of household is open, for the local-only answers. Primitive
  * selectors only (see the Zustand selector rule in AGENTS.md).
@@ -210,6 +215,11 @@ function useOpenHouseholdKind(): 'demo' | 'local' | 'cloud' | 'none' {
   if (isDemo) return 'demo';
   if (!onboarded) return 'none';
   return hid ? 'cloud' : 'local';
+}
+
+/** All my active memberships, by household id (stable reference). */
+export function useMyMemberships(): Record<string, MyMembership> {
+  return useMembershipStore((s) => s.mine);
 }
 
 /** My standing in the open household, or undefined if not (yet) known. */
@@ -235,7 +245,7 @@ export function useMembershipReady(): boolean {
 /** May the signed-in person keep / donate / let go, and assign heirs, here? */
 export function useCanDecide(): boolean {
   const kind = useOpenHouseholdKind();
-  const demoRole = useStore((s) => s.role);
+  const demoRole = useStore((s) => s.demoRole);
   const mine = useMyMembership();
   if (kind === 'demo') return demoRole === 'owner';
   if (kind === 'local') return true;
@@ -245,7 +255,7 @@ export function useCanDecide(): boolean {
 /** Does the signed-in person administer the open household? */
 export function useIsAdmin(): boolean {
   const kind = useOpenHouseholdKind();
-  const demoRole = useStore((s) => s.role);
+  const demoRole = useStore((s) => s.demoRole);
   const mine = useMyMembership();
   if (kind === 'demo') return demoRole === 'owner';
   if (kind === 'local') return true;

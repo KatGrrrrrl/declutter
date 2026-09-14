@@ -12,14 +12,11 @@ import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { awaitAuthReady } from '@/lib/auth';
 import { notify } from '@/components/child/shared';
 import { Btn, Heading, Label, Muted } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
-import { pingItemAdded } from '@/lib/notifications';
-import { uploadItemPhoto } from '@/lib/photo-sync';
-import { pushItem } from '@/lib/sync';
-import { linkedCloudId, useCanDecide, useStore } from '@/lib/store';
+import { useCanDecide } from '@/lib/membership';
+import { useStore } from '@/lib/store';
 
 import type { ProposedItem } from '@/lib/split-photo';
 
@@ -68,26 +65,7 @@ export function SplitReview({
       });
       if (!res.ok) break;
       added += 1;
-      // Same fire-and-forget cloud upload as capture, per item.
-      const s = useStore.getState();
-      const hid = linkedCloudId(s);
-      if (hid) {
-        const fresh = s.items[0];
-        if (fresh && !fresh.localOnly) {
-          // Item first, so the rest of the family sees it without a backup;
-          // the instant-email ping follows only once it's really there.
-          // The photo waits for the row as well — upload-photo 404s otherwise.
-          void pushItem(fresh, hid)
-            .then(async (res) => {
-              if (!res.ok) return;
-              pingItemAdded(fresh);
-              if (fresh.photoUri === r.photoUri) {
-                if ((await awaitAuthReady()).status === 'signed-in') await uploadItemPhoto(fresh);
-              }
-            })
-            .catch(() => {});
-        }
-      }
+      // addItem queued each one for the family (item, photo, email ping).
     }
     if (added > 0) {
       notify(

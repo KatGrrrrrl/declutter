@@ -17,7 +17,7 @@ import { useStore } from '@/lib/store';
 export default function ExportScreen() {
   const router = useRouter();
   const items = useStore((s) => s.items);
-  const setRole = useStore((s) => s.setRole);
+  const setDemoRole = useStore((s) => s.setDemoRole);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,7 +43,8 @@ export default function ExportScreen() {
   };
 
   const viewAsHelper = () => {
-    setRole('contributor');
+    // Demo only: in a real home the view follows membership, and '/' routes by it.
+    setDemoRole('contributor');
     router.replace('/');
   };
 

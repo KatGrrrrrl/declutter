@@ -16,7 +16,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MiniChip } from '@/components/child/shared';
 import { Btn, DECISION_META, Heading, Label, Muted, PhotoBox, Row, Screen, Title } from '@/components/ui';
 import { Fonts, Spacing, T } from '@/constants/theme';
-import { useCanDecide, useCollection, useCollectionItems, useStore } from '@/lib/store';
+import { useCanDecide } from '@/lib/membership';
+import { useCollection, useCollectionItems, useStore } from '@/lib/store';
 
 export default function CollectionScreen() {
   const router = useRouter();
@@ -24,7 +25,6 @@ export default function CollectionScreen() {
 
   const collection = useCollection(id);
   const items = useCollectionItems(id ?? '');
-  const role = useStore((s) => s.role);
   const updateCollection = useStore((s) => s.updateCollection);
   const removeCollection = useStore((s) => s.removeCollection);
   const canDecide = useCanDecide();
@@ -69,7 +69,7 @@ export default function CollectionScreen() {
   const addItems = () => {
     // One capture screen, two tab groups — land in the viewer's own.
     router.push({
-      pathname: role === 'owner' ? '/(parent)/capture' : '/(child)/capture',
+      pathname: canDecide ? '/(parent)/capture' : '/(child)/capture',
       params: { collectionId: collection.id },
     });
   };

@@ -23,11 +23,12 @@ import { CollectionPicker } from '@/components/collection-picker';
 import { ItemQuotaMeter } from '@/components/limit-banner';
 import { DecisionPill, Heading, Label, Muted, PhotoBox, Screen, Title, useIsDesktop } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { useCanDecide, useDeciders } from '@/lib/membership';
 import {
   Decision,
   isRecentlyDecided,
   Item,
-  useCanDecide,
+  isMine,
   useCollections,
   useDuplicateIds,
   useMessageCount,
@@ -135,8 +136,11 @@ export function InventoryView() {
   const items = useStore((s) => s.items);
   const people = useStore((s) => s.people);
   const userName = useStore((s) => s.userName);
-  const ownerName = useStore((s) => s.ownerName);
-  const role = useStore((s) => s.role);
+  const accountUserId = useStore((s) => s.accountUserId);
+  const isDemo = useStore((s) => s.isDemo);
+  const deciders = useDeciders();
+  // Who the helper is waiting on: the household's deciders, by name, for display.
+  const decidersLabel = isDemo ? 'Rose' : deciders.map((d) => d.name).join(' or ') || 'the decider';
   const bulkDecide = useStore((s) => s.bulkDecide);
   const bulkSetRoom = useStore((s) => s.bulkSetRoom);
   const bulkArchive = useStore((s) => s.bulkArchive);
@@ -160,7 +164,8 @@ export function InventoryView() {
   // A helper's own captures still waiting on the decider — the "did they get
   // to my stuff yet?" view.
   const mineWaiting = items.filter(
-    (it) => !it.archived && it.addedBy === userName && it.decision === 'undecided'
+    (it) =>
+      !it.archived && isMine(it, { accountUserId, userName, isDemo }) && it.decision === 'undecided'
   );
 
   // ?room= (from Rooms) wins; the in-screen picker is the fallback.
@@ -379,7 +384,7 @@ export function InventoryView() {
       <ItemQuotaMeter style={styles.quota} />
 
       {/* Helper's pending-review summary: your captures, awaiting the decider. */}
-      {role === 'contributor' && mineWaiting.length > 0 && (
+      {!canDecide && mineWaiting.length > 0 && (
         <Pressable
           accessibilityRole="button"
           onPress={() => setFilter(filter === 'mine-waiting' ? 'all' : 'mine-waiting')}
@@ -387,7 +392,7 @@ export function InventoryView() {
         >
           <Ionicons name="hourglass-outline" size={16} color={T.brassDeep} />
           <Text style={styles.waitingText}>
-            {mineWaiting.length} of yours waiting for {ownerName} to decide
+            {mineWaiting.length} of yours waiting for {decidersLabel} to decide
           </Text>
           <Text style={styles.waitingAction}>
             {filter === 'mine-waiting' ? 'Show all' : 'View'}

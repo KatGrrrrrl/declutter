@@ -1,15 +1,20 @@
 /**
- * Child family — every family home this user helps with, one card each, plus
- * the roster of the home that is open. Plain about authority: the designated
- * decider(s) hold the final say on every item; everyone else helps. Each card
- * shows who set the home up and who has the final say (per household —
- * different homes can have different deciders). The big "+" in the header
- * starts another family home; tapping a card opens it.
+ * Family — every home on this device, one card each, and the people of the
+ * home that is open.
  *
- * Membership flow: anyone may invite a family member by name; the invitation
- * waits as "Invited" until a decider approves (or declines) it here. With no
- * backend yet these are local records — nothing is emailed; real invite
- * delivery arrives with accounts + sync.
+ * Who is in a home, who has the final say and who administers it now come
+ * from the database membership (src/lib/membership.ts), not from a roster the
+ * device kept by name. That roster could claim someone had joined who never
+ * signed in, and its "decider" and "admin" flags were writable by any member.
+ *
+ * - Owners and administrators invite people (the invite-member function
+ *   creates the invitation and sends the email together). Only someone with
+ *   the final say can give it to someone else.
+ * - Administrators remove people and grant administrator standing; the
+ *   database keeps at least one owner and one administrator, and says so.
+ * - Whoever set a home up holds the final say until the person it's for
+ *   joins; then they can hand it over from their own row.
+ * - Every change reports back: a refusal is shown, never swallowed.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -18,49 +23,63 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Avatar, notify } from '@/components/child/shared';
-import { SETTINGS_ROUTE, UPGRADE_ROUTE } from '@/components/settings/routes';
+import { SETTINGS_ROUTE } from '@/components/settings/routes';
 import { Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
-import { sendInviteEmail } from '@/lib/invites';
-import { createCloudInvite } from '@/lib/join';
+import { useSession } from '@/lib/auth';
+import { createHousehold, uploadLocalHousehold } from '@/lib/household';
 import {
-  Member,
-  useActiveHousehold,
-  useAdminNames,
+  inviteToHousehold,
+  memberName,
+  removeFromHousehold,
+  setAdministrator,
+  setMemberRole,
   useCanDecide,
+  useHouseholdMembers,
   useIsAdmin,
-  useMembers,
-  useStore,
-} from '@/lib/store';
+  useLoadHouseholdMembers,
+  useMyMemberships,
+  type HouseholdMember,
+} from '@/lib/membership';
+import { useStore } from '@/lib/store';
+
+/** The sample family, shown read-only in the demo (it has no accounts). */
+const DEMO_PEOPLE = [
+  { name: 'Rose', rel: 'Mum', finalSay: true, admin: false },
+  { name: 'Sam', rel: 'Son · set up the home', finalSay: false, admin: true },
+  { name: 'Maya', rel: 'Daughter', finalSay: false, admin: false },
+];
+
+const decides = (m: Pick<HouseholdMember, 'role'>) => m.role === 'owner' || m.role === 'co_owner';
 
 export default function FamilyScreen() {
   const router = useRouter();
   const householdName = useStore((s) => s.householdName);
-  const ownerName = useStore((s) => s.ownerName);
-  const userName = useStore((s) => s.userName);
-  const role = useStore((s) => s.role);
   const items = useStore((s) => s.items);
   const households = useStore((s) => s.households);
   const activeHouseholdId = useStore((s) => s.activeHouseholdId);
-  const addHousehold = useStore((s) => s.addHousehold);
   const switchHousehold = useStore((s) => s.switchHousehold);
-  const setRole = useStore((s) => s.setRole);
-  const inviteMember = useStore((s) => s.inviteMember);
-  const approveMember = useStore((s) => s.approveMember);
-  const declineMember = useStore((s) => s.declineMember);
-  const reinviteMember = useStore((s) => s.reinviteMember);
-  const removeMember = useStore((s) => s.removeMember);
-  const setAdmin = useStore((s) => s.setAdmin);
-  const household = useActiveHousehold();
-  const members = useMembers();
+  const isDemo = useStore((s) => s.isDemo);
+  const demoRole = useStore((s) => s.demoRole);
+  const setDemoRole = useStore((s) => s.setDemoRole);
+  const userName = useStore((s) => s.userName);
+  const { userId: myUserId, status } = useSession();
   const canDecide = useCanDecide();
   const isAdmin = useIsAdmin();
-  const adminNames = useAdminNames();
+  const myMemberships = useMyMemberships();
+  useLoadHouseholdMembers();
+  const members = useHouseholdMembers();
+
+  const openHousehold = households.find((h) => h.id === activeHouseholdId);
+  const shared = Boolean(openHousehold?.cloudLinkedAt) && !isDemo;
+  const canInvite = shared && (canDecide || isAdmin);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteRel, setInviteRel] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFinalSay, setInviteFinalSay] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   /** Which member's manage panel is open, and whether it is on the confirm step. */
   const [managing, setManaging] = useState<string | null>(null);
@@ -68,156 +87,149 @@ export default function FamilyScreen() {
 
   const [addingFamily, setAddingFamily] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState('');
-  const [newFamilyDeciders, setNewFamilyDeciders] = useState('');
-
-  const deciders = household?.deciderNames ?? [ownerName];
-  const createdBy = household?.createdBy ?? ownerName;
-
-  // Membership (who is IN the household) belongs to the ADMINISTRATORS —
-  // separate from item decisions, which belong to the deciders. This matters
-  // because the deciders are often invitees who haven't joined yet, so gating
-  // approvals on them alone deadlocks: nobody could ever be let in.
-  //
-  // Approving an invitation stays open to deciders too (they are already
-  // trusted with the parent's things). Removing a person does not: that is an
-  // administrator's call alone, and the one action that can remove a decider.
-  const canManageMembers = isAdmin || canDecide || userName === createdBy;
-  const isAdminName = (n: string) =>
-    adminNames.some((a) => a.toLowerCase() === n.toLowerCase());
 
   const active = members.filter((m) => m.status === 'active');
   const invited = members.filter((m) => m.status === 'invited');
-  // People who were asked and said no. Listed rather than quietly dropped: an
+  // People who were asked and said no. Listed rather than dropped: an
   // invitation that simply stops appearing is indistinguishable from one that
   // was never sent, and the family is owed the answer they waited for.
-  const declined = members.filter((m) => m.status === 'declined');
+  const declined = members.filter((m) => m.status === 'revoked' && m.declinedAt);
+  const activeDeciders = active.filter(decides);
+  const deciderLabels = isDemo ? ['Rose'] : activeDeciders.map(memberName);
   const pending = items.filter((i) => i.requestedBy);
 
   const closeNewFamily = () => {
     setAddingFamily(false);
     setNewFamilyName('');
-    setNewFamilyDeciders('');
   };
 
-  /**
-   * Start another family home. Comma-separated decider names; blank means this
-   * user holds the final say there. The new home opens immediately (the store
-   * switches to it), so the roster below is ready for invitations.
-   */
-  const saveFamily = () => {
+  /** Another family home: created in the account first, then opened here. */
+  const saveFamily = async () => {
     const name = newFamilyName.trim();
     if (!name) return;
-    const deciders = newFamilyDeciders
-      .split(',')
-      .map((n) => n.trim())
-      .filter(Boolean);
-    const res = addHousehold(name, deciders.length ? deciders : undefined);
+    if (status !== 'signed-in') {
+      notify('Sign in to add a home', 'Homes live in your account so family can join them.');
+      return;
+    }
+    setBusy(true);
+    const res = await createHousehold(name, { displayName: userName });
+    setBusy(false);
     if (!res.ok) {
-      router.push(UPGRADE_ROUTE);
+      notify('Couldn’t add that home', res.error);
       return;
     }
     closeNewFamily();
     notify('Family added', `${name} is open now. Invite the people who belong there below.`);
   };
 
-  const sendInvite = () => {
+  const sendInvite = async () => {
     const name = inviteName.trim();
     const email = inviteEmail.trim().toLowerCase();
     if (!name) return;
     if (!email.includes('@') || !email.includes('.')) {
-      notify(
-        'An email is needed',
-        'The invitation has to reach them somewhere — add their email address.'
-      );
+      notify('An email is needed', 'The invitation has to reach them somewhere — add their email address.');
       return;
     }
-    inviteMember(name, inviteRel.trim() || undefined, email);
+    setBusy(true);
+    const res = await inviteToHousehold({
+      email,
+      name,
+      relationship: inviteRel.trim() || undefined,
+      role: inviteFinalSay && canDecide ? 'co_owner' : 'contributor',
+    });
+    setBusy(false);
+    if (!res.ok) {
+      notify('The invitation didn’t go', res.error);
+      return;
+    }
+    notify(
+      res.alreadyMember ? `${name} is already here` : 'Invitation sent',
+      res.alreadyMember
+        ? `${name} has already joined ${householdName}.`
+        : res.alreadyRegistered
+          ? `${name} already has an account — the invitation will be waiting when they next sign in.`
+          : `${name} will get an email at ${email}. Once they sign in, ${householdName} will be waiting for them.`
+    );
     setInviteName('');
     setInviteRel('');
     setInviteEmail('');
+    setInviteFinalSay(false);
     setInviteOpen(false);
   };
 
-  /**
-   * Approve → membership flips locally, a real cloud membership invitation is
-   * created (so joining actually works), then the invitation email goes out.
-   *
-   * Also the "ask again" path for someone who declined: the only difference is
-   * which way the roster line moves (back to 'invited' rather than on to
-   * 'active'); everything downstream — the cloud invitation, the email — is
-   * the same invitation being issued a second time.
-   */
-  const approveAndSend = async (m: Member) => {
-    if (m.status === 'declined') reinviteMember(m.id);
-    else approveMember(m.id);
-    if (!m.email) {
-      notify(
-        'Approved — no email on file',
-        `${m.name} is approved, but this invitation has no email address. Add them again with one to send it.`
-      );
-      return;
-    }
-    const cloud = await createCloudInvite(m);
-    const res = await sendInviteEmail(m, householdName, userName);
-    if (res.ok && cloud.ok) {
-      notify(
-        'Invitation sent',
-        res.alreadyRegistered
-          ? `${m.name} already has an Inventory Our Home account — signing in will show them the invitation to join.`
-          : `${m.name} will get an email at ${m.email}. Once they sign in, "${householdName}" will be waiting for them to join.`
-      );
-    } else if (res.ok) {
-      notify(
-        'Email sent — one more step needed',
-        cloud.error ?? 'The cloud invitation could not be created; try approving again after backing up.'
-      );
-    } else {
-      notify('Approved, but the email didn’t send', res.error ?? 'Try again from this screen.');
-    }
+  /** Send an invitation again — the same person, the same standing. */
+  const askAgain = async (m: HouseholdMember) => {
+    if (!m.email) return;
+    setBusy(true);
+    const res = await inviteToHousehold({
+      email: m.email,
+      name: m.displayName ?? undefined,
+      relationship: m.relationship ?? undefined,
+      role: decides(m) && canDecide ? 'co_owner' : 'contributor',
+    });
+    setBusy(false);
+    if (res.ok) notify('Invitation sent again', `${memberName(m)} will find it when they sign in.`);
+    else notify('The invitation didn’t go', res.error);
   };
 
-  /**
-   * Remove someone from the home. The store refuses to strand the household —
-   * it will not let the last administrator or the last decider go — so the
-   * message here explains the way out rather than just saying no.
-   */
-  const doRemoveMember = (m: Member) => {
-    const res = removeMember(m.id);
+  const withdraw = async (m: HouseholdMember) => {
+    const res = await removeFromHousehold(m.id);
+    if (res.ok) notify('Invitation withdrawn', `${memberName(m)} can’t join ${householdName} with it any more.`);
+    else notify('Couldn’t withdraw it', res.error);
+  };
+
+  const doRemoveMember = async (m: HouseholdMember) => {
     setConfirmRemove(null);
     setManaging(null);
+    const res = await removeFromHousehold(m.id);
     if (res.ok) {
       notify(
-        `${m.name} was removed`,
+        `${memberName(m)} was removed`,
         `They no longer have access to ${householdName}. Everything they added stays in the record — removing a person doesn't remove what they catalogued.`
       );
-      return;
-    }
-    if (res.reason === 'last-admin') {
-      notify(
-        'Someone has to run this home',
-        `${m.name} is the only person who can manage ${householdName}. Make someone else an administrator first, then you can remove them.`
-      );
-    } else if (res.reason === 'last-decider') {
-      notify(
-        'Someone has to have the final say',
-        `${m.name} is the only decider at ${householdName}. Nothing could be kept or let go without them. Give someone else the final say first.`
-      );
+    } else {
+      notify('They weren’t removed', res.error);
     }
   };
 
-  const toggleAdmin = (m: Member) => {
-    const res = setAdmin(m.name, !isAdminName(m.name));
-    if (!res.ok && res.reason === 'last-admin') {
-      notify(
-        'Someone has to run this home',
-        `${m.name} is the only administrator. Make someone else one first.`
-      );
+  const toggleAdmin = async (m: HouseholdMember) => {
+    const res = await setAdministrator(m.id, !m.isAdmin);
+    if (!res.ok) notify('That didn’t change', res.error);
+  };
+
+  const toggleFinalSay = async (m: HouseholdMember) => {
+    const res = await setMemberRole(m.id, decides(m) ? 'contributor' : 'co_owner');
+    if (!res.ok) notify('That didn’t change', res.error);
+  };
+
+  /** The person who set the home up hands the final say to someone who has joined. */
+  const handOver = async (me: HouseholdMember) => {
+    const res = await setMemberRole(me.id, 'contributor');
+    if (res.ok) {
+      notify('You’ve handed over the final say', `${deciderLabels.filter((n) => n !== memberName(me)).join(' and ')} decides now. You can still add and help.`);
+      router.replace('/');
+    } else {
+      notify('That didn’t change', res.error);
     }
   };
 
-  const viewAsOwner = () => {
-    setRole('owner');
-    router.replace('/');
+  const shareThisHome = async () => {
+    if (!openHousehold) return;
+    setBusy(true);
+    const res = await uploadLocalHousehold(openHousehold.id);
+    setBusy(false);
+    if (res.ok) notify('Shared', `${openHousehold.name} is in your account now — invite the family below.`);
+    else notify('Couldn’t share this home yet', res.error);
+  };
+
+  const standingLabel = (hid: string, linked: boolean) => {
+    if (isDemo) return 'Rose has the final say · Sam set it up';
+    if (!linked) return 'Only on this device';
+    const m = myMemberships[hid];
+    if (!m) return 'Shared with the family';
+    return [m.role === 'owner' || m.role === 'co_owner' ? 'You have the final say' : 'You help here', m.isAdmin ? 'you administer it' : null]
+      .filter(Boolean)
+      .join(' · ');
   };
 
   return (
@@ -227,20 +239,20 @@ export default function FamilyScreen() {
           <Label>{householdName}</Label>
           <Title>Family</Title>
         </View>
-        {/* Big "+" — starts another family home. Toggles to a close glyph while
-            the form is open so the same target dismisses it. */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={addingFamily ? 'Close the new family form' : 'Add a new family home'}
-          accessibilityState={{ expanded: addingFamily }}
-          onPress={() => (addingFamily ? closeNewFamily() : setAddingFamily(true))}
-          style={({ pressed }) => [styles.addFab, pressed && styles.addFabPressed]}
-        >
-          <Ionicons name={addingFamily ? 'close' : 'add'} size={36} color={T.surface} />
-        </Pressable>
+        {/* Big "+" — starts another family home. */}
+        {!isDemo && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={addingFamily ? 'Close the new family form' : 'Add a new family home'}
+            accessibilityState={{ expanded: addingFamily }}
+            onPress={() => (addingFamily ? closeNewFamily() : setAddingFamily(true))}
+            style={({ pressed }) => [styles.addFab, pressed && styles.addFabPressed]}
+          >
+            <Ionicons name={addingFamily ? 'close' : 'add'} size={36} color={T.surface} />
+          </Pressable>
+        )}
       </Row>
 
-      {/* new family form */}
       {addingFamily && (
         <Card style={styles.newFamilyCard}>
           <Label asHeading style={styles.inviteLabel}>
@@ -254,38 +266,28 @@ export default function FamilyScreen() {
             placeholderTextColor={T.inkFaint}
             aria-label="New family home name"
             autoFocus
-            returnKeyType="next"
-          />
-          <TextInput
-            style={[styles.input, styles.inputGap]}
-            value={newFamilyDeciders}
-            onChangeText={setNewFamilyDeciders}
-            placeholder={`Who has the final say there? (${userName})`}
-            placeholderTextColor={T.inkFaint}
-            aria-label="Who has the final say in the new family home"
             returnKeyType="done"
-            onSubmitEditing={saveFamily}
+            onSubmitEditing={() => void saveFamily()}
           />
           <Muted style={styles.inviteNote}>
-            Leave that blank if it&rsquo;s you. Separate names with commas for more
-            than one.
+            You&rsquo;ll start with the final say there. Invite whoever should decide,
+            and hand it over once they join.
           </Muted>
           <Row style={styles.inviteActions}>
             <View style={styles.flex}>
-              <Btn label="Add family" onPress={saveFamily} />
+              <Btn label={busy ? 'Adding…' : 'Add family'} onPress={() => void saveFamily()} disabled={busy} />
             </View>
-            <Pressable accessibilityRole="button" onPress={closeNewFamily} style={styles.cancelBtn}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={closeNewFamily} style={styles.cancelBtn}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
           </Row>
         </Card>
       )}
 
-      {/* families — one card each; the open one carries the authority note */}
+      {/* families — one card each */}
       <Label asHeading>Your families</Label>
       {households.map((h) => {
         const open = h.id === activeHouseholdId;
-        const hDeciders = h.deciderNames.length ? h.deciderNames : [ownerName];
         return (
           <Pressable
             key={h.id}
@@ -301,160 +303,209 @@ export default function FamilyScreen() {
               <Row style={styles.familyHead}>
                 <Heading style={styles.flex}>{h.name}</Heading>
                 <View style={[styles.badge, open ? styles.badgeOwner : styles.badgeHelper]}>
-                  <Text
-                    style={[styles.badgeText, open ? styles.badgeOwnerText : styles.badgeHelperText]}
-                  >
+                  <Text style={[styles.badgeText, open ? styles.badgeOwnerText : styles.badgeHelperText]}>
                     {open ? 'Open' : 'Tap to open'}
                   </Text>
                 </View>
               </Row>
-              {open && (
+              {open && deciderLabels.length > 0 && (
                 <Row style={[styles.authorityRow, styles.familyNote]}>
                   <Ionicons name="shield-checkmark-outline" size={20} color={T.brass} />
                   <Muted style={styles.flex}>
                     <Text style={styles.strong}>
-                      {hDeciders.join(' and ')} {hDeciders.length === 1 ? 'holds' : 'hold'}{' '}
-                      the final say here.
+                      {deciderLabels.join(' and ')} {deciderLabels.length === 1 ? 'holds' : 'hold'} the final say here.
                     </Text>{' '}
-                    Every keep, donate, and heir choice is theirs. Everyone else helps by
-                    adding photos and notes.
+                    Every keep, donate, and heir choice is theirs. Everyone else helps by adding photos and notes.
                   </Muted>
                 </Row>
               )}
               <Row style={styles.govRow}>
                 <Ionicons name="key-outline" size={15} color={T.brass} />
-                <Muted style={styles.govText}>Final say: {hDeciders.join(', ')}</Muted>
-              </Row>
-              <Row style={styles.govRow}>
-                <Ionicons name="home-outline" size={15} color={T.brass} />
-                <Muted style={styles.govText}>Set up by {h.createdBy || createdBy}</Muted>
+                <Muted style={styles.govText}>{standingLabel(h.id, Boolean(h.cloudLinkedAt))}</Muted>
               </Row>
             </Card>
           </Pressable>
         );
       })}
 
-      {/* members of the open family */}
       <Label asHeading style={styles.rosterLabel}>
         People at {householdName}
       </Label>
-      <View style={styles.list}>
-        {active.map((m) => {
-          const admin = isAdminName(m.name);
-          const open = managing === m.id;
-          return (
-            <View key={m.id}>
-              <MemberRow
-                name={m.name === userName ? `${m.name} (you)` : m.name}
-                avatarName={m.name}
-                rel={m.relationship ?? (m.name === createdBy ? 'Set up the home' : 'Family')}
-                badge={deciders.includes(m.name) ? 'Owner' : 'Helper'}
-                badgeKind={deciders.includes(m.name) ? 'owner' : 'helper'}
-                finalSay={deciders.includes(m.name)}
-                admin={admin}
-                // Administrators manage everyone but themselves: stepping down
-                // is a different decision from removing someone, and mixing
-                // the two is how a household locks itself out.
-                onManage={isAdmin && m.name !== userName ? () => {
-                  setConfirmRemove(null);
-                  setManaging(open ? null : m.id);
-                } : undefined}
-                managing={open}
-              />
-              {open && (
-                <Well style={styles.manageWell}>
-                  <Muted style={styles.manageNote}>
-                    {admin
-                      ? `${m.name} can manage this home — add and remove people, and remove items from the record.`
-                      : `${m.name} helps here. Administrators can also manage people and remove items.`}
-                  </Muted>
-                  <Row style={styles.manageActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        admin
-                          ? `Remove ${m.name} as an administrator`
-                          : `Make ${m.name} an administrator`
-                      }
-                      onPress={() => toggleAdmin(m)}
-                      style={[styles.actBtn, styles.approveBtn]}
-                    >
-                      <Text style={styles.approveText}>
-                        {admin ? 'Not an administrator' : 'Make administrator'}
-                      </Text>
-                    </Pressable>
-                    {confirmRemove === m.id ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Yes, remove ${m.name} from this home`}
-                        onPress={() => doRemoveMember(m)}
-                        style={[styles.actBtn, styles.declineBtn]}
-                      >
-                        <Text style={styles.declineText}>Yes — remove them</Text>
-                      </Pressable>
-                    ) : (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${m.name} from this home`}
-                        onPress={() => setConfirmRemove(m.id)}
-                        style={[styles.actBtn, styles.declineBtn]}
-                      >
-                        <Text style={styles.declineText}>Remove from home</Text>
-                      </Pressable>
-                    )}
-                  </Row>
-                  {confirmRemove === m.id && (
-                    <Muted style={styles.manageNote}>
-                      {m.name} loses access to {householdName}. Everything they added
-                      stays — the photos, the stories, the record.
-                    </Muted>
-                  )}
-                </Well>
-              )}
-            </View>
-          );
-        })}
-      </View>
 
-      {/* pending invitations — deciders approve, everyone else sees status */}
-      {invited.length > 0 && (
+      {isDemo ? (
+        <View style={styles.list}>
+          {DEMO_PEOPLE.map((p) => (
+            <MemberRow
+              key={p.name}
+              name={p.name}
+              rel={p.rel}
+              badge={p.finalSay ? 'Owner' : 'Helper'}
+              badgeKind={p.finalSay ? 'owner' : 'helper'}
+              finalSay={p.finalSay}
+              admin={p.admin}
+            />
+          ))}
+          <Muted style={styles.inviteNote}>A sample family. Start your own home to invite real people.</Muted>
+        </View>
+      ) : !shared ? (
+        <Well style={styles.pendingWell}>
+          <Muted>
+            {openHousehold?.name ?? 'This home'} is only on this device. Share it with your account to
+            invite family.
+          </Muted>
+          {status === 'signed-in' ? (
+            <View style={styles.inviteBtn}>
+              <Btn label={busy ? 'Sharing…' : 'Share this home'} onPress={() => void shareThisHome()} disabled={busy} />
+            </View>
+          ) : null}
+        </Well>
+      ) : (
+        <View style={styles.list}>
+          {active.map((m) => {
+            const isMe = m.userId === myUserId;
+            const open = managing === m.id;
+            const otherDecidersJoined = activeDeciders.some((d) => d.id !== m.id);
+            // Administrators manage everyone but themselves; a decider may hand
+            // over their own final say once someone else can hold it.
+            const canManageThis = !isMe && isAdmin;
+            const canHandOver = isMe && decides(m) && otherDecidersJoined;
+            return (
+              <View key={m.id}>
+                <MemberRow
+                  name={isMe ? `${memberName(m)} (you)` : memberName(m)}
+                  avatarName={memberName(m)}
+                  rel={m.relationship ?? (decides(m) ? 'Final say' : 'Family')}
+                  badge={decides(m) ? 'Owner' : 'Helper'}
+                  badgeKind={decides(m) ? 'owner' : 'helper'}
+                  finalSay={decides(m)}
+                  admin={m.isAdmin}
+                  onManage={
+                    canManageThis || canHandOver
+                      ? () => {
+                          setConfirmRemove(null);
+                          setManaging(open ? null : m.id);
+                        }
+                      : undefined
+                  }
+                  managing={open}
+                />
+                {open && canHandOver && (
+                  <Well style={styles.manageWell}>
+                    <Muted style={styles.manageNote}>
+                      Someone else now has the final say too. If this home is theirs to decide, you can step back to
+                      helping — you&rsquo;ll still add photos, stories and notes.
+                    </Muted>
+                    <Row style={styles.manageActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Hand over the final say"
+                        onPress={() => void handOver(m)}
+                        style={[styles.actBtn, styles.approveBtn]}
+                      >
+                        <Text style={styles.approveText}>Hand over the final say</Text>
+                      </Pressable>
+                    </Row>
+                  </Well>
+                )}
+                {open && canManageThis && (
+                  <Well style={styles.manageWell}>
+                    <Muted style={styles.manageNote}>
+                      {m.isAdmin
+                        ? `${memberName(m)} can manage this home — add and remove people, and remove items from the record.`
+                        : `${memberName(m)} helps here. Administrators can also manage people and remove items.`}
+                    </Muted>
+                    <Row style={styles.manageActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          m.isAdmin ? `Remove ${memberName(m)} as an administrator` : `Make ${memberName(m)} an administrator`
+                        }
+                        onPress={() => void toggleAdmin(m)}
+                        style={[styles.actBtn, styles.approveBtn]}
+                      >
+                        <Text style={styles.approveText}>{m.isAdmin ? 'Not an administrator' : 'Make administrator'}</Text>
+                      </Pressable>
+                      {canDecide && (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            decides(m) ? `Take the final say from ${memberName(m)}` : `Give ${memberName(m)} the final say`
+                          }
+                          onPress={() => void toggleFinalSay(m)}
+                          style={[styles.actBtn, styles.approveBtn]}
+                        >
+                          <Text style={styles.approveText}>{decides(m) ? 'Remove final say' : 'Give final say'}</Text>
+                        </Pressable>
+                      )}
+                      {confirmRemove === m.id ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Yes, remove ${memberName(m)} from this home`}
+                          onPress={() => void doRemoveMember(m)}
+                          style={[styles.actBtn, styles.declineBtn]}
+                        >
+                          <Text style={styles.declineText}>Yes — remove them</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${memberName(m)} from this home`}
+                          onPress={() => setConfirmRemove(m.id)}
+                          style={[styles.actBtn, styles.declineBtn]}
+                        >
+                          <Text style={styles.declineText}>Remove from home</Text>
+                        </Pressable>
+                      )}
+                    </Row>
+                    {confirmRemove === m.id && (
+                      <Muted style={styles.manageNote}>
+                        {memberName(m)} loses access to {householdName}. Everything they added stays — the photos, the
+                        stories, the record.
+                      </Muted>
+                    )}
+                  </Well>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {shared && invited.length > 0 && (
         <>
           <Label asHeading>Waiting to join</Label>
           {invited.map((m) => (
             <Card key={m.id} style={styles.pendingCard}>
               <Row style={styles.contactRow}>
-                <Avatar name={m.name} size={44} color={T.inkFaint} />
+                <Avatar name={memberName(m)} size={44} color={T.inkFaint} />
                 <View style={styles.flex}>
-                  <Text style={styles.memberName}>{m.name}</Text>
+                  <Text style={styles.memberName}>{memberName(m)}</Text>
                   <Muted style={styles.memberRel}>
-                    {m.relationship ? `${m.relationship} · ` : ''}invited by {m.invitedBy}
-                    {m.email ? ` · ${m.email}` : ' · no email yet'}
+                    {[m.relationship, decides(m) ? 'will have the final say' : 'will help', m.email].filter(Boolean).join(' · ')}
                   </Muted>
                 </View>
-                {canManageMembers ? (
+                {canInvite ? (
                   <Row style={styles.approveRow}>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Approve ${m.name}`}
-                      onPress={() => approveAndSend(m)}
+                      accessibilityLabel={`Send ${memberName(m)}'s invitation again`}
+                      onPress={() => void askAgain(m)}
                       style={[styles.actBtn, styles.approveBtn]}
                     >
-                      <Text style={styles.approveText}>Approve</Text>
+                      <Text style={styles.approveText}>Resend</Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Decline ${m.name}`}
-                      onPress={() => declineMember(m.id)}
+                      accessibilityLabel={`Withdraw ${memberName(m)}'s invitation`}
+                      onPress={() => void withdraw(m)}
                       style={[styles.actBtn, styles.declineBtn]}
                     >
-                      <Text style={styles.declineText}>Decline</Text>
+                      <Text style={styles.declineText}>Withdraw</Text>
                     </Pressable>
                   </Row>
                 ) : (
                   <View style={[styles.badge, styles.badgeInvited]}>
-                    <Text style={[styles.badgeText, styles.badgeInvitedText]}>
-                      Awaiting approval
-                    </Text>
+                    <Text style={[styles.badgeText, styles.badgeInvitedText]}>Invited</Text>
                   </View>
                 )}
               </Row>
@@ -463,27 +514,24 @@ export default function FamilyScreen() {
         </>
       )}
 
-      {/* declined invitations — the answer, kept visible */}
-      {declined.length > 0 && (
+      {shared && declined.length > 0 && (
         <>
           <Label asHeading>Declined</Label>
           {declined.map((m) => (
             <Card key={m.id} style={styles.pendingCard}>
               <Row style={styles.contactRow}>
-                <Avatar name={m.name} size={44} color={T.inkFaint} />
+                <Avatar name={memberName(m)} size={44} color={T.inkFaint} />
                 <View style={styles.flex}>
-                  <Text style={styles.memberName}>{m.name}</Text>
+                  <Text style={styles.memberName}>{memberName(m)}</Text>
                   <Muted style={styles.memberRel}>
-                    {m.relationship ? `${m.relationship} · ` : ''}started a home of
-                    their own instead
-                    {m.email ? ` · ${m.email}` : ''}
+                    {[m.relationship, 'said no to the invitation', m.email].filter(Boolean).join(' · ')}
                   </Muted>
                 </View>
-                {canManageMembers ? (
+                {canInvite && m.email ? (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Invite ${m.name} again`}
-                    onPress={() => approveAndSend(m)}
+                    accessibilityLabel={`Invite ${memberName(m)} again`}
+                    onPress={() => void askAgain(m)}
                     style={[styles.actBtn, styles.approveBtn]}
                   >
                     <Text style={styles.approveText}>Ask again</Text>
@@ -495,85 +543,101 @@ export default function FamilyScreen() {
         </>
       )}
 
-      {/* pending item request */}
       {pending.length > 0 && (
         <Well style={styles.pendingWell}>
           <Row style={styles.authorityRow}>
             <Ionicons name="hand-left-outline" size={18} color={T.donate} />
             <Muted style={styles.flex}>
               <Text style={styles.strong}>
-                {pending.length === 1
-                  ? 'Request pending'
-                  : `${pending.length} requests pending`}
-                .
+                {pending.length === 1 ? 'Request pending' : `${pending.length} requests pending`}.
               </Text>{' '}
-              Only {ownerName} sees who asked — siblings never see each other&apos;s
-              requests.
+              Only {deciderLabels.join(' and ') || 'whoever has the final say'} sees who asked — siblings never see
+              each other&apos;s requests.
             </Muted>
           </Row>
         </Well>
       )}
 
-      {/* invite form */}
-      {inviteOpen ? (
-        <Card style={styles.inviteCard}>
-          <Label asHeading style={styles.inviteLabel}>
-            Invite a family member
-          </Label>
-          <TextInput
-            style={styles.input}
-            value={inviteName}
-            onChangeText={setInviteName}
-            placeholder="Name — e.g. Noor"
-            placeholderTextColor={T.inkFaint}
-            aria-label="Name"
-            autoFocus
-            returnKeyType="next"
-          />
-          <TextInput
-            style={[styles.input, styles.inputGap]}
-            value={inviteEmail}
-            onChangeText={setInviteEmail}
-            placeholder="Their email — where the invite is sent"
-            placeholderTextColor={T.inkFaint}
-            aria-label="Their email"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            returnKeyType="next"
-          />
-          <TextInput
-            style={[styles.input, styles.inputGap]}
-            value={inviteRel}
-            onChangeText={setInviteRel}
-            placeholder="Relationship (optional)"
-            placeholderTextColor={T.inkFaint}
-            aria-label="Relationship (optional)"
-            returnKeyType="done"
-            onSubmitEditing={sendInvite}
-          />
-          <Muted style={styles.inviteNote}>
-            {canManageMembers
-              ? 'They join once you approve them here — the email goes out the moment you do.'
-              : 'A household organizer approves new members; the email is sent on approval.'}
-          </Muted>
-          <Row style={styles.inviteActions}>
-            <View style={styles.flex}>
-              <Btn label="Send invitation" onPress={sendInvite} />
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setInviteOpen(false)}
-              style={styles.cancelBtn}
-            >
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-          </Row>
-        </Card>
-      ) : (
-        <View style={styles.inviteBtn}>
-          <Btn label="Invite someone" kind="quiet" onPress={() => setInviteOpen(true)} />
-        </View>
-      )}
+      {canInvite ? (
+        inviteOpen ? (
+          <Card style={styles.inviteCard}>
+            <Label asHeading style={styles.inviteLabel}>
+              Invite a family member
+            </Label>
+            <TextInput
+              style={styles.input}
+              value={inviteName}
+              onChangeText={setInviteName}
+              placeholder="Name — e.g. Noor"
+              placeholderTextColor={T.inkFaint}
+              aria-label="Name"
+              autoFocus
+              returnKeyType="next"
+            />
+            <TextInput
+              style={[styles.input, styles.inputGap]}
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+              placeholder="Their email — where the invite is sent"
+              placeholderTextColor={T.inkFaint}
+              aria-label="Their email"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              returnKeyType="next"
+            />
+            <TextInput
+              style={[styles.input, styles.inputGap]}
+              value={inviteRel}
+              onChangeText={setInviteRel}
+              placeholder="Relationship (optional)"
+              placeholderTextColor={T.inkFaint}
+              aria-label="Relationship (optional)"
+              returnKeyType="done"
+              onSubmitEditing={() => void sendInvite()}
+            />
+            {canDecide && (
+              <Pressable
+                role="checkbox"
+                aria-checked={inviteFinalSay}
+                accessibilityLabel="They'll have the final say"
+                onPress={() => setInviteFinalSay((v) => !v)}
+                style={styles.checkRow}
+              >
+                <Ionicons
+                  name={inviteFinalSay ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={inviteFinalSay ? T.brassDeep : T.inkSoft}
+                />
+                <Text style={styles.checkText}>They&rsquo;ll have the final say</Text>
+              </Pressable>
+            )}
+            <Muted style={styles.inviteNote}>
+              The email goes out now. They join when they sign in with that address.
+            </Muted>
+            <Row style={styles.inviteActions}>
+              <View style={styles.flex}>
+                <Btn label={busy ? 'Sending…' : 'Send invitation'} onPress={() => void sendInvite()} disabled={busy} />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                onPress={() => setInviteOpen(false)}
+                style={styles.cancelBtn}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+            </Row>
+          </Card>
+        ) : (
+          <View style={styles.inviteBtn}>
+            <Btn label="Invite someone" kind="quiet" onPress={() => setInviteOpen(true)} />
+          </View>
+        )
+      ) : shared ? (
+        <Muted style={styles.inviteNote}>
+          To bring someone else in, ask whoever has the final say or administers {householdName}.
+        </Muted>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -585,18 +649,19 @@ export default function FamilyScreen() {
         <Text style={styles.settingsText}>Settings</Text>
       </Pressable>
 
-      {/* Quiet demo control. Hidden in the owner view, which now reaches this
-          same screen from Settings — "View as the owner" while you ARE the
-          owner is a switch to nowhere. */}
-      {role !== 'owner' && (
+      {/* Demo only: switch the sample home to Rose's view. */}
+      {isDemo && demoRole !== 'owner' && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`View as ${ownerName}, the owner`}
-          onPress={viewAsOwner}
+          accessibilityLabel="View as Rose, the owner"
+          onPress={() => {
+            setDemoRole('owner');
+            router.replace('/');
+          }}
           style={styles.demoBtn}
         >
           <Ionicons name="swap-horizontal-outline" size={14} color={T.inkFaint} />
-          <Text style={styles.demoText}>View as {ownerName} (owner)</Text>
+          <Text style={styles.demoText}>View as Rose (owner)</Text>
         </Pressable>
       )}
     </Screen>
@@ -821,4 +886,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   demoText: { fontSize: 12.5, fontWeight: '600', color: T.inkFaint },
+
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 44, marginTop: Spacing.two },
+  checkText: { fontSize: 15, color: T.ink },
 });

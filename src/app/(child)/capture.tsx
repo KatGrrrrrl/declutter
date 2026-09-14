@@ -23,7 +23,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { awaitAuthReady } from '@/lib/auth';
 import { notify } from '@/components/child/shared';
 import { CollectionPicker } from '@/components/collection-picker';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
@@ -42,13 +41,10 @@ import {
   Well,
 } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
-import { pingItemAdded } from '@/lib/notifications';
-import { pickPhoto, uploadItemPhoto } from '@/lib/photo-sync';
+import { pickPhoto } from '@/lib/photo-sync';
 import { splitGroupPhoto } from '@/lib/split-photo';
-import { pushItem } from '@/lib/sync';
+import { useCanDecide } from '@/lib/membership';
 import {
-  linkedCloudId,
-  useCanDecide,
   useCollection,
   useEntitlement,
   useRoomNames,
@@ -256,32 +252,9 @@ function NativeCapture() {
     setPendingUri(null);
     setTitle('New item');
 
-    // Fire-and-forget cloud photo upload when this household is cloud-linked
-    // and a session exists. Failures stay silent here — uploadPendingPhotos
-    // retries anything that didn't make it.
-    const s = useStore.getState();
-    const hid = linkedCloudId(s);
-    if (hid) {
-      const added = s.items[0]; // addItem prepends, so newest is first
-      if (added && !added.localOnly) {
-        // The item first — realtime delivers it to other devices immediately,
-        // so nobody has to press Back up to see it. The instant-email ping
-        // waits for that push: an email about an item the cloud doesn't have
-        // yet would link to nothing.
-        // The photo waits for the row too: upload-photo looks the item up
-        // and 404s if the upload wins the race. uploadPendingPhotos still
-        // sweeps up anything that fails here.
-        void pushItem(added, hid)
-          .then(async (r) => {
-            if (!r.ok) return;
-            pingItemAdded(added);
-            if (added.photoUri === pendingUri) {
-              if ((await awaitAuthReady()).status === 'signed-in') await uploadItemPhoto(added);
-            }
-          })
-          .catch(() => {});
-      }
-    }
+    // Sharing it with the family — the item, then its photo, then the
+    // instant-email ping once it has really landed — is the outbox's job now
+    // (addItem queues it). A failure shows up there instead of vanishing.
   };
 
   return (
@@ -499,23 +472,7 @@ function WebCapture() {
       );
       return;
     }
-    // Same fire-and-forget upload as native capture, when cloud-linked.
-    // Push the item itself whether or not it has a photo, so the other devices
-    // see it at once; the photo follows when there is one, and the
-    // instant-email ping only goes once the item really is in the cloud.
-    void (async () => {
-      const session = await awaitAuthReady();
-      const hid = linkedCloudId(useStore.getState());
-      if (session.status !== 'signed-in' || !hid) return;
-      const fresh = useStore.getState().items[0];
-      if (!fresh || fresh.localOnly) return;
-      const pushed = await pushItem(fresh, hid).catch(() => ({ ok: false }));
-      if (!pushed.ok) return; // the next reconcile/backup carries it, photo included
-      pingItemAdded(fresh);
-      if (!withoutPhoto && photoUri && fresh.photoUri === photoUri) {
-        void uploadItemPhoto(fresh); // after the row exists, so upload-photo can find it
-      }
-    })();
+    // addItem queued it for the family (item, photo, then the email ping).
     setTitle('');
     setPhotoUri(null);
     // noPhoto is deliberately STICKY: someone typing in a shelf of coins or

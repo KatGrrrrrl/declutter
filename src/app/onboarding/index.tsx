@@ -13,7 +13,8 @@
  * this — creators now cover the helper case.)
  *
  * Demo scaffolding: no real auth or invites. Finish calls
- * completeOnboarding and lands on / (which redirects by role).
+ * createHousehold (cloud first — an account is required for a real home),
+ * sends the invitations, and lands on / (which routes by membership).
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -31,13 +32,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Avatar } from '@/components/child/shared';
+import { Avatar, notify } from '@/components/child/shared';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Row, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { switchAccount, useSession } from '@/lib/auth';
+import { createHousehold } from '@/lib/household';
+import { inviteToHousehold } from '@/lib/membership';
 import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
-import { pushHousehold } from '@/lib/sync';
 
 type Step = 'welcome' | 'role' | 'household' | 'deciders' | 'passkey' | 'invite';
 
@@ -57,7 +59,9 @@ const looksLikeEmail = (v: string) => v.includes('@') && v.includes('.');
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const completeOnboarding = useStore((s) => s.completeOnboarding);
+  const enterDemo = useStore((s) => s.enterDemo);
+  const setUserNameInStore = useStore((s) => s.setUserName);
+  const [opening, setOpening] = useState(false);
 
   const [step, setStep] = useState<Step>('welcome');
   const [setupFor, setSetupFor] = useState<SetupFor>('self');
@@ -125,7 +129,7 @@ export default function OnboardingScreen() {
 
   /** What we'd call the user right now, falling back to the path's example. */
   const displayName = userName.trim() || (setupFor === 'self' ? 'Rose' : 'Sam');
-  const deciderNames = [...(includeMe ? [displayName] : []), ...otherDeciders];
+  const finalSayNames = [...(includeMe ? [displayName] : []), ...otherDeciders];
 
   const goBack = () => {
     if (step === 'role') setStep('welcome');
@@ -174,7 +178,7 @@ export default function OnboardingScreen() {
     setInviteError('');
     const exists =
       invites.some((i) => i.name.toLowerCase() === name.toLowerCase()) ||
-      deciderNames.some((d) => d.toLowerCase() === name.toLowerCase()) ||
+      finalSayNames.some((d) => d.toLowerCase() === name.toLowerCase()) ||
       name.toLowerCase() === displayName.toLowerCase();
     if (!exists) {
       setInvites((v) => [...v, { name, relationship: inviteRel.trim() || undefined, email }]);
@@ -187,53 +191,63 @@ export default function OnboardingScreen() {
   const removeInvite = (name: string) =>
     setInvites((v) => v.filter((i) => i.name !== name));
 
-  const finish = () => {
-    const deciders = deciderNames.length ? deciderNames : [displayName];
-    completeOnboarding({
-      role: deciders.includes(displayName) ? 'owner' : 'contributor',
-      householdName: householdName.trim() || 'The Lakehouse',
-      userName: displayName,
-      startEmpty: true,
-      deciderNames: deciders,
-      invites,
-      deciderEmails,
-    });
-    // Signed in during onboarding → link the new household to the cloud right
-    // away, so invitations and backups work from minute one.
-    if (authedEmail) {
-      void (async () => {
-        const s = useStore.getState();
-        const h = s.households.find((x) => x.id === s.activeHouseholdId);
-        const res = await pushHousehold({
-          wasBackedUp: Boolean(h?.cloudLinkedAt),
-          activeHouseholdId: s.activeHouseholdId,
-          householdName: s.householdName,
-          items: s.items,
-          people: s.people,
-          collections: s.collections,
-          rooms: s.rooms,
-          messages: s.messages,
-          members: s.members,
-          deciderNames: h?.deciderNames ?? [s.ownerName],
-          adminNames: h?.adminNames ?? [s.userName],
-          userName: s.userName,
-        });
-        if (res.ok && res.cloudHouseholdId) {
-          s.markCloudLinked(res.cloudHouseholdId, new Date().toISOString());
-        }
-      })();
+  /**
+   * Open the home: in the family's account first (an account is required for
+   * a real home — the cloud is its source of truth), then the invitations.
+   *
+   * The database makes whoever creates a home its owner, so the person setting
+   * it up for a parent holds the final say until that parent joins; they can
+   * hand it over from the Family screen then. Onboarding says so, rather than
+   * letting a name list pretend otherwise.
+   */
+  const finish = async () => {
+    if (!authedEmail) {
+      setStep('passkey');
+      setAuthError('Sign in first — your home lives in your account so the family can join it.');
+      return;
+    }
+    setOpening(true);
+    const created = await createHousehold(householdName.trim() || 'Our home', { displayName });
+    if (!created.ok) {
+      setOpening(false);
+      notify('Couldn’t open your home yet', created.error);
+      return;
+    }
+    setUserNameInStore(displayName);
+
+    const failures: string[] = [];
+    const me = displayName.toLowerCase();
+    for (const d of otherDeciders) {
+      const email = deciderEmails[d]?.trim().toLowerCase();
+      if (!email || d.toLowerCase() === me) continue;
+      const res = await inviteToHousehold({ email, name: d, relationship: 'Final say', role: 'co_owner' });
+      if (!res.ok) failures.push(`${d}: ${res.error}`);
+    }
+    for (const inv of invites) {
+      const res = await inviteToHousehold({
+        email: inv.email,
+        name: inv.name,
+        relationship: inv.relationship,
+        role: 'contributor',
+      });
+      if (!res.ok) failures.push(`${inv.name}: ${res.error}`);
+    }
+    setOpening(false);
+
+    if (failures.length) {
+      notify('Your home is open — some invitations didn’t go', failures.join('\n'));
+    } else if (!includeMe && otherDeciders.length) {
+      notify(
+        'You hold the final say for now',
+        `Until ${otherDeciders.join(' or ')} joins, decisions are yours. Once they do, you can hand it over from Family.`
+      );
     }
     router.replace('/');
   };
 
-  /** Opt-in tour: keeps the seeded Lakehouse so the app can be explored. */
+  /** Opt-in tour: the seeded Lakehouse, no account needed. */
   const exploreDemo = () => {
-    completeOnboarding({
-      role: 'owner',
-      householdName: 'The Lakehouse',
-      userName: 'Rose',
-      startEmpty: false,
-    });
+    enterDemo();
     router.replace('/');
   };
 
@@ -460,12 +474,12 @@ export default function OnboardingScreen() {
                 <Btn
                   label="Continue"
                   big
-                  disabled={deciderNames.length === 0}
+                  disabled={finalSayNames.length === 0}
                   onPress={() => setStep('passkey')}
                 />
               </View>
               <Muted style={styles.fine}>
-                {deciderNames.length === 0
+                {finalSayNames.length === 0
                   ? 'Name at least one person to continue.'
                   : 'More than one person can share the final say. You can change this later.'}
               </Muted>
@@ -520,10 +534,11 @@ export default function OnboardingScreen() {
                   {authError ? <Muted style={styles.authErr}>{authError}</Muted> : null}
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => setStep('invite')}
+                    accessibilityLabel="Just looking? Explore the sample home instead"
+                    onPress={exploreDemo}
                     style={styles.skipLink}
                   >
-                    <Text style={styles.skipText}>Skip for now — sign in later in Settings</Text>
+                    <Text style={styles.skipText}>Just looking? Explore the sample home instead</Text>
                   </Pressable>
                 </>
               ) : (
@@ -571,7 +586,7 @@ export default function OnboardingScreen() {
 
               {/* The decider(s) named earlier are invited automatically —
                   but the invitation needs their email to reach them. */}
-              {deciderNames
+              {finalSayNames
                 .filter((d) => d.toLowerCase() !== displayName.toLowerCase())
                 .map((d) => (
                   <Card key={d} style={styles.contactCard}>
@@ -662,17 +677,20 @@ export default function OnboardingScreen() {
                   <Ionicons name="lock-closed-outline" size={16} color={T.brass} />
                   <Muted style={styles.flex}>
                     The household opens by invitation only — nobody wanders in.
-                    Anyone can suggest a new member later; whoever holds the
-                    final say approves them.
+                    Owners and administrators can invite more people later,
+                    from the Family screen.
                   </Muted>
                 </Row>
               </Well>
 
               <View style={styles.stepCta}>
                 <Btn
-                  label={setupFor === 'self' ? 'Open my household' : 'Open the household'}
+                  label={
+                    opening ? 'Opening…' : setupFor === 'self' ? 'Open my household' : 'Open the household'
+                  }
                   big
-                  onPress={finish}
+                  onPress={() => void finish()}
+                  disabled={opening}
                 />
               </View>
             </>

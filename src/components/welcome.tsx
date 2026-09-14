@@ -34,7 +34,8 @@ const STEPS: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string
 
 export function Welcome() {
   const router = useRouter();
-  const role = useStore((s) => s.role);
+  // The demo opens in Rose's view (the parent with the final say) unless toggled.
+  const role = useStore((s) => s.demoRole);
 
   const seeDemo = () =>
     router.push(role === 'owner' ? '/(parent)/decide' : '/(child)/capture');

@@ -28,10 +28,11 @@ import {
   acceptInvite,
   declineInvite,
   listPendingInvites,
-  loadHouseholdById,
-  loadMyHousehold,
+  openHousehold,
+  pickHousehold,
   type PendingInvite,
-} from '@/lib/join';
+} from '@/lib/household';
+import type { MyMembership } from '@/lib/membership';
 import {
   clearSwitching,
   eraseDevice,
@@ -42,7 +43,6 @@ import {
 } from '@/lib/auth';
 import { linkedCloudId, useStore } from '@/lib/store';
 
-import type { CloudHouseholdSummary } from '@/lib/sync';
 import { supabase } from '@/lib/supabase';
 
 const looksLikeEmail = (v: string) => v.includes('@') && v.includes('.');
@@ -93,7 +93,7 @@ export default function LoginScreen() {
   // The account belongs to several homes and this device has none of them
   // open: the person picks. Never guessed (the old "oldest wins" rule put a
   // member of two homes in the wrong house).
-  const [homeChoices, setHomeChoices] = useState<CloudHouseholdSummary[]>([]);
+  const [homeChoices, setHomeChoices] = useState<MyMembership[]>([]);
   // A family is already expecting this address. Shown INSTEAD of onboarding:
   // the commonest sign-in on a fresh device is the invited child, and sending
   // them off to name a household of their own is the wrong first question.
@@ -130,20 +130,23 @@ export default function LoginScreen() {
       return;
     }
 
-    const res = await loadMyHousehold();
-    if (res.ok) {
+    // Which home, by membership: the only one, or ask. Never guessed.
+    const picked = await pickHousehold();
+    if (picked.error) {
       setLoadingHome(false);
-      router.replace('/');
+      setError(`Signed in, but your homes couldn’t be listed: ${picked.error}`);
       return;
     }
-    if (res.choices) {
+    if (picked.choices) {
       setLoadingHome(false);
-      setHomeChoices(res.choices);
+      setHomeChoices(picked.choices);
       return;
     }
-    if (res.error) {
+    if (picked.id) {
+      const opened = await openHousehold(picked.id);
       setLoadingHome(false);
-      setError(`Signed in, but your home couldn’t be loaded: ${res.error}`);
+      if (opened.ok) router.replace('/');
+      else setError(`Signed in, but your home couldn’t be loaded: ${opened.error}`);
       return;
     }
     // No household of their own — but a family may be holding a place for
@@ -158,7 +161,7 @@ export default function LoginScreen() {
   const pickHome = async (householdId: string) => {
     setHomeChoices([]);
     setLoadingHome(true);
-    const res = await loadHouseholdById(householdId);
+    const res = await openHousehold(householdId);
     setLoadingHome(false);
     if (res.ok) router.replace('/');
     else setError(`Signed in, but your home couldn’t be loaded: ${res.error ?? 'unknown error'}`);
@@ -441,7 +444,13 @@ export default function LoginScreen() {
           {whoAmI}
           <View style={styles.cta}>
             {homeChoices.map((h) => (
-              <Btn key={h.id} label={h.name} kind="primary" big onPress={() => pickHome(h.id)} />
+              <Btn
+                key={h.householdId}
+                label={h.householdName}
+                kind="primary"
+                big
+                onPress={() => pickHome(h.householdId)}
+              />
             ))}
           </View>
         </View>

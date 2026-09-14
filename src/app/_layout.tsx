@@ -4,11 +4,12 @@ import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { CloudBridge } from '@/components/cloud-bridge';
 import { PresenceBanner } from '@/components/presence-banner';
-import { RestorePrompt } from '@/components/restore-prompt';
+import { SessionBridge } from '@/components/session-bridge';
 import { T } from '@/constants/theme';
 import { startAuth, useSession } from '@/lib/auth';
+import { startMembership } from '@/lib/membership';
+import { startOutbox } from '@/lib/outbox';
 import { useStore } from '@/lib/store';
 import { useDocumentTitle } from '@/lib/use-document-title';
 
@@ -71,20 +72,20 @@ export default function RootLayout() {
   // time, where there is no browser storage and no session to read.
   useEffect(() => {
     startAuth();
+    startMembership();
+    startOutbox();
   }, []);
   const covered = useAuthCover();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={theme}>
-        <CloudBridge />
+        <SessionBridge />
         <LockGate />
         {/* Sits above the whole stack so "Tom is here too" survives tab and
             detail navigation; it renders nothing unless someone else is online. */}
         <View style={{ flex: 1 }} aria-hidden={covered}>
         <PresenceBanner />
-        {/* "Your backup is waiting" — the one-tap device-pairing step. */}
-        <RestorePrompt />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: T.ground } }}>
           <Stack.Screen name="index" options={{ title: 'Home' }} />
           <Stack.Screen name="onboarding" options={{ title: 'Welcome' }} />

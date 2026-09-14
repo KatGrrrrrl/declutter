@@ -28,6 +28,8 @@ import { familyRoute, UPGRADE_ROUTE } from '@/components/settings/routes';
 import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { eraseDevice, signOut, useSession } from '@/lib/auth';
+import { createHousehold, openHousehold } from '@/lib/household';
+import { useCanDecide, useDeciders, useMyMemberships } from '@/lib/membership';
 import { refreshPlan, verifyCheckout } from '@/lib/billing';
 import { getNotifyPref, setNotifyPref } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
@@ -51,13 +53,21 @@ export default function SettingsScreen() {
   // passing it to useStore as a selector would break reference equality.
   const state = useStore();
   const ent = selectEntitlement(state);
-  const { households, activeHouseholdId, householdName, userName, isDemo, role } = state;
-  const { switchHousehold, addHousehold, startFresh, setDefaultDecider } = state;
+  const { households, activeHouseholdId, householdName, userName, isDemo } = state;
+  const { switchHousehold, setDefaultDecider } = state;
+  const canDecide = useCanDecide();
+  const myMemberships = useMyMemberships();
+  const { status: sessionStatus } = useSession();
   const { renameHousehold, removeHousehold, unlinkHousehold } = state;
-  // Default decision-maker: only a choice worth making with >1 decider here.
+  // Default decision-maker: only a choice worth making with >1 joined decider here.
   const activeHousehold = households.find((h) => h.id === activeHouseholdId);
-  const deciders = activeHousehold?.deciderNames ?? [];
+  const deciders = useDeciders().filter((d) => d.joined && d.userId);
   const defaultDecider = activeHousehold ? state.defaultDeciders[activeHousehold.id] : undefined;
+  // Homes this account belongs to that aren't on this device yet — what the
+  // "Your backup is waiting" strip used to offer, now simply listed here.
+  const cloudOnlyHomes = Object.values(myMemberships).filter(
+    (m) => !households.some((h) => h.id === m.householdId)
+  );
   // Is the household actually in the cloud? Drives every "on this device"
   // message below — they used to be unconditional, and told a synced
   // household that signing out would erase it for good.
@@ -68,13 +78,11 @@ export default function SettingsScreen() {
 
   const [addingHousehold, setAddingHousehold] = useState(false);
   const [newHouseholdName, setNewHouseholdName] = useState('');
-  const [newDeciderNames, setNewDeciderNames] = useState('');
+  const [addingBusy, setAddingBusy] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [cloudDeleteArmed, setCloudDeleteArmed] = useState(false);
-  const [freshName, setFreshName] = useState(householdName);
-  const [confirmFresh, setConfirmFresh] = useState(false);
   const [confirmErase, setConfirmErase] = useState(false);
   const [checkoutState, setCheckoutState] = useState<'idle' | 'verifying' | 'success' | 'failed'>(
     'idle'
@@ -125,27 +133,35 @@ export default function SettingsScreen() {
 
   const goUpgrade = () => router.push(UPGRADE_ROUTE);
 
-  const saveHousehold = () => {
+  /**
+   * A new home is created in the family's account first, then opened here.
+   * You start with the final say; whoever should decide is invited from the
+   * Family screen (and can be handed it once they join).
+   */
+  const saveHousehold = async () => {
     const name = newHouseholdName.trim();
     if (!name) return;
-    // Comma-separated names; blank means the current user holds the final say.
-    const deciders = newDeciderNames
-      .split(',')
-      .map((n) => n.trim())
-      .filter(Boolean);
-    const res = addHousehold(name, deciders.length ? deciders : undefined);
+    if (sessionStatus !== 'signed-in') {
+      notify('Sign in to add a home', 'Homes live in your account so family can join them.');
+      return;
+    }
+    setAddingBusy(true);
+    const res = await createHousehold(name, { displayName: userName });
+    setAddingBusy(false);
     if (!res.ok) {
-      goUpgrade();
+      notify('Couldn’t add that home', res.error);
       return;
     }
     setNewHouseholdName('');
-    setNewDeciderNames('');
     setAddingHousehold(false);
+    router.push(familyRoute('owner'));
   };
 
-  const doStartFresh = () => {
-    startFresh(freshName.trim() || householdName);
-    router.replace('/');
+  /** Open a home this account belongs to that isn't on this device yet. */
+  const bringHomeHere = async (householdId: string, name: string) => {
+    const res = await openHousehold(householdId);
+    if (res.ok) notify('Opened', `“${res.name}” is on this device now.`);
+    else notify(`Couldn’t open “${name}”`, res.error);
   };
 
   const startRename = (id: string, current: string) => {
@@ -336,33 +352,13 @@ export default function SettingsScreen() {
               </View>
             </Row>
 
-            <Label>Name your household</Label>
-            <TextInput
-              style={styles.input}
-              value={freshName}
-              onChangeText={setFreshName}
-              placeholder={householdName}
-              placeholderTextColor={T.inkFaint}
-              accessibilityLabel="Your household name"
-            />
-
             <View style={styles.cta}>
-              {confirmFresh ? (
-                <>
-                  <Btn label="Yes — clear the samples and begin" big onPress={doStartFresh} />
-                  <View style={styles.ctaGap} />
-                  <Btn label="Not yet" kind="quiet" onPress={() => setConfirmFresh(false)} />
-                </>
-              ) : (
-                <Btn label="Start my real household" big onPress={() => setConfirmFresh(true)} />
-              )}
+              <Btn label="Start my real household" big onPress={() => router.push('/onboarding')} />
             </View>
-            {confirmFresh && (
-              <Muted style={styles.confirmNote}>
-                This removes the sample items and people. Your real inventory
-                starts empty.
-              </Muted>
-            )}
+            <Muted style={styles.confirmNote}>
+              You&rsquo;ll name it and sign in; the sample items go away when your
+              real home opens.
+            </Muted>
           </Card>
         )}
 
@@ -421,11 +417,18 @@ export default function SettingsScreen() {
                     <View style={styles.cardMain}>
                       <Text style={styles.rowTitle}>{h.name}</Text>
                       <Muted style={styles.rowMeta}>
-                        Final say: {h.deciderNames.join(', ')}
-                      </Muted>
-                      <Muted style={styles.rowMeta}>
-                        Administered by:{' '}
-                        {(h.adminNames?.length ? h.adminNames : [h.createdBy]).join(', ')}
+                        {!h.cloudLinkedAt
+                          ? 'Only on this device'
+                          : myMemberships[h.id]
+                            ? [
+                                myMemberships[h.id].role === 'owner' || myMemberships[h.id].role === 'co_owner'
+                                  ? 'You have the final say'
+                                  : 'You help here',
+                                myMemberships[h.id].isAdmin ? 'you administer it' : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')
+                            : 'Shared with the family'}
                       </Muted>
                       {active && <Muted style={styles.rowMeta}>Currently open</Muted>}
                     </View>
@@ -514,7 +517,7 @@ export default function SettingsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Manage the people at ${householdName}`}
-            onPress={() => router.push(familyRoute(role))}
+            onPress={() => router.push(familyRoute(canDecide ? 'owner' : 'contributor'))}
             style={({ pressed }) => [styles.rowSwitch, pressed && styles.pressed]}
           >
             <Ionicons name="people-outline" size={20} color={T.brass} />
@@ -537,21 +540,12 @@ export default function SettingsScreen() {
                   placeholderTextColor={T.inkFaint}
                   accessibilityLabel="New household name"
                 />
-                <Label>Who has final say there?</Label>
-                <TextInput
-                  style={styles.input}
-                  value={newDeciderNames}
-                  onChangeText={setNewDeciderNames}
-                  placeholder={userName}
-                  placeholderTextColor={T.inkFaint}
-                  accessibilityLabel="Who has final say in the new household"
-                />
                 <Muted style={styles.deciderHint}>
-                  Leave blank if it&rsquo;s you. Separate names with commas for
-                  more than one.
+                  You&rsquo;ll start with the final say. Next, invite whoever should
+                  decide from the Family screen.
                 </Muted>
                 <View style={styles.cta}>
-                  <Btn label="Add household" onPress={saveHousehold} />
+                  <Btn label={addingBusy ? 'Adding…' : 'Add household'} onPress={saveHousehold} disabled={addingBusy} />
                   <View style={styles.ctaGap} />
                   <Btn
                     label="Cancel"
@@ -559,20 +553,34 @@ export default function SettingsScreen() {
                     onPress={() => {
                       setAddingHousehold(false);
                       setNewHouseholdName('');
-                      setNewDeciderNames('');
                     }}
                   />
                 </View>
             </View>
           ) : (
+            <>
+            {cloudOnlyHomes.map((m) => (
+              <Pressable
+                key={m.householdId}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${m.householdName} on this device`}
+                onPress={() => void bringHomeHere(m.householdId, m.householdName)}
+                style={({ pressed }) => [styles.rowItem, pressed && styles.pressed]}
+              >
+                <Ionicons name="cloud-download-outline" size={20} color={T.brass} />
+                <Text style={styles.rowTitle}>Open {m.householdName} here</Text>
+              </Pressable>
+            ))}
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Add a household"
               onPress={() => setAddingHousehold(true)}
               style={({ pressed }) => [styles.rowItem, pressed && styles.pressed]}
             >
               <Ionicons name="add-circle-outline" size={20} color={T.brass} />
               <Text style={styles.rowTitle}>Add a household</Text>
             </Pressable>
+            </>
           )}
         </View>
 
@@ -597,18 +605,24 @@ export default function SettingsScreen() {
                     Anyone
                   </Text>
                 </Pressable>
-                {deciders.map((name) => {
-                  const on = defaultDecider === name;
+                {deciders.map((d) => {
+                  const on = defaultDecider?.userId === d.userId;
                   return (
                     <Pressable
-                      key={name}
+                      key={d.memberId}
                       accessibilityRole="button"
+                      accessibilityLabel={`${d.name} decides first`}
                       accessibilityState={{ selected: on }}
-                      onPress={() => setDefaultDecider(activeHousehold.id, on ? undefined : name)}
+                      onPress={() =>
+                        setDefaultDecider(
+                          activeHousehold.id,
+                          on ? undefined : { userId: d.userId!, name: d.name }
+                        )
+                      }
                       style={[styles.deciderChip, on && styles.deciderChipOn]}
                     >
                       <Text style={[styles.deciderChipText, on && styles.deciderChipTextOn]}>
-                        {name}
+                        {d.name}
                       </Text>
                     </Pressable>
                   );

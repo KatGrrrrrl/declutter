@@ -24,7 +24,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { linkedCloudId, useStore } from '@/lib/store';
-import { listMyHouseholds } from '@/lib/sync';
+import { supabase } from '@/lib/supabase';
+
+/** Can the signed-in account reach this household? RLS answers: a non-member sees no row. */
+async function canReach(householdId: string): Promise<{ ok: boolean; reachable: boolean }> {
+  const { data, error } = await supabase.from('households').select('id').eq('id', householdId).maybeSingle();
+  return { ok: !error, reachable: Boolean(data) };
+}
 
 /** Must match the `name` given to persist() in store.ts. */
 const STORE_KEY = 'declutter-store-v1';
@@ -116,8 +122,8 @@ export async function reconcileAccount(
   }
   // Backed up: ask the server whether this account can reach it. RLS answers —
   // listMyHouseholds returns only households the signed-in account may see.
-  const mine = await listMyHouseholds();
-  if (mine.ok && mine.households.some((h) => h.id === openCloudId)) {
+  const mine = await canReach(openCloudId);
+  if (mine.ok && mine.reachable) {
     useStore.getState().bindAccount(incoming);
     return { outcome: 'same', restored: false };
   }
