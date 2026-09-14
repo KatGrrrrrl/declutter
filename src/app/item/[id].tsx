@@ -20,7 +20,7 @@ import {
 } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Platform,
   Pressable,
@@ -73,7 +73,21 @@ function joinDeciderNames(names: string[]): string {
   return names.slice(0, -1).join(', ') + ' or ' + names[names.length - 1];
 }
 
-export default function ItemDetailScreen() {
+/**
+ * Rendered only in the browser, never while the site is pre-built. The voice
+ * story player and recorder (expo-audio) create an HTML `Audio` element the
+ * moment they mount, which doesn't exist during the static pre-render — so the
+ * whole page used to error there and fall back. The item itself lives on the
+ * device, so there was nothing useful to pre-render anyway.
+ */
+export default function ItemDetailRoute() {
+  const inBrowser = useSyncExternalStore(noSubscription, () => true, () => false);
+  return inBrowser ? <ItemDetailScreen /> : null;
+}
+
+const noSubscription = () => () => {};
+
+function ItemDetailScreen() {
   const router = useRouter();
   const { id, estimate: estimateParam } = useLocalSearchParams<{
     id: string;

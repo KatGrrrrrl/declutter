@@ -197,7 +197,7 @@ export default function RoomsScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`Open ${room.name}`}
                     onPress={() =>
-                      router.push({ pathname: '/(child)/inventory', params: { room: room.name } })
+                      router.push({ pathname: '/inventory', params: { room: room.name } })
                     }
                     style={({ pressed }) => [styles.cardBody, pressed && styles.pressed]}
                   >

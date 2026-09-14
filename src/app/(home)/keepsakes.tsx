@@ -53,7 +53,7 @@ export default function KeepsakesScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="See who inherits what"
-        onPress={() => router.push('/(parent)/heirs')}
+        onPress={() => router.push('/heirs')}
         style={({ pressed }) => [styles.heirsLink, pressed && styles.pressed]}
       >
         <Ionicons name="people-outline" size={16} color={T.brassDeep} />

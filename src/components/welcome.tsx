@@ -41,7 +41,7 @@ export function Welcome() {
   // — the helper/owner view switch included — landed back on this page.
   const seeDemo = () => {
     enterDemo();
-    router.replace('/(parent)/decide');
+    router.replace('/decide');
   };
 
   return (

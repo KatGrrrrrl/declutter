@@ -121,7 +121,7 @@ export default function ExportScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Legacy access"
-        onPress={() => router.push('/(parent)/legacy')}
+        onPress={() => router.push('/legacy')}
         style={({ pressed }) => [pressed && styles.pressed]}
       >
         <Card style={styles.miniCard}>

@@ -201,7 +201,7 @@ export default function DecideScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add your own item"
-            onPress={() => router.push('/(parent)/capture')}
+            onPress={() => router.push('/capture')}
             style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
           >
             <Ionicons name="add" size={17} color={T.brassDeep} />
@@ -265,7 +265,7 @@ export default function DecideScreen() {
             <View style={styles.allCaughtCta}>
               <Btn
                 label="Add your own items"
-                onPress={() => router.push('/(parent)/capture')}
+                onPress={() => router.push('/capture')}
               />
             </View>
           </View>

@@ -18,5 +18,5 @@ export default function Entry() {
   // Logged out → the household stays on-device but locked behind sign-in.
   if (lockedOut) return <Redirect href="/login" />;
   if (!ready) return null;
-  return <Redirect href={canDecide ? '/(parent)/decide' : '/(child)/capture'} />;
+  return <Redirect href={canDecide ? '/decide' : '/capture'} />;
 }

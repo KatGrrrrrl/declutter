@@ -24,12 +24,12 @@ import {
 
 import { notify } from '@/components/child/shared';
 import { AccountSync } from '@/components/settings/account-sync';
-import { familyRoute, UPGRADE_ROUTE } from '@/components/settings/routes';
+import { FAMILY_ROUTE, UPGRADE_ROUTE } from '@/components/settings/routes';
 import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
 import { eraseDevice, signOut, useSession } from '@/lib/auth';
 import { createHousehold, openHousehold } from '@/lib/household';
-import { useCanDecide, useDeciders, useMyMemberships } from '@/lib/membership';
+import { useDeciders, useMyMemberships } from '@/lib/membership';
 import { refreshPlan, verifyCheckout } from '@/lib/billing';
 import { getNotifyPref, setNotifyPref } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
@@ -55,7 +55,6 @@ export default function SettingsScreen() {
   const ent = selectEntitlement(state);
   const { households, activeHouseholdId, householdName, userName, isDemo } = state;
   const { switchHousehold, setDefaultDecider } = state;
-  const canDecide = useCanDecide();
   const myMemberships = useMyMemberships();
   const { status: sessionStatus } = useSession();
   const { renameHousehold, removeHousehold, unlinkHousehold } = state;
@@ -154,7 +153,7 @@ export default function SettingsScreen() {
     }
     setNewHouseholdName('');
     setAddingHousehold(false);
-    router.push(familyRoute('owner'));
+    router.push(FAMILY_ROUTE);
   };
 
   /** Open a home this account belongs to that isn't on this device yet. */
@@ -517,7 +516,7 @@ export default function SettingsScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Manage the people at ${householdName}`}
-            onPress={() => router.push(familyRoute(canDecide ? 'owner' : 'contributor'))}
+            onPress={() => router.push(FAMILY_ROUTE)}
             style={({ pressed }) => [styles.rowSwitch, pressed && styles.pressed]}
           >
             <Ionicons name="people-outline" size={20} color={T.brass} />

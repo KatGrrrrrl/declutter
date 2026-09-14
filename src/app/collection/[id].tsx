@@ -69,7 +69,7 @@ export default function CollectionScreen() {
   const addItems = () => {
     // One capture screen, two tab groups — land in the viewer's own.
     router.push({
-      pathname: canDecide ? '/(parent)/capture' : '/(child)/capture',
+      pathname: '/capture',
       params: { collectionId: collection.id },
     });
   };

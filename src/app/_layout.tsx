@@ -90,8 +90,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" options={{ title: 'Home' }} />
           <Stack.Screen name="onboarding" options={{ title: 'Welcome' }} />
           <Stack.Screen name="login" options={{ title: 'Sign in' }} />
-          <Stack.Screen name="(parent)" />
-          <Stack.Screen name="(child)" />
+          <Stack.Screen name="(home)" />
           <Stack.Screen
             name="item/[id]"
             options={{ presentation: 'card', headerShown: false, title: 'Item' }}
