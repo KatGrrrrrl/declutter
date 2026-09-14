@@ -10,7 +10,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -32,7 +32,14 @@ import {
   loadMyHousehold,
   type PendingInvite,
 } from '@/lib/join';
-import { reconcileAccount } from '@/lib/account-switch';
+import {
+  clearSwitching,
+  eraseDevice,
+  forgetAccount,
+  switchAccount,
+  useKnownAccounts,
+  useSession,
+} from '@/lib/auth';
 import { linkedCloudId, useStore } from '@/lib/store';
 
 import type { CloudHouseholdSummary } from '@/lib/sync';
@@ -51,7 +58,6 @@ export default function LoginScreen() {
   const lockedOut = useStore((s) => s.lockedOut);
   const lastAccountEmail = useStore((s) => s.lastAccountEmail);
   const unlock = useStore((s) => s.unlock);
-  const signOut = useStore((s) => s.signOut);
   const clearLogoutNotice = useStore((s) => s.clearLogoutNotice);
 
   // Show the "logged out" confirmation from either signal: the URL param (when
@@ -108,23 +114,14 @@ export default function LoginScreen() {
     unlock();
     setLoadingHome(true);
 
-    // WHO is signing in, before deciding what they may see. `onboarded` only
-    // says a home exists on this device — never whose. Treating it as proof
-    // of identity is what showed a helper the owner's household, in the
-    // owner's role, with a Decide tab they have no authority to use.
-    const { data: auth } = await supabase.auth.getUser();
-    const signedInAs = auth?.user?.email ?? '';
-    const account = await reconcileAccount(signedInAs);
-
-    // Their own device, already holding their own home: straight in.
-    if (account.outcome === 'same' && useStore.getState().onboarded) {
-      setLoadingHome(false);
-      router.replace('/');
-      return;
-    }
-    // A different account: reconcileAccount has set the previous person's
-    // data aside and put back this account's own, if it had any here before.
-    if (account.restored && useStore.getState().onboarded) {
+    // Whose home is on this device was settled before we got here: auth.ts
+    // matches the device to the signed-in account BEFORE it reports
+    // 'signed-in' (setting anyone else's state aside), so a real home here is
+    // this account's own. This screen no longer runs that swap itself — it
+    // used to, concurrently with CloudBridge, and the loser could undo the
+    // winner.
+    const s = useStore.getState();
+    if (s.onboarded && !s.isDemo) {
       setLoadingHome(false);
       router.replace('/');
       return;
@@ -212,24 +209,48 @@ export default function LoginScreen() {
     }
   }, []);
 
+  // Every way of signing in — password, code, Google's redirect, or a
+  // session already present when this screen mounts — ends the same way:
+  // auth.ts reports 'signed-in', and this places the person. Once per account
+  // per mount, so a token refresh never re-runs it, but switching to a
+  // different account on the same screen does.
+  const { status, userId, email: sessionEmail, switching } = useSession();
+  const knownAccounts = useKnownAccounts();
+  const finishedFor = useRef<string | null>(null);
   useEffect(() => {
-    let handled = false;
-    const proceed = () => {
-      if (handled) return;
-      handled = true;
-      finish();
-    };
-    // Catch a session already present (redirect completed before mount)…
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) proceed();
-    });
-    // …and one that arrives just after (detectSessionInUrl parses the hash).
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session && event === 'SIGNED_IN') proceed();
-    });
-    return () => sub.subscription.unsubscribe();
+    if (status !== 'signed-in' || !userId || finishedFor.current === userId) return;
+    finishedFor.current = userId;
+    clearSwitching();
+    void finish();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [status, userId]);
+
+  /** Hand the device to someone else: signs this account out, back to the list. */
+  const startSwitch = async () => {
+    setInvites([]);
+    setHomeChoices([]);
+    setError('');
+    setPassword('');
+    setCode('');
+    setMode('password');
+    finishedFor.current = null;
+    await switchAccount();
+  };
+
+  /** "Signed in as … · Switch account", for every screen before a home is open. */
+  const whoAmI = sessionEmail ? (
+    <Row style={styles.whoRow}>
+      <Muted style={styles.whoText}>Signed in as {sessionEmail}</Muted>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Not ${sessionEmail}? Switch account`}
+        onPress={() => void startSwitch()}
+        style={styles.whoLink}
+      >
+        <Text style={styles.linkText}>Switch account</Text>
+      </Pressable>
+    </Row>
+  ) : null;
 
   const signInWithPassword = async () => {
     const addr = email.trim().toLowerCase();
@@ -250,7 +271,7 @@ export default function LoginScreen() {
       );
       return;
     }
-    finish();
+    setLoadingHome(true); // the session effect takes it from here
   };
 
   const createAccount = async () => {
@@ -274,7 +295,7 @@ export default function LoginScreen() {
       setMode('password');
       return;
     }
-    finish();
+    setLoadingHome(true); // the session effect takes it from here
   };
 
   const sendCode = async () => {
@@ -301,7 +322,7 @@ export default function LoginScreen() {
     });
     setBusy(false);
     if (err) return setError('That code didn’t work — double-check the six digits.');
-    finish();
+    setLoadingHome(true); // the session effect takes it from here
   };
 
   const googleSignIn = async () => {
@@ -361,11 +382,11 @@ export default function LoginScreen() {
             <Ionicons name="home" size={30} color={T.brassDeep} />
           </DecorativeIcon>
           <Text role="heading" aria-level={1} style={styles.title}>
-            {one ? `Join “${one.householdName}”?` : 'Your family is expecting you'}
+            {one ? `You’ve been invited to help with “${one.householdName}”` : 'Your family is expecting you'}
           </Text>
           <Muted style={styles.sub}>
             {one
-              ? `${one.householdName} invited this email address to help with their home. Joining brings their inventory onto this device — you can add photos and stories straight away.`
+              ? `Joining brings “${one.householdName}” onto this device — you can add photos and stories straight away.`
               : 'These homes have invited this email address. Join one to bring its inventory onto this device.'}
           </Muted>
           <View style={styles.cta}>
@@ -393,6 +414,7 @@ export default function LoginScreen() {
               No thanks &mdash; start a home of my own
             </Text>
           </Pressable>
+          {whoAmI}
           <Muted style={styles.declineNote}>
             {one
               ? `We’ll let whoever looks after “${one.householdName}” know you’ve declined, so they’re not left waiting.`
@@ -413,6 +435,7 @@ export default function LoginScreen() {
             Which home?
           </Text>
           <Muted style={styles.sub}>Your account belongs to more than one. Pick the one for this device.</Muted>
+          {whoAmI}
           <View style={styles.cta}>
             {homeChoices.map((h) => (
               <Btn key={h.id} label={h.name} kind="primary" big onPress={() => pickHome(h.id)} />
@@ -484,6 +507,7 @@ export default function LoginScreen() {
               </View>
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Use a password instead"
                 onPress={() => setMode('password')}
                 style={styles.link}
               >
@@ -493,13 +517,75 @@ export default function LoginScreen() {
           ) : (
             <>
               <Text role="heading" aria-level={1} style={styles.title}>
-                {mode === 'signup' ? 'Create your account' : 'Sign in'}
+                {mode === 'signup' ? 'Create your account' : switching ? 'Switch account' : 'Sign in'}
               </Text>
               <Muted style={styles.sub}>
                 {mode === 'signup'
                   ? 'One account keeps your home backed up and lets family join.'
-                  : 'Welcome back.'}
+                  : switching
+                    ? 'Choose who’s using this device. Each account signs in with its own password or code.'
+                    : 'Welcome back.'}
               </Muted>
+
+              {/* Accounts that have used this device. Choosing one only fills in
+                  the address — signing in is always asked for, so nobody can
+                  step into someone else's account (or the parent's final say)
+                  just by picking up the tablet. */}
+              {mode !== 'signup' && knownAccounts.length > 0 && (
+                <View style={styles.accountList}>
+                  <Text style={styles.fieldLabel}>Accounts on this device</Text>
+                  {knownAccounts.map((a) => {
+                    const chosen = email.trim().toLowerCase() === a.email;
+                    return (
+                      <Row key={a.userId} style={[styles.accountRow, chosen && styles.accountRowChosen]}>
+                        <Pressable
+                          role="radio"
+                          aria-checked={chosen}
+                          accessibilityLabel={`Sign in as ${a.email}`}
+                          onPress={() => {
+                            setEmail(a.email);
+                            setError('');
+                          }}
+                          style={styles.accountPick}
+                        >
+                          <Ionicons
+                            name={chosen ? 'radio-button-on' : 'radio-button-off'}
+                            size={18}
+                            color={chosen ? T.brassDeep : T.inkFaint}
+                          />
+                          <Text style={styles.accountEmail} numberOfLines={1}>
+                            {a.email}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${a.email} from this device`}
+                          onPress={() => {
+                            forgetAccount(a.userId);
+                            if (chosen) setEmail('');
+                          }}
+                          style={styles.accountRemove}
+                        >
+                          <Text style={styles.accountRemoveText}>Remove</Text>
+                        </Pressable>
+                      </Row>
+                    );
+                  })}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Add another account"
+                    onPress={() => {
+                      setEmail('');
+                      setPassword('');
+                      setError('');
+                    }}
+                    style={styles.accountRow}
+                  >
+                    <Ionicons name="add" size={18} color={T.inkSoft} />
+                    <Text style={styles.accountEmail}>Add another account</Text>
+                  </Pressable>
+                </View>
+              )}
 
               <Text style={styles.fieldLabel}>Email</Text>
               <TextInput
@@ -560,6 +646,9 @@ export default function LoginScreen() {
               {/* alternatives */}
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={
+                  mode === 'code' ? 'Use a password instead' : 'No password? Email me a code instead'
+                }
                 onPress={() => {
                   setError('');
                   setMode(mode === 'code' ? 'password' : 'code');
@@ -582,6 +671,7 @@ export default function LoginScreen() {
                   </Row>
                   <Pressable
                     accessibilityRole="button"
+                accessibilityLabel="Continue with Google"
                     onPress={googleSignIn}
                     style={styles.oauthBtn}
                   >
@@ -595,6 +685,9 @@ export default function LoginScreen() {
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={
+                  mode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'
+                }
                 onPress={() => {
                   setError('');
                   setMode(mode === 'signup' ? 'password' : 'signup');
@@ -620,12 +713,12 @@ export default function LoginScreen() {
                     label="Yes — erase this device and start fresh"
                     kind="brass"
                     onPress={() => {
-                      signOut();
-                      router.replace('/');
+                      void eraseDevice().then(() => router.replace('/'));
                     }}
                   />
                   <Pressable
                     accessibilityRole="button"
+                accessibilityLabel="Never mind"
                     onPress={() => setConfirmErase(false)}
                     style={styles.link}
                   >
@@ -635,6 +728,7 @@ export default function LoginScreen() {
               ) : (
                 <Pressable
                   accessibilityRole="button"
+                accessibilityLabel="Not your household? Erase this device and start fresh"
                   onPress={() => setConfirmErase(true)}
                   style={styles.link}
                 >
@@ -742,5 +836,31 @@ const styles = StyleSheet.create({
   },
   errorBannerText: { flex: 1, fontSize: 14, lineHeight: 20, color: T.ink, fontWeight: '600' },
   eraseBlock: { marginTop: Spacing.five },
+  whoRow: {
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+  },
+  whoText: { fontSize: 13 },
+  whoLink: { minHeight: 44, justifyContent: 'center' },
+  accountList: { marginBottom: Spacing.two },
+  accountRow: {
+    minHeight: 48,
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderRadius: Radius.control,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    backgroundColor: T.surface,
+    paddingHorizontal: Spacing.three,
+    marginTop: Spacing.one,
+    flexDirection: 'row',
+  },
+  accountRowChosen: { borderColor: T.brassDeep },
+  accountPick: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 48 },
+  accountEmail: { flex: 1, fontSize: 15, color: T.ink },
+  accountRemove: { minHeight: 44, justifyContent: 'center', paddingLeft: Spacing.two },
+  accountRemoveText: { fontSize: 13, color: T.inkSoft, textDecorationLine: 'underline' },
   declineNote: { textAlign: 'center', fontSize: 12.5, marginTop: Spacing.one },
 });

@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
+import { awaitAuthReady } from '@/lib/auth';
 import { notify } from '@/components/child/shared';
 import { CollectionPicker } from '@/components/collection-picker';
 import { ItemQuotaMeter, LimitReachedCard } from '@/components/limit-banner';
@@ -53,7 +54,6 @@ import {
   useRoomNames,
   useStore,
 } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
 
 import type { ProposedItem } from '@/lib/split-photo';
 
@@ -276,8 +276,7 @@ function NativeCapture() {
             if (!r.ok) return;
             pingItemAdded(added);
             if (added.photoUri === pendingUri) {
-              const { data } = await supabase.auth.getSession();
-              if (data.session) await uploadItemPhoto(added);
+              if ((await awaitAuthReady()).status === 'signed-in') await uploadItemPhoto(added);
             }
           })
           .catch(() => {});
@@ -505,9 +504,9 @@ function WebCapture() {
     // see it at once; the photo follows when there is one, and the
     // instant-email ping only goes once the item really is in the cloud.
     void (async () => {
-      const { data } = await supabase.auth.getSession();
+      const session = await awaitAuthReady();
       const hid = linkedCloudId(useStore.getState());
-      if (!data.session || !hid) return;
+      if (session.status !== 'signed-in' || !hid) return;
       const fresh = useStore.getState().items[0];
       if (!fresh || fresh.localOnly) return;
       const pushed = await pushItem(fresh, hid).catch(() => ({ ok: false }));

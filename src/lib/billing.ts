@@ -16,6 +16,7 @@
  * release; this module is only invoked from the web paywall.
  */
 
+import { awaitAuthReady } from '@/lib/auth';
 import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -70,8 +71,7 @@ async function invokeBilling(
  * the browser to the returned URL (web only).
  */
 export async function startCheckout(cycle: BillingCycle): Promise<StartCheckoutResult> {
-  const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) return { ok: false, reason: 'needs_account' };
+  if ((await awaitAuthReady()).status !== 'signed-in') return { ok: false, reason: 'needs_account' };
 
   const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return { ok: false, reason: 'needs_backup' };
@@ -107,8 +107,7 @@ export async function verifyCheckout(sessionId: string): Promise<VerifyCheckoutR
  * nothing when signed out or not yet backed up — local state stands alone then.
  */
 export async function refreshPlan(): Promise<void> {
-  const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) return;
+  if ((await awaitAuthReady()).status !== 'signed-in') return;
 
   const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return;

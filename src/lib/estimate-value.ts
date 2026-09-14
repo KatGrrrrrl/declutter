@@ -7,6 +7,7 @@
  * appraisal.
  */
 
+import { awaitAuthReady } from '@/lib/auth';
 import { readAsBase64 } from '@/lib/photo-sync';
 import { supabase } from '@/lib/supabase';
 
@@ -37,8 +38,7 @@ export type EstimateResult =
   | { ok: false; reason: EstimateReason; error?: string };
 
 export async function estimateItemValue(item: Item): Promise<EstimateResult> {
-  const { data: sess } = await supabase.auth.getSession();
-  if (!sess?.session) return { ok: false, reason: 'needs_account' };
+  if ((await awaitAuthReady()).status !== 'signed-in') return { ok: false, reason: 'needs_account' };
 
   const body: Record<string, unknown> = { itemId: item.id };
   // Local-only or not-yet-uploaded photo: send the bytes so the server can see

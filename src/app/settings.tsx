@@ -27,6 +27,7 @@ import { AccountSync } from '@/components/settings/account-sync';
 import { familyRoute, UPGRADE_ROUTE } from '@/components/settings/routes';
 import { Body, Btn, Card, Heading, Label, Muted, Row, Screen, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { eraseDevice, signOut, useSession } from '@/lib/auth';
 import { refreshPlan, verifyCheckout } from '@/lib/billing';
 import { getNotifyPref, setNotifyPref } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
@@ -51,7 +52,7 @@ export default function SettingsScreen() {
   const state = useStore();
   const ent = selectEntitlement(state);
   const { households, activeHouseholdId, householdName, userName, isDemo, role } = state;
-  const { switchHousehold, addHousehold, startFresh, signOut, setDefaultDecider } = state;
+  const { switchHousehold, addHousehold, startFresh, setDefaultDecider } = state;
   const { renameHousehold, removeHousehold, unlinkHousehold } = state;
   // Default decision-maker: only a choice worth making with >1 decider here.
   const activeHousehold = households.find((h) => h.id === activeHouseholdId);
@@ -205,34 +206,20 @@ export default function SettingsScreen() {
     setCloudDeleteArmed(false);
   };
 
-  const doSignOut = () => {
-    signOut();
+  const doSignOut = async () => {
+    await eraseDevice();
     router.replace('/');
   };
 
   // Account session for the top-level log-out bar.
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSessionEmail(data.session?.user.email ?? null);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) =>
-      setSessionEmail(s?.user.email ?? null)
-    );
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  const { email: sessionEmail } = useSession();
 
   /**
    * Log out: the account disconnects AND the app locks — an inventory of
    * valuables must not stay browsable on a logged-out phone. Device data and
    * cloud backups both survive; signing back in reopens everything.
    */
-  const lockOut = state.lockOut;
-  const doLogOut = async () => {
-    const email = sessionEmail ?? '';
-    await supabase.auth.signOut();
-    lockOut(email);
-  };
+  const doLogOut = () => void signOut();
 
   return (
     <KeyboardAvoidingView

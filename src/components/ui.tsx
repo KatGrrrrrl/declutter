@@ -9,7 +9,7 @@ import { Image } from 'expo-image';
 import { useIsFocused, useRouter } from 'expo-router';
 import { BottomTabBar } from 'expo-router/build/react-navigation/bottom-tabs/views/BottomTabBar';
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs/types';
-import { PropsWithChildren, useEffect, useState } from 'react';
+import { PropsWithChildren } from 'react';
 import {
   Platform,
   Pressable,
@@ -24,9 +24,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { signOut, useSession } from '@/lib/auth';
 import { useSignedPhotoUrl } from '@/lib/photo-sync';
 import { linkedCloudId, useStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
 
 import type { Decision } from '@/lib/store';
 
@@ -174,16 +174,9 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
   const isDesktop = useIsDesktop();
   const router = useRouter();
 
-  // Hooks must run unconditionally, so track the session before the mobile
+  // Hooks must run unconditionally, so read the session before the mobile
   // early-return below.
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSessionEmail(data.session?.user.email ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) =>
-      setSessionEmail(s?.user.email ?? null)
-    );
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  const { email: sessionEmail } = useSession();
 
   const lastBackupAt = useStore(
     (s) => s.households.find((h) => h.id === s.activeHouseholdId)?.lastBackupAt
@@ -193,13 +186,8 @@ export function NavigationTabBar({ label, ...props }: BottomTabBarProps & { labe
   // linked household syncs as you go whatever the card used to say.
   const linked = useStore((s) => !!linkedCloudId(s));
 
-  const logOut = async () => {
-    const email = sessionEmail ?? '';
-    await supabase.auth.signOut();
-    // lockOut flips `lockedOut`, which the root LockGate turns into a redirect
-    // to /login — no explicit navigation (a second nav races the confirmation).
-    useStore.getState().lockOut(email);
-  };
+  // signOut locks the device; the root LockGate does the navigating.
+  const logOut = () => void signOut();
 
   if (!isDesktop) {
     return (

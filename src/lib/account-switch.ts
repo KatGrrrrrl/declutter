@@ -29,15 +29,18 @@ import { listMyHouseholds } from '@/lib/sync';
 /** Must match the `name` given to persist() in store.ts. */
 const STORE_KEY = 'declutter-store-v1';
 
+/** Every set-aside account's device state lives under this prefix. */
+export const STASH_PREFIX = `${STORE_KEY}:stash:`;
+
 /** Where one account's set-aside device state lives. */
-const stashKey = (email: string) => `${STORE_KEY}:stash:${email.trim().toLowerCase()}`;
+const stashKey = (email: string) => `${STASH_PREFIX}${email.trim().toLowerCase()}`;
 
 /**
  * A device whose binding we never recorded (persisted before v8, and never
  * locked). Its blob is still worth keeping — we just can't label it with an
  * owner, so it can only be recovered deliberately rather than automatically.
  */
-const ORPHAN_KEY = `${STORE_KEY}:stash:unclaimed`;
+const ORPHAN_KEY = `${STASH_PREFIX}unclaimed`;
 
 const norm = (e?: string | null) => (e ?? '').trim().toLowerCase();
 
@@ -56,6 +59,20 @@ function hasRealHome(): boolean {
  * - `switched` — the previous account's data was set aside and this account's
  *                own stash (if it had one) was put back. The store has been
  *                rehydrated; the caller must re-resolve where to send them.
+ *
+ * The order of the checks is the design:
+ *  1. Same account as the device is labelled for → nothing to do.
+ *  2. No real home on the device → put back this account's set-aside state if
+ *     there is one (otherwise a person signing back in after a helper would
+ *     find their un-uploaded work stranded in a stash), else adopt the device.
+ *  3. The device is labelled for a DIFFERENT known account → always swap,
+ *     even if the newcomer can also reach the same household. Two people in
+ *     one home see different things and hold different unsent captures; a
+ *     "they have access, so keep what's here" rule handed a parent the
+ *     helper's copy — helper role, helper's pending photos — on the family
+ *     tablet.
+ *  4. Only an UNLABELLED device (persisted before labels existed) falls back to
+ *     asking the server whether this account can reach the home that's open.
  */
 export async function reconcileAccount(
   email: string
@@ -65,55 +82,72 @@ export async function reconcileAccount(
 
   const bound = norm(useStore.getState().accountEmail);
 
-  // The ordinary case: the same person signing in again.
+  // 1. The ordinary case: the same person signing in again.
   if (bound && bound === incoming) return { outcome: 'same', restored: false };
 
-  // A device with nothing on it can simply be adopted by whoever signs in.
+  // 2. Nothing real on the device.
   if (!hasRealHome()) {
+    try {
+      const theirs = await AsyncStorage.getItem(stashKey(incoming));
+      if (theirs) {
+        await AsyncStorage.setItem(STORE_KEY, theirs);
+        await AsyncStorage.removeItem(stashKey(incoming));
+        await useStore.persist.rehydrate();
+        useStore.getState().bindAccount(incoming);
+        return { outcome: 'switched', restored: true };
+      }
+    } catch {
+      /* storage refused — adopting the empty device below is still safe */
+    }
     useStore.getState().bindAccount(incoming);
     return { outcome: 'empty', restored: false };
   }
 
-  // A home that was never backed up exists nowhere but this device. We
-  // cannot check it against anything, and hiding it could look exactly like
-  // losing it, so it is adopted by whoever signs in — what happened before
-  // this file existed — and labelled from now on.
+  // 3. Labelled for somebody else: always swap.
+  if (bound) return swap(bound, incoming);
+
+  // 4. Unlabelled device with a real home. A home never backed up exists
+  // nowhere but here, and hiding it could look exactly like losing it, so it
+  // is adopted by whoever signs in (what happened before labels existed).
   const openCloudId = linkedCloudId(useStore.getState());
   if (!openCloudId) {
     useStore.getState().bindAccount(incoming);
     return { outcome: 'same', restored: false };
   }
-
-  // The real question, and the only one worth trusting: does this account
-  // actually have access to the home that is open here? RLS answers it —
+  // Backed up: ask the server whether this account can reach it. RLS answers —
   // listMyHouseholds returns only households the signed-in account may see.
-  // Asking the server rather than reading a local label matters because most
-  // devices carry no label yet, and a label is exactly the thing that is
-  // missing when it is most needed.
   const mine = await listMyHouseholds();
   if (mine.ok && mine.households.some((h) => h.id === openCloudId)) {
     useStore.getState().bindAccount(incoming);
     return { outcome: 'same', restored: false };
   }
-  // Couldn't ask (offline, transient failure) and nothing on the device says
-  // this is somebody else's: leave it be rather than hide a home over a
-  // dropped request. A device that IS labelled for someone else falls
-  // through to the swap below, network or no network.
-  if (!mine.ok && !bound) {
-    return { outcome: 'same', restored: false };
-  }
+  // Couldn't ask (offline): leave it be rather than hide a home over a dropped
+  // request. The label is still unset, so the next sign-in asks again.
+  if (!mine.ok) return { outcome: 'same', restored: false };
 
-  // This account has no access to the home sitting on this device. Move it
-  // aside before anything can render it.
+  return swap(null, incoming);
+}
+
+/**
+ * Move the device's current state aside (under the outgoing account's key, or
+ * the unclaimed key when nobody is known) and put back the incoming account's
+ * own, or start it clean.
+ */
+async function swap(
+  outgoing: string | null,
+  incoming: string
+): Promise<{ outcome: 'switched'; restored: boolean }> {
   try {
     const blob = await AsyncStorage.getItem(STORE_KEY);
-    if (blob) await AsyncStorage.setItem(bound ? stashKey(bound) : ORPHAN_KEY, blob);
+    if (blob) await AsyncStorage.setItem(outgoing ? stashKey(outgoing) : ORPHAN_KEY, blob);
 
-    const mine = await AsyncStorage.getItem(stashKey(incoming));
-    if (mine) {
+    const theirs = await AsyncStorage.getItem(stashKey(incoming));
+    if (theirs) {
       // This account has been on this device before: put its own state back.
-      await AsyncStorage.setItem(STORE_KEY, mine);
+      await AsyncStorage.setItem(STORE_KEY, theirs);
+      await AsyncStorage.removeItem(stashKey(incoming));
       await useStore.persist.rehydrate();
+      useStore.getState().bindAccount(incoming);
       return { outcome: 'switched', restored: true };
     }
 
@@ -126,8 +160,10 @@ export async function reconcileAccount(
     return { outcome: 'switched', restored: false };
   } catch {
     // Storage refused (private mode, quota). Failing closed is the safe read:
-    // better to send them through normal resolution than to fall through into
-    // someone else's household.
+    // clear what's in memory and send them through normal placement, rather
+    // than fall through into someone else's household.
+    useStore.getState().signOut();
+    useStore.getState().bindAccount(incoming);
     return { outcome: 'switched', restored: false };
   }
 }

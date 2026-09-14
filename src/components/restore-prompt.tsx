@@ -16,8 +16,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { notify } from '@/components/child/shared';
 import { Spacing, T } from '@/constants/theme';
+import { useSession } from '@/lib/auth';
 import { useStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
 
 /** How long to let reconcile run before offering the banner. */
 const SETTLE_MS = 2500;
@@ -32,7 +32,9 @@ export function RestorePrompt() {
   );
   const restoreSnapshot = useStore((s) => s.restoreSnapshot);
 
-  const [hasSession, setHasSession] = useState(false);
+  // 'resolving' is not signed in yet: the account's own home may be about to
+  // be put back, and offering to restore over that would be wrong.
+  const hasSession = useSession().status === 'signed-in';
   const [offer, setOffer] = useState<{
     id: string;
     name: string;
@@ -42,12 +44,6 @@ export function RestorePrompt() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<string[]>([]);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setHasSession(Boolean(data.session)));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setHasSession(Boolean(s)));
-    return () => sub.subscription.unsubscribe();
-  }, []);
 
   useEffect(() => {
     if (!hasSession || !onboarded || isDemo || lockedOut || activeLinked) return;

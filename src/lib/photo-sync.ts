@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
+import { awaitAuthReady } from '@/lib/auth';
 import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -78,8 +79,7 @@ export async function uploadItemPhoto(item: Item): Promise<UploadResult> {
   if (!item.photoUri) return { ok: false, error: 'No local photo to upload.' };
   if (item.localOnly) return { ok: false, error: 'This item never leaves the device.' };
 
-  const { data: sess } = await supabase.auth.getSession();
-  if (!sess?.session) return { ok: false, error: 'Not signed in.' };
+  if ((await awaitAuthReady()).status !== 'signed-in') return { ok: false, error: 'Not signed in.' };
 
   let base64: string;
   try {
@@ -125,8 +125,7 @@ const needsUpload = (item: Item, householdId: string): boolean =>
  * user's uplink (see the market-wide ops cautions this project inherits).
  */
 export async function uploadPendingPhotos(): Promise<{ uploaded: number; failed: number }> {
-  const { data: sess } = await supabase.auth.getSession();
-  if (!sess?.session) return { uploaded: 0, failed: 0 };
+  if ((await awaitAuthReady()).status !== 'signed-in') return { uploaded: 0, failed: 0 };
 
   const state = useStore.getState();
   // upload-photo looks the item up in the cloud and 404s if it isn't there,

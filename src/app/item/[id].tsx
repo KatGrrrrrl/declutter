@@ -30,6 +30,7 @@ import {
   View,
 } from 'react-native';
 
+import { awaitAuthReady } from '@/lib/auth';
 import { CollectionPicker } from '@/components/collection-picker';
 import { DonateTo } from '@/components/donate-to';
 import { ItemChat } from '@/components/item-chat';
@@ -58,7 +59,6 @@ import {
   useRoomNames,
   useStore,
 } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
 
 import type { ValueEstimate } from '@/lib/estimate-value';
 import type { HeirVisibility } from '@/lib/store';
@@ -160,10 +160,9 @@ export default function ItemDetailScreen() {
     // Same fire-and-forget cloud upload as capture, when linked.
     const s = useStore.getState();
     if (linkedCloudId(s) && !item.localOnly) {
-      supabase.auth
-        .getSession()
-        .then(({ data }) => {
-          if (data.session) {
+      awaitAuthReady()
+        .then((session) => {
+          if (session.status === 'signed-in') {
             const fresh = useStore.getState().items.find((i) => i.id === item.id);
             if (fresh?.photoUri === uri) return uploadItemPhoto(fresh);
           }

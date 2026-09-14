@@ -5,6 +5,7 @@
  * failing silently.
  */
 
+import { awaitAuthReady } from '@/lib/auth';
 import type { Member } from '@/lib/store';
 import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -17,8 +18,7 @@ export async function sendInviteEmail(
   if (!member.email) {
     return { ok: false, error: 'No email on this invitation.' };
   }
-  const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) {
+  if ((await awaitAuthReady()).status !== 'signed-in') {
     return {
       ok: false,
       error: 'Sign in under Settings → Account & sync first — invitation emails are sent from your account.',

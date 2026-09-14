@@ -21,11 +21,10 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
-import { reconcileAccount } from '@/lib/account-switch';
+import { clearNeedsPlacement, useSession } from '@/lib/auth';
 import { linkedCloudId, useStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
 import { startRealtime, stopRealtime } from '@/lib/realtime';
 
 export function CloudBridge() {
@@ -33,50 +32,26 @@ export function CloudBridge() {
   const cloudHouseholdId = useStore(linkedCloudId);
   const activeHouseholdId = useStore((s) => s.activeHouseholdId);
   const isDemo = useStore((s) => s.isDemo);
-  // Tri-state: null = not yet determined. The sign-in gate must never fire
-  // before the first getSession() resolves, or every load would flash-lock.
-  const [hasSession, setHasSession] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setHasSession(Boolean(data.session)));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) =>
-      setHasSession(Boolean(s))
-    );
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  // Tri-state: null = not yet determined ('unknown' or 'resolving'). The
+  // sign-in gate must never fire before the stored session has been read, or
+  // every load would flash-lock; and nothing account-specific may start while
+  // auth.ts is still matching this device's state to the account.
+  const { status, needsPlacement } = useSession();
+  const hasSession = status === 'signed-in' ? true : status === 'signed-out' ? false : null;
 
   /**
-   * Whose session is this? (job 0a — before anything renders household data.)
-   *
-   * Checking identity only at the moment of signing in was not enough: a
-   * device already carrying a session just reloads, and a stale sign-in as
-   * somebody else kept showing the previous person's household in the
-   * previous person's role. The check belongs wherever a session turns up,
-   * which is here.
-   *
-   * reconcileAccount asks the server whether this account may actually reach
-   * the home that is open, and sets it aside (recoverably) if not. When it
-   * does, we hand over to /login, whose own sign-in path already knows how
-   * to place someone: their own home, the invitation waiting for them, or
-   * starting a home of their own.
+   * Placement (job 0a). auth.ts has already matched this device's state to the
+   * signed-in account — before reporting 'signed-in' — so no screen ever saw
+   * the previous person's home. If that set their state aside with nothing of
+   * this account's to put back, they have no home open: hand over to /login,
+   * whose sign-in path places them (their own cloud home, the invitation
+   * waiting for them, or starting one).
    */
   useEffect(() => {
-    if (!hasSession || isDemo) return;
-    let cancelled = false;
-    void (async () => {
-      const { data } = await supabase.auth.getUser();
-      const email = data?.user?.email;
-      if (!email || cancelled) return;
-      const res = await reconcileAccount(email);
-      if (!cancelled && res.outcome === 'switched' && !res.restored) {
-        router.replace('/login');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasSession, isDemo]);
+    if (status !== 'signed-in' || !needsPlacement) return;
+    clearNeedsPlacement();
+    router.replace('/login');
+  }, [status, needsPlacement, router]);
 
   // Reconcile on connect (job 0). Keyed on the household actually open, so
   // this also runs after switching households or starting a fresh one.

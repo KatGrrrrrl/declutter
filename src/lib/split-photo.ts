@@ -14,6 +14,7 @@
 
 import { Platform } from 'react-native';
 
+import { awaitAuthReady } from '@/lib/auth';
 import { readAsBase64 } from '@/lib/photo-sync';
 import { supabase } from '@/lib/supabase';
 import { linkedCloudId, useStore } from '@/lib/store';
@@ -50,8 +51,7 @@ async function materialize(base64: string, index: number): Promise<string> {
 }
 
 export async function splitGroupPhoto(photoUri: string): Promise<SplitResult> {
-  const { data: sess } = await supabase.auth.getSession();
-  if (!sess?.session) return { ok: false, reason: 'needs_account' };
+  if ((await awaitAuthReady()).status !== 'signed-in') return { ok: false, reason: 'needs_account' };
   const householdId = linkedCloudId(useStore.getState());
   // Pro is a property of a CLOUD household. An unlinked home isn't "not Pro"
   // — it's not in the cloud yet, which is a different ask (back up, not pay).

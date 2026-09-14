@@ -12,6 +12,7 @@ import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { awaitAuthReady } from '@/lib/auth';
 import { notify } from '@/components/child/shared';
 import { Btn, Heading, Label, Muted } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
@@ -19,7 +20,6 @@ import { pingItemAdded } from '@/lib/notifications';
 import { uploadItemPhoto } from '@/lib/photo-sync';
 import { pushItem } from '@/lib/sync';
 import { linkedCloudId, useCanDecide, useStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
 
 import type { ProposedItem } from '@/lib/split-photo';
 
@@ -82,8 +82,7 @@ export function SplitReview({
               if (!res.ok) return;
               pingItemAdded(fresh);
               if (fresh.photoUri === r.photoUri) {
-                const { data } = await supabase.auth.getSession();
-                if (data.session) await uploadItemPhoto(fresh);
+                if ((await awaitAuthReady()).status === 'signed-in') await uploadItemPhoto(fresh);
               }
             })
             .catch(() => {});

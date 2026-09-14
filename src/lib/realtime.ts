@@ -7,6 +7,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+import { awaitAuthReady } from '@/lib/auth';
 import { usePresence } from '@/lib/presence';
 import { selectViewerName, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -54,9 +55,9 @@ export function startRealtime(cloudHouseholdId: string) {
   // Presence needs to know who "me" is; the session is already resolved by
   // the time CloudBridge calls this, so the async hop is cheap. If the
   // household changed while we waited, the newer call wins.
-  void supabase.auth.getSession().then(({ data }) => {
+  void awaitAuthReady().then((session) => {
     if (activeFor !== cloudHouseholdId || channel) return;
-    openChannel(cloudHouseholdId, data.session?.user.id);
+    openChannel(cloudHouseholdId, session.userId ?? undefined);
   });
 }
 

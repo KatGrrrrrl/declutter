@@ -7,7 +7,6 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import type { Session } from '@supabase/supabase-js';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -15,6 +14,7 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { notify } from '@/components/child/shared';
 import { Btn, Card, Heading, Label, Muted, Row } from '@/components/ui';
 import { Radius, Spacing, T } from '@/constants/theme';
+import { signOut, useSession } from '@/lib/auth';
 import {
   acceptInvite,
   declineInvite,
@@ -31,7 +31,10 @@ import type { CloudHouseholdSummary } from '@/lib/sync';
 
 export function AccountSync() {
   const router = useRouter();
-  const [session, setSession] = useState<Session | null>(null);
+  // One session for the whole app (src/lib/auth.ts). 'resolving' counts as
+  // not signed in yet: this panel shows account data, so it waits.
+  const { status, email: sessionEmail } = useSession();
+  const signedIn = status === 'signed-in';
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'email' | 'code'>('email');
@@ -45,16 +48,10 @@ export function AccountSync() {
   const state = useStore();
   const household = useActiveHousehold();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
   // Signed in → check whether any household is waiting for this person.
   // (Async fetch only; the signed-out case renders no invites anyway.)
   useEffect(() => {
-    if (!session) return;
+    if (!signedIn) return;
     let cancelled = false;
     listPendingInvites().then((list) => {
       if (!cancelled) setInvites(list);
@@ -62,7 +59,7 @@ export function AccountSync() {
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [signedIn]);
 
   const joinHousehold = async (inv: PendingInvite) => {
     setBusy(true);
@@ -214,17 +211,13 @@ export function AccountSync() {
   };
 
   /** Same contract as the Settings-top Log out: disconnect AND lock. */
-  const signOutAccount = async () => {
-    const email = session?.user.email ?? '';
-    await supabase.auth.signOut();
-    useStore.getState().lockOut(email);
-  };
+  const signOutAccount = () => void signOut();
 
   return (
     <>
       <Label>Account & sync (beta)</Label>
       <Card>
-        {!session ? (
+        {!signedIn ? (
           stage === 'email' ? (
             <>
               <Muted style={styles.lede}>
@@ -301,7 +294,7 @@ export function AccountSync() {
           <>
             <Row style={styles.signedRow}>
               <View style={styles.dot} />
-              <Muted style={styles.flex}>Signed in as {session.user.email}</Muted>
+              <Muted style={styles.flex}>Signed in as {sessionEmail}</Muted>
             </Row>
             {invites.map((inv) => (
               <View key={inv.householdId} style={styles.inviteWell}>

@@ -18,7 +18,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -34,6 +34,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/child/shared';
 import { Body, Btn, Card, CONTENT_MAX, Heading, Label, Muted, Row, Title, Well } from '@/components/ui';
 import { Fonts, Radius, Spacing, T } from '@/constants/theme';
+import { switchAccount, useSession } from '@/lib/auth';
 import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { pushHousehold } from '@/lib/sync';
@@ -80,13 +81,8 @@ export default function OnboardingScreen() {
   const [authStage, setAuthStage] = useState<'email' | 'code'>('email');
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [authedEmail, setAuthedEmail] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setAuthedEmail(data.session?.user.email ?? null);
-    });
-  }, []);
+  // Who is signed in comes from the one session (src/lib/auth.ts).
+  const { email: authedEmail } = useSession();
 
   const sendAuthCode = async () => {
     const addr = authEmail.trim().toLowerCase();
@@ -111,7 +107,7 @@ export default function OnboardingScreen() {
   const verifyAuthCode = async () => {
     setAuthBusy(true);
     setAuthError('');
-    const { data, error } = await supabase.auth.verifyOtp({
+    const { error } = await supabase.auth.verifyOtp({
       email: authEmail.trim().toLowerCase(),
       token: authCode.trim(),
       type: 'email',
@@ -121,7 +117,7 @@ export default function OnboardingScreen() {
       setAuthError('That code didn’t work — double-check the six digits.');
       return;
     }
-    setAuthedEmail(data.session?.user.email ?? authEmail.trim().toLowerCase());
+    // auth.ts picks the new session up; authedEmail follows from it.
     setAuthCode('');
   };
 
@@ -272,6 +268,21 @@ export default function OnboardingScreen() {
             </Text>
           </Pressable>
           <Muted style={styles.fine}>One household, the whole family. No ads, ever.</Muted>
+          {authedEmail ? (
+            <View style={styles.whoRow}>
+              <Muted style={styles.whoText}>Signed in as {authedEmail}</Muted>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Not ${authedEmail}? Switch account`}
+                onPress={() => {
+                  void switchAccount().then(() => router.replace('/login'));
+                }}
+                style={styles.whoLink}
+              >
+                <Text style={styles.whoLinkText}>Switch account</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </SafeAreaView>
     );
@@ -870,4 +881,15 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
     paddingHorizontal: Spacing.two,
   },
+  whoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+  },
+  whoText: { fontSize: 13 },
+  whoLink: { minHeight: 44, justifyContent: 'center' },
+  whoLinkText: { fontSize: 13.5, fontWeight: '600', color: T.inkSoft, textDecorationLine: 'underline' },
 });

@@ -12,6 +12,7 @@
  * enhancement layered on top of the local-first app, not a dependency.
  */
 
+import { awaitAuthReady } from '@/lib/auth';
 import { linkedCloudId, useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -27,13 +28,13 @@ export type NotifyMode = 'off' | 'instant' | 'daily';
 export async function getNotifyPref(): Promise<NotifyMode | null> {
   const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return null;
-  const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) return null;
+  const session = await awaitAuthReady();
+  if (session.status !== 'signed-in' || !session.userId) return null;
 
   const { data, error } = await supabase
     .from('notification_prefs')
     .select('mode')
-    .eq('user_id', auth.session.user.id)
+    .eq('user_id', session.userId)
     .eq('household_id', householdId)
     .maybeSingle();
   if (error) return null; // offline / transient — treat as unavailable
@@ -47,14 +48,14 @@ export async function getNotifyPref(): Promise<NotifyMode | null> {
 export async function setNotifyPref(mode: NotifyMode): Promise<{ ok: boolean; error?: string }> {
   const householdId = linkedCloudId(useStore.getState());
   if (!householdId) return { ok: false, error: 'This household is not backed up yet.' };
-  const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) return { ok: false, error: 'Not signed in.' };
-  const email = auth.session.user.email;
+  const session = await awaitAuthReady();
+  if (session.status !== 'signed-in' || !session.userId) return { ok: false, error: 'Not signed in.' };
+  const email = session.email;
   if (!email) return { ok: false, error: 'Your account has no email address.' };
 
   const { error } = await supabase.from('notification_prefs').upsert(
     {
-      user_id: auth.session.user.id,
+      user_id: session.userId,
       household_id: householdId,
       mode,
       email,
@@ -74,10 +75,9 @@ export async function setNotifyPref(mode: NotifyMode): Promise<{ ok: boolean; er
 export function pingItemAdded(item: Item): void {
   const householdId = linkedCloudId(useStore.getState());
   if (!householdId || item.localOnly) return;
-  void supabase.auth
-    .getSession()
-    .then(({ data }) => {
-      if (!data.session) return;
+  void awaitAuthReady()
+    .then((session) => {
+      if (session.status !== 'signed-in') return;
       return supabase.functions.invoke('notify-item-added', {
         body: {
           itemId: item.id,
