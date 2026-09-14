@@ -76,7 +76,10 @@ export default function LoginScreen() {
   // Seed from any OAuth error the redirect brought back, so a failed Google
   // sign-in explains itself instead of dumping the user on a blank form.
   const [error, setError] = useState(() => {
-    if (Platform.OS !== 'web') return '';
+    // `window` doesn't exist while the web build pre-renders pages; reading it
+    // here threw, so /login shipped as an empty fallback and rendered only in
+    // the browser (React #419 on every visit).
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return '';
     const p = new URLSearchParams(
       window.location.search || window.location.hash.replace(/^#/, '')
     );
