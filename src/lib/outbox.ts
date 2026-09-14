@@ -140,6 +140,7 @@ function coalesce(ops: Op[], incoming: NewOp, userId: string): Op[] {
               tags: prev.payload.parts.tags || incoming.payload.parts.tags,
               story: prev.payload.parts.story || incoming.payload.parts.story,
               heir: prev.payload.parts.heir || incoming.payload.parts.heir,
+              decision: prev.payload.parts.decision || incoming.payload.parts.decision,
             },
           },
         };
@@ -260,18 +261,27 @@ function scheduleWake(ms: number) {
   }, Math.max(ms, 250));
 }
 
-/** Is the signed-in person a decider in this household, per the server? */
-async function isDecider(householdId: string, userId: string): Promise<boolean | null> {
-  const { data, error } = await supabase
-    .from('household_members')
-    .select('role')
-    .eq('household_id', householdId)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .maybeSingle();
-  if (error) return null;
-  if (!data) return null;
-  return data.role === 'owner' || data.role === 'co_owner';
+/**
+ * The signed-in person's standing in this household, per the server.
+ * 'unreachable' is a connection problem and must be retried; 'none' means they
+ * really aren't a member any more. Treating the first as the second marked an
+ * offline capture as permanently refused.
+ */
+async function standing(householdId: string, userId: string): Promise<'decider' | 'helper' | 'none' | 'unreachable'> {
+  try {
+    const { data, error } = await supabase
+      .from('household_members')
+      .select('role')
+      .eq('household_id', householdId)
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (error) return 'unreachable';
+    if (!data) return 'none';
+    return data.role === 'owner' || data.role === 'co_owner' ? 'decider' : 'helper';
+  } catch {
+    return 'unreachable';
+  }
 }
 
 async function execute(op: Op): Promise<CloudResult> {
@@ -279,9 +289,14 @@ async function execute(op: Op): Promise<CloudResult> {
   switch (op.kind) {
     case 'item.create':
     case 'item.update': {
-      const decider = await isDecider(hid, op.userId);
-      if (decider === null) {
-        return { ok: false, retry: false, error: 'You’re no longer a member of this home.' };
+      const who = await standing(hid, op.userId);
+      if (who === 'unreachable') return { ok: false, retry: true, error: 'No connection.' };
+      if (who === 'none') return { ok: false, retry: false, error: 'You’re no longer a member of this home.' };
+      const decider = who === 'decider';
+      if (op.kind === 'item.update' && op.payload.parts.decision && !decider) {
+        // Refuse it visibly. Sending the rest of the edit without the decision
+        // would "succeed" while the person's screen still showed their choice.
+        return { ok: false, retry: false, error: 'Only someone with the final say can decide items.' };
       }
       return op.kind === 'item.create'
         ? cloud.createItem(op.payload.item, hid, op.userId, decider)
@@ -414,6 +429,11 @@ export function useFailedOps(): Op[] {
   const ops = useOutboxStore((s) => s.ops);
   // Filtered outside the selector: a selector that builds a new array loops.
   return userId ? ops.filter((o) => o.userId === userId && o.status === 'failed') : NO_OPS;
+}
+
+/** Plain code: every queued op on this device, all accounts (diagnostics and tests). */
+export function opsSnapshot(): Op[] {
+  return useOutboxStore.getState().ops;
 }
 
 /** Is anything about this item still waiting to reach the family? */

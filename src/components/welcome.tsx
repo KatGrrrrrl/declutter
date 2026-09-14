@@ -34,11 +34,15 @@ const STEPS: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string
 
 export function Welcome() {
   const router = useRouter();
-  // The demo opens in Rose's view (the parent with the final say) unless toggled.
-  const role = useStore((s) => s.demoRole);
+  const enterDemo = useStore((s) => s.enterDemo);
 
-  const seeDemo = () =>
-    router.push(role === 'owner' ? '/(parent)/decide' : '/(child)/capture');
+  // Open the sample home properly (Rose's view, the parent with the final
+  // say). Just pushing a route left the demo un-opened, so any later "go home"
+  // — the helper/owner view switch included — landed back on this page.
+  const seeDemo = () => {
+    enterDemo();
+    router.replace('/(parent)/decide');
+  };
 
   return (
     <Screen>

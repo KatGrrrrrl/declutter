@@ -172,11 +172,17 @@ export async function createItem(
   });
 }
 
-/** Which of an item's companion rows an edit touched. */
+/** Which parts of an item an edit touched. */
 export interface ItemParts {
   tags?: boolean;
   story?: boolean;
   heir?: boolean;
+  /**
+   * The decision (or whose call it is) changed. Only someone with the final
+   * say may send that; the outbox refuses it for anyone else rather than
+   * quietly dropping the decision from the update and reporting success.
+   */
+  decision?: boolean;
 }
 
 /**

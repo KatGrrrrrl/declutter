@@ -13,6 +13,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 
 import type { NewOp } from '@/lib/outbox';
+import type { ItemParts } from '@/lib/cloud';
 
 export type Role = 'owner' | 'contributor';
 export type Decision = 'undecided' | 'keep' | 'donate' | 'toss';
@@ -638,7 +639,7 @@ function sendCollectionFor(s: AppState, hid: string, collectionId: string | unde
 }
 
 /** Queue edits to items for the family. Call AFTER set(), with the ids that changed. */
-function sendItemUpdates(s: AppState, parts: { tags?: boolean; story?: boolean; heir?: boolean }, ids: string[]) {
+function sendItemUpdates(s: AppState, parts: ItemParts, ids: string[]) {
   const hid = shareTarget(s);
   if (!hid) return;
   for (const id of ids) {
@@ -821,7 +822,7 @@ export const useStore = create<AppState>()(
               : it
           ),
         }));
-        sendItemUpdates(get(), {}, [id]);
+        sendItemUpdates(get(), { decision: true }, [id]);
       },
 
       setMainDecider: (id, decider) => {
@@ -830,7 +831,7 @@ export const useStore = create<AppState>()(
             it.id === id ? { ...it, mainDeciderId: decider?.userId, mainDeciderName: decider?.name } : it
           ),
         }));
-        sendItemUpdates(get(), {}, [id]);
+        sendItemUpdates(get(), { decision: true }, [id]);
       },
 
       setDefaultDecider: (householdId, decider) =>
@@ -849,7 +850,7 @@ export const useStore = create<AppState>()(
               : it
           ),
         }));
-        sendItemUpdates(get(), {}, [id]);
+        sendItemUpdates(get(), { decision: true }, [id]);
       },
 
       addItem: (item) => {
@@ -896,6 +897,7 @@ export const useStore = create<AppState>()(
             tags: 'tags' in patch,
             story: 'story' in patch,
             heir: 'heirPersonId' in patch || 'heirVisibility' in patch,
+            decision: 'decision' in patch || 'mainDeciderId' in patch || 'mainDeciderName' in patch,
           }, [id]);
         }
         const hid = shareTarget(s);
@@ -934,7 +936,7 @@ export const useStore = create<AppState>()(
             ),
           };
         });
-        sendItemUpdates(get(), {}, ids);
+        sendItemUpdates(get(), { decision: true }, ids);
       },
 
       bulkSetRoom: (ids, room) => {
