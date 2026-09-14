@@ -92,7 +92,13 @@ export interface Item {
   room: string;
   decision: Decision;
   decidedAt?: string;
-  decidedBy?: string; // display name of the decider who made the call
+  decidedBy?: string; // display name of the decider who made the call (a cache)
+  /** auth user id of whoever made the decision (items.decided_by). */
+  decidedById?: string;
+  /** auth user id of whoever captured the item (items.created_by). */
+  createdById?: string;
+  /** auth user id of this item's main decider (items.main_decider). */
+  mainDeciderId?: string;
   /**
    * Optional "main decider" for this item — one of the household's deciders.
    * Every decider still sees and can decide the item (a backup if the main one

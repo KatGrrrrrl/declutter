@@ -106,6 +106,10 @@ export const useKnownAccounts = () => useAccountsStore((s) => s.accounts);
 /** Plain code: a snapshot, no subscription. */
 export const currentSession = (): SessionState => useSessionStore.getState();
 
+/** Plain code: be told whenever the session changes. Returns an unsubscribe. */
+export const subscribeSession = (listener: (s: SessionState, prev: SessionState) => void) =>
+  useSessionStore.subscribe(listener);
+
 /** Plain code: the signed-in user's id, or null if not (yet) signed in. */
 export const getUserId = (): string | null => {
   const s = useSessionStore.getState();
