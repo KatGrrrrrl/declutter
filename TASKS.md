@@ -116,7 +116,7 @@ _Started: Sep 15, 2026. Last updated: Sep 15, 2026._
 | 7.3 | Delete the two orphaned storage objects under household `942f5389` (3.10). | THREADS |
 | 7.4 | **No per-household AI usage cap exists.** Pro subsidises free households' storage; a heavy AI user inverts the margin. Not a launch blocker; needs a policy before volume. | GO-LIVE §1 |
 | 7.5 | Supabase advisors, review before launch: `accept_invite` / `my_pending_invites` are SECURITY DEFINER callable by `authenticated` (intentional); leaked-password protection is **off**; one MFA factor enabled. | THREADS §follow-ups |
-| 7.6 | **Photo delivery** — the rendition ladder and HD original are designed in [`docs/PHOTOS.md`](docs/PHOTOS.md); what needs your call is the HD cap (3000 px proposed), the signed-URL TTL (a bearer token's lifetime, 9.6), and whether photo storage ever leaves Supabase (9.9). | §9 |
+| 7.6 | **Photo delivery** — the rendition ladder and HD original are designed in [`docs/PHOTOS.md`](docs/PHOTOS.md); the HD cap is settled at **2400 px** (Sep 15); what still needs your call is the signed-URL TTL (a bearer token's lifetime, 9.6), and whether photo storage ever leaves Supabase (9.9). | §9 |
 
 ## 8. Post-wipe sequence still outstanding (phone, user)
 
@@ -142,14 +142,14 @@ capture: an HD original can only exist for photos taken after this ships.
 **The decision:** stay on Supabase Storage — the bucket's SELECT policy authorizes on the
 `{household_id}` path segment, so extra renditions under the same prefix need **no RLS
 change and no second authorization path** — and serve a three-rung ladder: thumb (400 px,
-~25 KB), view (1600 px, the current object and path, unchanged), HD (3000 px, never fetched
+~25 KB), view (1600 px, the current object and path, unchanged), HD (2400 px, never fetched
 unless someone taps "View full size").
 
 | # | Task | Owner |
 |---|------|-------|
 | 9.1 | **Measure first: `imagescript` decode + three encodes on a real 12 MP photo** inside the Edge Function's CPU/memory budget. It is pure TypeScript. Everything below assumes this passes; if it doesn't, the fallback is thumb + view synchronously and HD filled lazily. Do this before writing anything else. | — |
 | 9.2 | **Migration:** `thumb_path text` and `hd_path text`, both nullable, on `item_photos`. Null = predates the ladder; every read falls back to `storage_path`, which is what makes 9.7 non-blocking. | — |
-| 9.3 | **`upload-photo` generates the ladder.** Capture quality `0.7` → `0.9` (`capture.tsx:223`, `photo-sync.ts:37` — calling a q70 capture "HD" would be a lie); `MAX_BASE64_CHARS` 8 MB → ~12 MB (bucket limit is 20 MB); decode once, encode HD → view → thumb; set `cacheControl: '31536000, immutable'` (paths are uuid-based and never rewritten, yet carry Supabase's 1 h default today). All three rungs re-encoded from decoded pixels, so the EXIF guarantee holds for each. | — |
+| 9.3 | **`upload-photo` generates the ladder.** Capture quality `0.7` → `0.9` (`capture.tsx:223`, `photo-sync.ts:37` — calling a q70 capture "HD" would be a lie); `MAX_BASE64_CHARS` 8 MB → ~12 MB (bucket limit is 20 MB); decode once, encode HD (2400 px q88) → view (1600 px q80) → thumb (400 px q70); set `cacheControl: '31536000, immutable'` (paths are uuid-based and never rewritten, yet carry Supabase's 1 h default today). All three rungs re-encoded from decoded pixels, so the EXIF guarantee holds for each. | — |
 | 9.4 | **Reads take a rung.** `useSignedPhotoUrl` accepts which rendition it wants; lists, grids, the capture strip and split review switch to `thumb_path` with a `storage_path` fallback. ~10× less egress on list screens. | — |
 | 9.5 | **"View full size" on the item screen** — signs `hd_path` on tap, hidden when null. HD is never fetched implicitly. | — |
 | 9.6 | **Raise the signed-URL TTL and persist `urlCache` across reloads.** Every signing mints a *new URL*, so the current 1 h TTL defeats both the CDN and `expo-image`'s disk cache — the same photo is re-downloaded hourly on every device. The objects are immutable, so days is safe. **Plausibly a bigger saving than the thumbnails and a smaller change**; independent of 9.2–9.5, ship whenever. Weigh the number against the posture (a signed URL is a bearer token) and record it in `SPEC.md`. | — |
@@ -161,6 +161,7 @@ unless someone taps "View full size").
 
 ## Changelog
 
+- **Sep 15, 2026** — HD rung set to **2400 px** (user's call), replacing the proposed 3000.
 - **Sep 15, 2026** — §9 rewritten around the decided design in `docs/PHOTOS.md`: a three-rung thumb/view/HD ladder on Supabase Storage, plus the signed-URL TTL finding. Supersedes the first pass.
 - **Sep 15, 2026** — Added §9 (photo thumbnails, the 1600 px "hd" question, Supabase transformations vs Hetzner Object Storage) and the matching decision 7.6, from the user's item 1.
 - **Sep 15, 2026** — File created. Seeded from `THREADS.md` (§urgent, §follow-ups, §photo-retry, §thread-4 handback, §E2E findings, §simplify, §cross-cutting), `docs/QA-2026-09-09.md` (A–F), `docs/QA-2026-09-14.md`, and `docs/GO-LIVE.md` (§0–§5). Ticked items from those docs were not carried over. New in this pass: 6.2 (committed `declutter-web.zip`), 6.8 (docs-drift tooling). `b.js`, flagged by the Sep 14 QA, is already gone.

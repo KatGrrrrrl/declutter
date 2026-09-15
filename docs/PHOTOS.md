@@ -59,7 +59,7 @@ Three objects per photo, same prefix, immutable paths:
 |---|---|---|---|---|---|
 | **thumb** | `{uuid}_t.jpg` | 400 px longest edge | q70 | ~20–30 KB | inventory rows, collection grids, capture strip, split review |
 | **view** | `{uuid}.jpg` | 1600 px longest edge | q80 | ~200–300 KB | item detail, swipe card, `estimate-value`, `split-photo` |
-| **HD** | `{uuid}_hd.jpg` | up to 3000 px longest edge | q88 | ~1–3 MB | nothing automatic — only "View full size" / "Download" |
+| **HD** | `{uuid}_hd.jpg` | up to 2400 px longest edge | q88 | ~0.7–1.5 MB | nothing automatic — only "View full size" / "Download" |
 
 **The view rung deliberately keeps the current path and current parameters.** Existing rows
 keep working untouched, the diff stays small, and nothing about the detail screen changes.
@@ -68,12 +68,17 @@ keep working untouched, the diff stays small, and nothing about the detail scree
 Null means "this photo predates the ladder", and every read falls back to `storage_path`.
 That fallback is what makes the backfill non-blocking.
 
-**Why 3000 px and not "the original".** An unbounded original means unbounded upload time
-on a parent's phone, unbounded decode cost in the Edge Function, and a 12 MP JPEG where a
-hallmark is legible at 3000 px anyway. 3000 px q88 is ~10× the detail of what we keep today
-and still lands inside the existing 20 MB object limit with room to spare. If someone later
-wants true camera-original bytes, that is a different feature (an archival tier) and should
-be argued separately.
+**Why 2400 px and not "the original"** (decided by the user, Sep 15). An unbounded original
+means unbounded upload time on a parent's phone and unbounded decode cost in the Edge
+Function, for detail nobody looks at: 2400 px is ~2.25× the pixels we keep today, enough to
+read a hallmark or a signature, and it keeps the HD rung near 1 MB rather than several. If
+someone later wants true camera-original bytes, that is a different feature (an archival
+tier) and should be argued separately.
+
+Note this makes the ladder's rungs close together — 2400 against a 1600 view. That is fine
+and intended: the view rung's job is to load fast on a detail screen, the HD rung's is to be
+there when someone pinches in. It does mean the HD rung is worth roughly 1 MB of storage per
+photo, not several, which is the cheap end of this decision.
 
 ## 4. How the bytes get there
 
