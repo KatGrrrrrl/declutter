@@ -116,7 +116,7 @@ _Started: Sep 15, 2026. Last updated: Sep 15, 2026._
 | 7.3 | Delete the two orphaned storage objects under household `942f5389` (3.10). | THREADS |
 | 7.4 | **No per-household AI usage cap exists.** Pro subsidises free households' storage; a heavy AI user inverts the margin. Not a launch blocker; needs a policy before volume. | GO-LIVE §1 |
 | 7.5 | Supabase advisors, review before launch: `accept_invite` / `my_pending_invites` are SECURITY DEFINER callable by `authenticated` (intentional); leaked-password protection is **off**; one MFA factor enabled. | THREADS §follow-ups |
-| 7.6 | **Photo resolution and where photos live** — whether to raise the 1600 px cap for AI quality (9.3), and whether photo storage ever moves off Supabase to Hetzner, which trades ~90 % of the storage bill for EU-only residency and hand-rolled authorization (9.5). | §9 |
+| 7.6 | **Photo delivery** — the rendition ladder and HD original are designed in [`docs/PHOTOS.md`](docs/PHOTOS.md); what needs your call is the HD cap (3000 px proposed), the signed-URL TTL (a bearer token's lifetime, 9.6), and whether photo storage ever leaves Supabase (9.9). | §9 |
 
 ## 8. Post-wipe sequence still outstanding (phone, user)
 
@@ -124,31 +124,43 @@ _Started: Sep 15, 2026. Last updated: Sep 15, 2026._
 - [ ] Re-photograph the second painting. The refresh sync (`8b72d3b`) means it appears on the laptop on the next load — no Restore needed.
 - Full sequence and the "do not tap Back up now on the old local Millrun" warning: `THREADS.md` → *Post-wipe sequence*.
 
-## 9. Photos — thumbnails, resolution, and storage cost
+## 9. Photos — renditions, viewing size, and the HD original
 
-_Raised Sep 15, 2026. Findings below were read out of the code, not assumed._
+_Raised Sep 15, 2026. **Design decided: [`docs/PHOTOS.md`](docs/PHOTOS.md)** — read it
+before starting any of these. Findings below were read out of the code, not assumed._
 
-**Where we are today.** `upload-photo` decodes every capture, downscales anything wider
-than **1600 px**, re-encodes at **JPEG q80**, and stores exactly **one** rendition per
-photo ([`upload-photo/index.ts:27,95`](supabase/functions/upload-photo/index.ts)). There is
-no thumbnail and no transform on read: `getPhotoUrl()` signs the one stored object
-([`src/lib/photo-sync.ts:165`](src/lib/photo-sync.ts)), so the **56 px inventory row
-thumb** ([`inventory-view.tsx:1044`](src/components/inventory-view.tsx)) and the **52 px
-split-review thumb** ([`split-review.tsx:157`](src/components/split-review.tsx)) each pull
-the full ~1600 px JPEG. A 40-item list is ~40 × ~250 KB ≈ **10 MB of egress to render
-postage stamps**, on every device, every cold load.
+**Where we are today.** One rendition per photo: `upload-photo` downscales past 1600 px,
+re-encodes q80 and stores a single object ([`upload-photo/index.ts:27,95`](supabase/functions/upload-photo/index.ts)),
+and `getPhotoUrl()` signs that one object ([`photo-sync.ts:165`](src/lib/photo-sync.ts)).
+So the 56 px inventory thumb ([`inventory-view.tsx:1044`](src/components/inventory-view.tsx))
+and the 52 px split-review thumb ([`split-review.tsx:157`](src/components/split-review.tsx))
+each pull the full ~250 KB image — a 40-item list is ~10 MB of egress to draw postage
+stamps, on every device, every cold load. **And the original is discarded at upload**, so
+every photo captured to date exists only as a 1600 px q80 derivative of an already-q70
+capture: an HD original can only exist for photos taken after this ships.
+
+**The decision:** stay on Supabase Storage — the bucket's SELECT policy authorizes on the
+`{household_id}` path segment, so extra renditions under the same prefix need **no RLS
+change and no second authorization path** — and serve a three-rung ladder: thumb (400 px,
+~25 KB), view (1600 px, the current object and path, unchanged), HD (3000 px, never fetched
+unless someone taps "View full size").
 
 | # | Task | Owner |
 |---|------|-------|
-| 9.1 | **Generate a thumbnail at upload time.** `imagescript` is already imported and the image is already decoded — a second `resize` + `encodeJPEG` to ~320 px q70 (~20 KB) costs one extra encode and no new dependency. Store it beside the original (`{uuid}_thumb.jpg`), add a `thumb_path` column to `item_photos`, and point the list/grid/split-review thumbs at it, falling back to the full path when it is null. **This is the recommended fix** — roughly a 10× egress cut on list screens, no plan change, no vendor change, and it keeps the EXIF-stripping and private-bucket posture exactly as it is. | — |
-| 9.2 | **Backfill thumbnails for existing photos.** A one-off pass over `item_photos` where `thumb_path is null`. Until it runs the fallback in 9.1 carries old rows, so this is not blocking. | — |
-| 9.3 | **Decide the "hd" question, which cuts both ways.** 1600 px q80 is generous for a 56 px row and arguably *thin* for the things this catalog is for — reading a hallmark, a maker's mark, a signature — and for the paid AI layer. Concretely: **`split-photo` crops out of the stored 1600 px image** ([`split-photo/index.ts:185–195`](supabase/functions/split-photo/index.ts)), so a shelf of eight objects yields crops of roughly 300 px each, and those crops are what become items. Same for `estimate-value`, which sends the stored rendition to the model. Worth measuring whether a 2400 px original improves estimate and split quality enough to justify the bytes — **this is a quality question about the thing Pro sells**, so pair it with task 1.2. | — |
-| 9.4 | **Supabase image transformations are the alternative to 9.1** — `createSignedUrl(path, ttl, { transform: { width, height } })` works on private buckets, so no schema change and no backfill. Costs: the **Pro plan** and **$5 per 1,000 origin images**, then $0.03/GB cached egress. Cheaper to build, metered forever; 9.1 is a few hours of work and then free. Recommend 9.1 unless we want arbitrary sizes on demand. | — |
-| 9.5 | **Hetzner — looked into it, Sep 15.** Object Storage is S3-compatible at **€6.49/mo including 1 TB storage and 1 TB egress, then ~€1/TB** — against Supabase's $0.021/GB stored and $0.09/GB uncached egress, that is the ~90 % saving people quote. **But it does not solve this problem and should not be the first move**, for three reasons worth arguing before anyone starts: (a) it is a *bill* fix, not a *bytes* fix — thumbnails (9.1) cut the same egress ~10× and cost nothing; (b) Supabase Pro already includes 250 GB of egress and the app has approximately no users, so today's photo bill is ~$0 — this is optimising a cost that does not exist yet; (c) it **breaks the security posture on purpose**: today authorization for a photo read *is* RLS — `createSignedUrl` only succeeds for a household member. On S3 the app would mint presigned URLs itself, moving that check into an Edge Function we would have to write and get right, for a photographed catalog of an elder's home. Also note the regions are **Nuremberg, Falkenstein and Helsinki** — EU only, while the project is `ca-central-1`: cross-Atlantic latency on every photo, and a data-residency answer we would owe Canadian families. **Recommendation: do 9.1 now, revisit Hetzner only if egress becomes a real line item** — and if it ever does, the stronger version is a small Hetzner VPS running `imgproxy` in front of the existing bucket rather than a storage migration. | — |
+| 9.1 | **Measure first: `imagescript` decode + three encodes on a real 12 MP photo** inside the Edge Function's CPU/memory budget. It is pure TypeScript. Everything below assumes this passes; if it doesn't, the fallback is thumb + view synchronously and HD filled lazily. Do this before writing anything else. | — |
+| 9.2 | **Migration:** `thumb_path text` and `hd_path text`, both nullable, on `item_photos`. Null = predates the ladder; every read falls back to `storage_path`, which is what makes 9.7 non-blocking. | — |
+| 9.3 | **`upload-photo` generates the ladder.** Capture quality `0.7` → `0.9` (`capture.tsx:223`, `photo-sync.ts:37` — calling a q70 capture "HD" would be a lie); `MAX_BASE64_CHARS` 8 MB → ~12 MB (bucket limit is 20 MB); decode once, encode HD → view → thumb; set `cacheControl: '31536000, immutable'` (paths are uuid-based and never rewritten, yet carry Supabase's 1 h default today). All three rungs re-encoded from decoded pixels, so the EXIF guarantee holds for each. | — |
+| 9.4 | **Reads take a rung.** `useSignedPhotoUrl` accepts which rendition it wants; lists, grids, the capture strip and split review switch to `thumb_path` with a `storage_path` fallback. ~10× less egress on list screens. | — |
+| 9.5 | **"View full size" on the item screen** — signs `hd_path` on tap, hidden when null. HD is never fetched implicitly. | — |
+| 9.6 | **Raise the signed-URL TTL and persist `urlCache` across reloads.** Every signing mints a *new URL*, so the current 1 h TTL defeats both the CDN and `expo-image`'s disk cache — the same photo is re-downloaded hourly on every device. The objects are immutable, so days is safe. **Plausibly a bigger saving than the thumbnails and a smaller change**; independent of 9.2–9.5, ship whenever. Weigh the number against the posture (a signed URL is a bearer token) and record it in `SPEC.md`. | — |
+| 9.7 | **Backfill `thumb_path` for existing rows.** Non-blocking thanks to the 9.2 fallback. There is nothing to backfill for `hd_path` — those bytes were never uploaded. | — |
+| 9.8 | **Re-check AI quality once the ladder lands.** `split-photo` crops its items out of the 1600 px rendition ([`split-photo/index.ts:185–195`](supabase/functions/split-photo/index.ts)), so a shelf of eight yields ~300 px crops, and `estimate-value` sends the same rendition. Whether either should read the HD rung is a quality question about **the thing Pro sells** — pair it with task 1.2. | — |
+| 9.9 | **Hetzner — looked into it Sep 15, recommendation is not yet.** Object Storage is S3-compatible at €6.49/mo including 1 TB storage and 1 TB egress, then ~€1/TB, against Supabase's $0.09/GB uncached egress. Real saving, wrong move now: it is a *bill* fix rather than a *bytes* fix (9.4 and 9.6 cut the same egress for free); Supabase Pro already includes 250 GB and the app has approximately no users, so today's photo bill is ~$0; and it moves photo authorization out of RLS into a presigning function we would own. Regions are Nuremberg/Falkenstein/Helsinki — EU only, while the project is `ca-central-1`. If egress ever becomes a real line item, the stronger version is `imgproxy` on a small VPS in front of the existing bucket, not a storage migration. Alternatives table: [`docs/PHOTOS.md`](docs/PHOTOS.md) §6. | — |
 
 ---
 
 ## Changelog
 
+- **Sep 15, 2026** — §9 rewritten around the decided design in `docs/PHOTOS.md`: a three-rung thumb/view/HD ladder on Supabase Storage, plus the signed-URL TTL finding. Supersedes the first pass.
 - **Sep 15, 2026** — Added §9 (photo thumbnails, the 1600 px "hd" question, Supabase transformations vs Hetzner Object Storage) and the matching decision 7.6, from the user's item 1.
 - **Sep 15, 2026** — File created. Seeded from `THREADS.md` (§urgent, §follow-ups, §photo-retry, §thread-4 handback, §E2E findings, §simplify, §cross-cutting), `docs/QA-2026-09-09.md` (A–F), `docs/QA-2026-09-14.md`, and `docs/GO-LIVE.md` (§0–§5). Ticked items from those docs were not carried over. New in this pass: 6.2 (committed `declutter-web.zip`), 6.8 (docs-drift tooling). `b.js`, flagged by the Sep 14 QA, is already gone.
