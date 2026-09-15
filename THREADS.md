@@ -29,6 +29,8 @@ Summary: 8 threads — 1 running (8), 3 idle (1, 6, 7), 4 retired and archived. 
 
 ## What needs to be dealt with
 
+> The open items below are also collected, deduplicated and prioritised in [`TASKS.md`](TASKS.md) — the queue other sessions pick from. Tick work in both places.
+
 ### 🔴 Urgent (runtime / data)
 - [x] ~~Confirm Amplify build for 28bbfce (reconcile-on-connect) is **live**~~ — **confirmed Sep 8.** The deployed bundle carries a string from 7606910, the newest code commit at the time, so every commit through it is out. Phone captures reach the cloud now.
 - [ ] **Re-run the Stripe probe.** Probed Sep 7: `STRIPE_SECRET_KEY` held the literal placeholder `sk_test_...`, so `create-checkout` returned `500 Invalid API Key` — nobody could subscribe. A real **test** key was set afterwards but never re-verified. Confirm with `$env:SERVICE_KEY="<service_role>"; node tools/probe-checkout.mjs` — want `status: 200` and a `checkout.stripe.com` URL. `docs/PRICING.md` still records the failing state until this passes.
