@@ -145,4 +145,8 @@ Changes this implies:
    `storage_path` fallback.
 5. "View full size" on the item screen, signing `hd_path`, hidden when it is null.
 6. Longer signed-URL TTL + persisted URL cache (independent of 2–5; ship whenever).
-7. Backfill thumbs for existing rows. There is nothing to backfill for HD — §1.
+7. Backfill thumbs for existing rows — **measured Sep 15: the bucket holds 2 real photos,
+   662 KB in total**, so this is not worth tooling. Let the §3 fallback carry them, or
+   re-photograph the two paintings once the ladder ships, which is strictly better: it
+   produces true HD originals, which no backfill can. There is nothing to backfill for
+   HD — §1.

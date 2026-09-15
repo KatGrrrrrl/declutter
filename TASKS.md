@@ -62,7 +62,7 @@ _Started: Sep 15, 2026. Last updated: Sep 15, 2026._
 | 3.7 | **Helper keeps a stale "revealed" heir** after the owner flips it back to private — a privacy-posture bug, not cosmetic. | QA-09-09 C6 | — |
 | 3.8 | **`plan` is device-global** while `household_plans` is per household; the UI can show Pro on the wrong home. (Server-side gating is correct — this is display only.) | QA-09-09 C7 | — |
 | 3.9 | **Web photo data-URIs are persisted into `localStorage`** via AsyncStorage — quota blowout waiting to happen. | QA-09-09 C8 | — |
-| 3.10 | **Orphaned storage bytes:** two objects under deleted household `942f5389` are unreachable but billed. Needs (a) a one-off delete, (b) a cleanup path on household delete — `item_photos` cascades, storage does not. **Not authorised — user's call.** | THREADS §photo-retry | user |
+| 3.10 | ~~**Orphaned storage bytes:** two objects under deleted household `942f5389` are unreachable but billed.~~ — **premise disproved, checked against production Sep 15.** Both objects are `.emptyFolderPlaceholder` files of **0 bytes**: nothing is billed, nothing to reclaim, deleting them is cosmetic. The real half survives — **household delete has no storage cleanup path** (`item_photos` cascades, storage does not), so a household deleted with actual photos in it *would* strand them. Fix the cleanup path; ignore the placeholders. | THREADS §photo-retry, this session | — |
 | 3.11 | **No static review of the new `src/lib`** has been done since the identity-core rebuild (phases 0–6). The behaviour is covered by the core test; the code has not been read. | QA-09-14 | — |
 | 3.12 | **Unproven live:** a decline email to a real administrator address; an account switch with two real people's accounts; the presence banner with two real signed-in devices; delivery to a recipient who is not the Resend account owner (and spam placement). | THREADS §7, §follow-ups, GO-LIVE §5 | — |
 
@@ -113,7 +113,7 @@ _Started: Sep 15, 2026. Last updated: Sep 15, 2026._
 |---|----------|--------|
 | 7.1 | `web.output` `static` vs `single` — fixes React #418 but changes deep-link serving (6.1). | QA-09-09 |
 | 7.2 | Keep or delete `landing/index.html` (2.11). | THREADS |
-| 7.3 | Delete the two orphaned storage objects under household `942f5389` (3.10). | THREADS |
+| 7.3 | ~~Delete the two orphaned storage objects under household `942f5389`.~~ **Moot — they are 0-byte placeholders (3.10).** No decision needed. | THREADS |
 | 7.4 | **No per-household AI usage cap exists.** Pro subsidises free households' storage; a heavy AI user inverts the margin. Not a launch blocker; needs a policy before volume. | GO-LIVE §1 |
 | 7.5 | Supabase advisors, review before launch: `accept_invite` / `my_pending_invites` are SECURITY DEFINER callable by `authenticated` (intentional); leaked-password protection is **off**; one MFA factor enabled. | THREADS §follow-ups |
 | 7.6 | **Photo delivery** — the rendition ladder and HD original are designed in [`docs/PHOTOS.md`](docs/PHOTOS.md); the HD cap is settled at **2400 px** (Sep 15); what still needs your call is the signed-URL TTL (a bearer token's lifetime, 9.6), and whether photo storage ever leaves Supabase (9.9). | §9 |
@@ -153,7 +153,7 @@ unless someone taps "View full size").
 | 9.4 | **Reads take a rung.** `useSignedPhotoUrl` accepts which rendition it wants; lists, grids, the capture strip and split review switch to `thumb_path` with a `storage_path` fallback. ~10× less egress on list screens. | — |
 | 9.5 | **"View full size" on the item screen** — signs `hd_path` on tap, hidden when null. HD is never fetched implicitly. | — |
 | 9.6 | **Raise the signed-URL TTL and persist `urlCache` across reloads.** Every signing mints a *new URL*, so the current 1 h TTL defeats both the CDN and `expo-image`'s disk cache — the same photo is re-downloaded hourly on every device. The objects are immutable, so days is safe. **Plausibly a bigger saving than the thumbnails and a smaller change**; independent of 9.2–9.5, ship whenever. Weigh the number against the posture (a signed URL is a bearer token) and record it in `SPEC.md`. | — |
-| 9.7 | **Backfill `thumb_path` for existing rows.** Non-blocking thanks to the 9.2 fallback. There is nothing to backfill for `hd_path` — those bytes were never uploaded. | — |
+| 9.7 | **Backfill `thumb_path` for existing rows — measured Sep 15: there are exactly 2.** The whole bucket holds 2 real photos (369 KB + 292 KB = 662 KB) in household `e1462b4f`, plus two 0-byte folder placeholders. **Do not build backfill tooling for this.** Either let the 9.2 fallback carry them, or re-photograph both once the ladder ships — re-taking them yields true 2400 px HD originals, which no backfill can produce (§8 already has one of the two on the list). Revisit only if real families upload before the ladder lands. There is nothing to backfill for `hd_path` either way — those bytes were never uploaded. | — |
 | 9.8 | **Re-check AI quality once the ladder lands.** `split-photo` crops its items out of the 1600 px rendition ([`split-photo/index.ts:185–195`](supabase/functions/split-photo/index.ts)), so a shelf of eight yields ~300 px crops, and `estimate-value` sends the same rendition. Whether either should read the HD rung is a quality question about **the thing Pro sells** — pair it with task 1.2. | — |
 | 9.9 | **Hetzner — looked into it Sep 15, recommendation is not yet.** Object Storage is S3-compatible at €6.49/mo including 1 TB storage and 1 TB egress, then ~€1/TB, against Supabase's $0.09/GB uncached egress. Real saving, wrong move now: it is a *bill* fix rather than a *bytes* fix (9.4 and 9.6 cut the same egress for free); Supabase Pro already includes 250 GB and the app has approximately no users, so today's photo bill is ~$0; and it moves photo authorization out of RLS into a presigning function we would own. Regions are Nuremberg/Falkenstein/Helsinki — EU only, while the project is `ca-central-1`. If egress ever becomes a real line item, the stronger version is `imgproxy` on a small VPS in front of the existing bucket, not a storage migration. Alternatives table: [`docs/PHOTOS.md`](docs/PHOTOS.md) §6. | — |
 
@@ -161,6 +161,7 @@ unless someone taps "View full size").
 
 ## Changelog
 
+- **Sep 15, 2026** — Checked production storage: 2 real photos, 662 KB total. 9.7 rescoped (no tooling needed); 3.10 and 7.3 corrected — the "orphaned bytes" are 0-byte placeholders, though the missing storage-cleanup-on-household-delete is real and stays open.
 - **Sep 15, 2026** — HD rung set to **2400 px** (user's call), replacing the proposed 3000.
 - **Sep 15, 2026** — §9 rewritten around the decided design in `docs/PHOTOS.md`: a three-rung thumb/view/HD ladder on Supabase Storage, plus the signed-URL TTL finding. Supersedes the first pass.
 - **Sep 15, 2026** — Added §9 (photo thumbnails, the 1600 px "hd" question, Supabase transformations vs Hetzner Object Storage) and the matching decision 7.6, from the user's item 1.
